@@ -1,0 +1,1 @@
+"""RAG-OS knowledge assistant."""

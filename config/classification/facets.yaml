@@ -1,0 +1,76 @@
+# Faceted classification: controlled vocabularies owned by SMEs. Each facet becomes a filterable/facetable
+# index field. `classify: true` = auto-classified (self-hosted embedding model, zero token cost) when rules
+# and manifests leave it unset; low-confidence results go to the SME review queue.
+version: 1
+facets:
+  - name: department
+    field: f_department
+    label: Department
+    owner: hr-ops@contoso.example
+    values:
+      - { id: HR, label: Human Resources, synonyms: [people, personnel, hr team], description: "Employment, benefits, leave, payroll policy" }
+      - { id: Finance, label: Finance, synonyms: [accounting, fp&a, treasury], description: "Budgets, expenses, invoices, rate cards" }
+      - { id: Sales, label: Sales, synonyms: [commercial, business development], description: "Pricing, contracts, customer offers" }
+      - { id: IT, label: Information Technology, synonyms: [tech, helpdesk, infosec], description: "Systems, security, access, devices" }
+      - { id: Legal, label: Legal, synonyms: [compliance, counsel], description: "Contracts, regulations, privacy" }
+      - { id: Support, label: Customer Support, synonyms: [service desk, customer care], description: "Product help, troubleshooting, FAQs" }
+
+  - name: region
+    field: f_region
+    label: Region
+    hierarchical: true
+    values:
+      - { id: Global, label: Global }
+      - { id: EMEA, label: "Europe, Middle East & Africa", parent: Global, synonyms: [europe] }
+      - { id: UK, label: United Kingdom, parent: EMEA, synonyms: [britain, gb] }
+      - { id: DE, label: Germany, parent: EMEA, synonyms: [deutschland] }
+      - { id: AMER, label: Americas, parent: Global, synonyms: [americas] }
+      - { id: US, label: United States, parent: AMER, synonyms: [usa, america] }
+      - { id: APAC, label: Asia Pacific, parent: Global, synonyms: [asia] }
+      - { id: IN, label: India, parent: APAC, synonyms: [bharat] }
+
+  - name: doc_type
+    field: f_doc_type
+    label: Document type
+    classify: true
+    values:
+      - { id: Policy, description: A formal rule or policy statement employees must follow }
+      - { id: SOP, label: Standard operating procedure, synonyms: [procedure, runbook, how-to], description: Step-by-step instructions to perform a task }
+      - { id: Contract, synonyms: [agreement, msa, sow], description: A legal agreement between parties with terms and obligations }
+      - { id: RateCard, label: Rate card, synonyms: [price list, pricing], description: "Prices, fees or rates for products or services" }
+      - { id: FAQ, synonyms: [questions], description: Frequently asked questions and answers }
+      - { id: Manual, label: Product manual, synonyms: [guide, handbook], description: Product documentation and user guides }
+      - { id: Report, description: "Analysis, results, metrics or findings for a period" }
+      - { id: Form, synonyms: [template], description: A form or template to be filled in }
+
+  - name: topic
+    field: f_topic
+    label: Topic
+    hierarchical: true
+    classify: true
+    values:
+      - { id: Benefits, description: Employee benefits and perks }
+      - { id: Leave, parent: Benefits, synonyms: [time off, pto, vacation, holiday], description: "Annual leave, sick leave, parental leave" }
+      - { id: Travel, synonyms: [trip, expenses], description: Business travel and expense claims }
+      - { id: Security, synonyms: [cyber, password, access], description: Information security and acceptable use }
+      - { id: Pricing, synonyms: [discount, price], description: Commercial pricing and discounts }
+      - { id: Onboarding, synonyms: [new joiner, induction], description: Joining the company or onboarding customers }
+      - { id: Troubleshooting, synonyms: [error, issue, fix], description: Diagnosing and fixing product problems }
+
+  - name: confidentiality
+    field: f_confidentiality
+    label: Confidentiality
+    values:
+      - { id: Public }
+      - { id: Internal }
+      - { id: Confidential }
+      - { id: Restricted }
+
+  - name: language
+    field: f_language
+    label: Language
+    closed: false
+    values:
+      - { id: en, label: English }
+      - { id: de, label: German }
+      - { id: hi, label: Hindi }

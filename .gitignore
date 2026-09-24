@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Local data / secrets
+samples/synthetic/
+infra/env/*.outputs.json
+infra/env/*.outputs.json.bak
+# The wiring sheet from Write-OutputSheet.ps1. It holds references, never secret values, but it is a map of
+# one specific deployment (resource names, endpoints, tenant and client ids) and belongs with the operator.
+output.txt
+# infra/env/*.images.json is committed on purpose: it records the deployed image digests
+# (including the embedding model image) that the embedding profile is verified against.
+.env
+.env.*
+!.env.sample
+.data/
+infra/env/*.psd1
+!infra/env/dev.sample.psd1
+*.pem
+*.key
+
+# Node / UI build
+chat-ui/node_modules/
+chat-ui/dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.psd1

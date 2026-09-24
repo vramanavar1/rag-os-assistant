@@ -1,0 +1,5 @@
+{"record_type": "Employee records", "retention_years": 7, "legal_basis": "Employment law", "owner": "HR"}
+{"record_type": "Customer contracts", "retention_years": 10, "legal_basis": "Contract law / limitation period", "owner": "Legal"}
+{"record_type": "Invoices", "retention_years": 10, "legal_basis": "Tax law", "owner": "Finance"}
+{"record_type": "Support tickets", "retention_years": 3, "legal_basis": "Legitimate interest", "owner": "Support"}
+{"record_type": "Security logs", "retention_years": 1, "legal_basis": "Security monitoring", "owner": "IT"}

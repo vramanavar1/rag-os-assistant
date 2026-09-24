@@ -1,0 +1,11 @@
+{
+  "product": "Contoso Connect",
+  "version": "5.2",
+  "faqs": [
+    {"question": "How do I reset my Contoso Connect password?", "answer": "Open Settings > Account > Reset password. A reset link valid for 30 minutes is emailed to you."},
+    {"question": "Which browsers are supported?", "answer": "The latest two versions of Edge, Chrome, Firefox and Safari are supported."},
+    {"question": "What is the maximum upload size?", "answer": "Individual uploads are limited to 2 GB. Larger files can be sent with the desktop sync client."},
+    {"question": "How long is data retained after cancellation?", "answer": "Customer data is retained for 30 days after cancellation and then permanently deleted."},
+    {"question": "Is there an SLA?", "answer": "The Business plan includes a 99.9% monthly uptime SLA with service credits."}
+  ]
+}

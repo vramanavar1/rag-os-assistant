@@ -1,0 +1,37 @@
+# The smallest access policy that loads. Everything else has a default, shown in the comments.
+#
+# Copy this to config/access-policy/access-policy.yaml to start from scratch, then add attributes one at a
+# time. Each attribute you add to `all_of` is another way for an untagged document to become invisible, so
+# add them only when you can also tag documents with them.
+#
+#   name    the attribute's internal handle. Also the key you tag documents with: acl.<name> in a manifest.
+#   field   the column created in the search index, carried on every chunk, describing WHO MAY READ IT.
+#   claims  which claim the identity provider sends, per issuer kind. Nothing named acl_* is ever a claim.
+
+attributes:
+  - name: department
+    field: acl_department
+    claims: { entra: extension_Department, dev: departments }
+    # Defaults you are accepting by omission:
+    #   match: any_of          caller holds any value the document allows
+    #   wildcard: "*"          a document tagged "*" is readable by everyone
+    #   required: false        a caller with no department still sees "*" documents (see below)
+    #   value_pattern          ^[A-Za-z0-9][A-Za-z0-9 _.@/-]{0,127}$ - values failing this are a 401
+    #   value_map: {}          claim values are used verbatim
+    #   drop_unmapped: false   unmapped values pass through
+    #   hierarchy_facet: null  no ancestor expansion
+    #   description: ""
+
+combine:
+  all_of: [department]        # AND across these. At least one of all_of/grant_any_of must be non-empty.
+  # grant_any_of: []          # OR - an explicit share that stands alone. Omit if you do not need per-person shares.
+
+# Also defaulted, and omitted here entirely:
+#   version: 1
+#   default_decision: deny    the only supported value; "allow" is rejected at load
+#   roles: {}                 no application roles - so NOBODY is an admin and /api/admin/* is unreachable
+#   role_sources:             trusted_for_roles: [entra, dev], role_claim: { entra: roles, dev: roles }
+#
+# Add this once you have someone who should reach the admin console:
+#   roles:
+#     admin: [rag.admin]

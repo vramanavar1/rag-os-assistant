@@ -1,0 +1,67 @@
+# rag-ingest-worker - queue-driven ingestion worker (same image as rag-api, command `rag-os worker`). No ingress.
+# KEDA azure-servicebus rules authenticate with the user-assigned identity (scale rule `identity`), which holds
+# "Azure Service Bus Data Owner" on the namespace (needed to read queue runtime properties / message counts).
+# maxReplicas x INGEST_MAX_CONCURRENCY is the global cap on concurrent writes to AI Search and PostgreSQL.
+location: "{{LOCATION}}"
+name: rag-ingest-worker
+type: Microsoft.App/containerApps
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: ingest
+  configuration:
+    activeRevisionsMode: Single
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+    secrets:
+      - name: appinsights-connection-string
+        keyVaultUrl: "{{KEY_VAULT_URI}}/secrets/appinsights-connection-string"
+        identity: "{{MI_ID}}"
+  template:
+    # Long enough for in-flight documents to finish (the worker stops receiving on SIGTERM; unfinished
+    # messages are redelivered after the lock expires).
+    terminationGracePeriodSeconds: 300
+    containers:
+      - name: worker
+        image: "{{IMAGE_API}}"
+        command:
+          - rag-os
+        args:
+          - worker
+        resources:
+          cpu: {{WORKER_CPU}}
+          memory: {{WORKER_MEMORY}}
+        env:
+          - name: SERVICE_NAME
+            value: rag-ingest-worker
+          - name: OTEL_SERVICE_NAME
+            value: rag-ingest-worker
+          {{COMMON_ENV}}
+          - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+            secretRef: appinsights-connection-string
+    scale:
+      minReplicas: 0
+      maxReplicas: {{WORKER_MAX_REPLICAS}}
+      rules:
+        - name: sb-ingest-priority
+          custom:
+            type: azure-servicebus
+            identity: "{{MI_ID}}"
+            metadata:
+              namespace: "{{SERVICEBUS_NAMESPACE_NAME}}"
+              queueName: ingest-priority
+              messageCount: "{{WORKER_PRIORITY_MESSAGE_COUNT}}"
+        - name: sb-ingest-bulk
+          custom:
+            type: azure-servicebus
+            identity: "{{MI_ID}}"
+            metadata:
+              namespace: "{{SERVICEBUS_NAMESPACE_NAME}}"
+              queueName: ingest-bulk
+              messageCount: "{{WORKER_BULK_MESSAGE_COUNT}}"

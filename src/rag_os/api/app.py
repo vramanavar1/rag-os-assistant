@@ -1,0 +1,82 @@
+"""FastAPI application factory. OpenAPI docs: /api/docs (Swagger UI) and /api/openapi.json."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+from collections.abc import AsyncIterator
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from rag_os import __doc__ as pkg_doc
+from rag_os.api.errors import install_error_handlers
+from rag_os.api.middleware import CorrelationMiddleware
+from rag_os.api.routers import admin_config, admin_ingestion, chat, dev, health, uploads
+from rag_os.composition import Container
+from rag_os.infrastructure.settings import Settings, get_settings
+from rag_os.infrastructure.telemetry import setup_telemetry
+
+log = logging.getLogger("rag_os.api")
+CONFIG_REFRESH_S = 60
+
+
+def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
+    settings = settings or get_settings()
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        c = container or Container(settings)
+        setup_telemetry(settings.service_name, settings.log_level, c.settings.applicationinsights_connection_string,
+                        settings.otel_enabled)
+        app.state.container = c
+        log.info("api starting", extra={"index": c.index_name, "profile_fp": c.guard.fp,
+                                        "llm_answer": c.settings.llm_answer, "search": c.settings.search_backend,
+                                        "azure_client_id": c.settings.azure_client_id or ""})
+        if c.settings.uses_azure_services and not c.settings.azure_client_id:
+            # DefaultAzureCredential would fall through to a system-assigned identity, and no workload has one.
+            log.warning("AZURE_CLIENT_ID is not set: Azure calls will fail with 403 rather than authenticate as "
+                        "the user-assigned managed identity. 07-container-apps.ps1 normally sets it.")
+
+        async def _refresh() -> None:
+            while True:
+                await asyncio.sleep(CONFIG_REFRESH_S)
+                try:
+                    await c.reload_config()
+                except Exception:
+                    log.exception("configuration refresh failed")
+
+        task = asyncio.create_task(_refresh())
+        try:
+            yield
+        finally:
+            task.cancel()
+            await c.aclose()
+
+    app = FastAPI(
+        title="RAG-OS Knowledge Assistant API",
+        version="0.1.0",
+        description=(pkg_doc or "") + "\n\nPermission-aware answers grounded in your documents. "
+        "Authenticate with `Authorization: Bearer <JWT>` (Microsoft Entra ID, or a dev token locally).",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
+        lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.embed_origin_list,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT"],
+        allow_headers=["Authorization", "Content-Type", "X-Correlation-ID", "If-Match"],
+        expose_headers=["X-Correlation-ID", "ETag"],
+        max_age=600,
+    )
+    app.add_middleware(CorrelationMiddleware)
+    install_error_handlers(app)
+    for r in (health.router, chat.router, uploads.router, admin_ingestion.router, admin_config.router):
+        app.include_router(r)
+    if settings.dev_auth_enabled:
+        app.include_router(dev.router)
+    return app

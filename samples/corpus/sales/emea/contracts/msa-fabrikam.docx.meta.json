@@ -1,0 +1,15 @@
+{
+  "facets": {
+    "doc_type": [
+      "Contract"
+    ],
+    "confidentiality": [
+      "Confidential"
+    ]
+  },
+  "acl": {
+    "employee_id": [
+      "E1001"
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+# Ingestion source INSTANCES. Many instances of the same type are allowed; each gets its own schedule,
+# queue lane and classification/ACL defaults. Types come from the source factory registry
+# (`rag-os sources` lists them). Secrets are referenced as kv://<secret-name> (Azure Key Vault).
+version: 1
+sources:
+  # Sample corpus shipped with the repo (local folder). In Azure run discovery from a machine that has the
+  # folder:  uv run rag-os discover --source sample-corpus
+  - id: sample-corpus
+    type: local_folder
+    domain: enterprise
+    lane: bulk
+    schedule: null                    # manual / CLI
+    settings:
+      root: ./samples/corpus
+      include: ["**/*"]
+    defaults:
+      facets: { language: en }
+      acl: { clearance: 1 }
+
+  # Synthetic corpus for the load test (scripts/loadtest.py generate --out samples/synthetic).
+  - id: synthetic-load
+    type: local_folder
+    domain: enterprise
+    lane: bulk
+    settings:
+      root: ./samples/synthetic
+    defaults:
+      facets: { language: en }
+      acl: { clearance: 1 }
+
+  # Documents uploaded through the API / chat UI (priority lane - never waits behind backfills).
+  - id: uploads
+    type: upload
+    domain: enterprise
+    lane: priority
+    full_listing: false
+    settings:
+      allowed_roles: [admin, contributor]
+    defaults:
+      facets: { language: en }
+      acl: { clearance: 1 }
+
+  # Bulk store in Azure Blob Storage, synced every 30 minutes by the scheduler job.
+  - id: knowledge-blob
+    type: azure_blob
+    enabled: false                    # enable after creating the container
+    domain: enterprise
+    lane: bulk
+    schedule: "*/30 * * * *"
+    settings:
+      container: knowledge
+      prefix: ""
+    defaults:
+      facets: { language: en }
+      acl: { clearance: 1 }
+
+  # Planned connectors (registered types; configuration validated now, sync raises "not implemented").
+  - id: finance-sharepoint
+    type: sharepoint
+    enabled: false
+    settings:
+      site_url: https://contoso.sharepoint.com/sites/finance
+      library: Documents
+      client_secret: kv://sharepoint-client-secret
+    defaults:
+      facets: { department: Finance }
+      acl: { department: [Finance], region: ["*"] }
+
+  - id: partner-sftp
+    type: ftp
+    enabled: false
+    settings:
+      host: sftp.partner.example
+      username: rag-os
+      private_key: kv://partner-sftp-key
+    defaults:
+      facets: { doc_type: [RateCard] }

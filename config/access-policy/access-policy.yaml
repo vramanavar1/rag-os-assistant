@@ -1,0 +1,86 @@
+# Attribute-based access policy. Default-deny.
+#
+# THREE DIFFERENT NAMES APPEAR BELOW. Mixing them up is the usual source of confusion:
+#
+#   claims:  what the identity provider sends about THE PERSON, e.g. extension_Department, groups, oid.
+#            These are configured in Entra, not here. Nothing named acl_* is ever a claim.
+#   name:    this policy's internal handle for the attribute, e.g. department. It is what the caller's side
+#            and the document's side are matched ON, and the key you use when tagging (acl.<name>).
+#   field:   the column in the SEARCH INDEX, e.g. acl_department, carried on every chunk. It holds who may
+#            READ THE DOCUMENT, and is filled by document tagging - path rules, manifest.csv, sidecars.
+#
+# So authorization compares two sides: the caller's claims (mapped to attributes) against each document's
+# acl_* fields, as a filter applied inside every search. `rag-os explain` prints the filter for a caller.
+#
+# Add an attribute (e.g. cost_center) here - no code change:
+#   1. add it under `attributes` (name, index field, match rule, which token claim carries it per issuer)
+#   2. reference it in `combine`
+#   3. tag documents with it (manifest.csv `acl.<name>` column, .meta.json sidecar, path rules or source defaults)
+# The index field is added in place on reload; retyping an attribute needs a new index version.
+#
+# Everyone who can reach the assistant has an entry in Microsoft Entra ID, so `entra` is the production issuer
+# and `dev` exists only for local demos (DEV_AUTH_ENABLED).
+version: 1
+default_decision: deny
+
+attributes:
+  - name: department
+    field: acl_department
+    match: any_of            # user has ANY value the document allows; document "*" = everyone
+    wildcard: "*"
+    required: true           # a caller without a department sees nothing
+    claims: { entra: extension_Department, dev: departments }
+    # Granting a whole department = one Entra group, not one entry per person. If you use security groups
+    # instead of the directory extension above, point the entra claim at `groups` and map each group's
+    # OBJECT ID to a value here (matching is case-insensitive), so documents stay tagged "HR", not a GUID.
+    # drop_unmapped discards the groups that mean nothing to RAG-OS, which a raw `groups` claim always carries.
+    #   claims: { entra: groups, dev: departments }
+    #   value_map:
+    #     "7c9f1b3e-2d4a-4a1c-9f6b-0b2d6e21a001": HR
+    #     "8ad02c4f-3e5b-4b2d-a07c-1c3e7f32b002": Sales
+    #   drop_unmapped: true
+    description: Organisational unit(s) of the caller.
+
+  - name: region
+    field: acl_region
+    match: hierarchical      # a caller in UK also sees EMEA and Global documents (tree from facets.yaml)
+    hierarchy_facet: region
+    wildcard: "*"
+    required: true
+    claims: { entra: extension_Region, dev: regions }
+    description: Where the caller is (their location in the region tree).
+
+  - name: clearance
+    field: acl_clearance
+    match: max_level         # 0 Public, 1 Internal, 2 Confidential, 3 Restricted: doc level <= caller level
+    required: false          # missing -> treated as 0 (public only)
+    claims: { entra: extension_Clearance, dev: clearance }
+    # This claim must be an INTEGER, not a label. If your IdP only emits labels, map them here:
+    #   value_map: { Public: "0", Internal: "1", Confidential: "2", Restricted: "3" }
+
+  - name: employee_id
+    field: acl_employee_id
+    match: exact             # explicit per-person share (never matches "*")
+    claims: { entra: oid, dev: employee_id }
+
+# How the per-attribute checks are joined into one filter:
+#   all_of        -> AND. Every attribute listed must allow the caller.
+#   grant_any_of  -> OR.  Any one of these on its own is enough, whatever all_of said.
+# Final shape:  (department AND region AND clearance)  OR  (employee_id)
+#
+# A caller missing a REQUIRED all_of attribute loses the AND branch entirely - but an explicit grant still
+# works, which is how one document is shared with one person without widening its department tag.
+combine:
+  all_of: [department, region, clearance]   # every attribute must allow the caller ...
+  grant_any_of: [employee_id]               # ... or the document is explicitly shared with them
+
+# Application roles and the role-claim values that grant them. `roles` holds Entra app-role values (or group
+# object ids); only issuers listed in trusted_for_roles may assert them.
+roles:
+  admin: [rag.admin]
+  taxonomy_editor: [rag.sme]
+  reviewer: [rag.sme, rag.reviewer]
+  contributor: [rag.contributor, rag.admin]
+role_sources:
+  trusted_for_roles: [entra, dev]
+  role_claim: { entra: roles, dev: roles }

@@ -1,0 +1,108 @@
+# Local stack - the same architecture as Azure, on your machine:
+#   chat-ui (nginx, :8080) -> api (internal) ; worker ; tei (self-hosted Qwen3-Embedding, CPU) ; postgres
+# Queue = PostgreSQL-backed (QUEUE=sql), index = state-DB backed (SEARCH_BACKEND=local), files on a shared volume.
+#
+#   ./tasks.ps1 up      (or: docker compose up -d --build)
+#   ./tasks.ps1 seed    (ingest samples/corpus)
+#   open http://localhost:8080/dev/embed-host
+#
+# LLM: defaults to the offline extractive responder (LLM_ANSWER=fake). Put AOAI_* / CLAUDE_* values in .env
+# and set LLM_ANSWER=aoai|claude to use a real model (run `az login` first; see README).
+
+x-app-env: &app-env
+  APP_ENV: dev
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  STATE_DB_URL: postgresql+psycopg://ragos:ragos-local-only@postgres:5432/ragos
+  QUEUE: sql
+  SEARCH_BACKEND: local
+  RAW_STORE: filesystem
+  RAW_DIR: /data/raw
+  CONFIG_STORE: filesystem
+  CONFIG_DIR: /app/config
+  EMBEDDING_PROFILE: ${EMBEDDING_PROFILE:-qwen3-0.6b-1024}
+  TEI_QUERY_URL: http://tei:80
+  TEI_INGEST_URL: http://tei:80
+  LLM_ANSWER: ${LLM_ANSWER:-fake}
+  LLM_UTILITY: ${LLM_UTILITY:-fake}
+  AOAI_ENDPOINT: ${AOAI_ENDPOINT:-}
+  AOAI_CHAT_DEPLOYMENT: ${AOAI_CHAT_DEPLOYMENT:-}
+  AOAI_UTILITY_DEPLOYMENT: ${AOAI_UTILITY_DEPLOYMENT:-}
+  AOAI_API_KEY: ${AOAI_API_KEY:-}
+  CLAUDE_FOUNDRY_RESOURCE: ${CLAUDE_FOUNDRY_RESOURCE:-}
+  CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-5}
+  CLAUDE_UTILITY_MODEL: ${CLAUDE_UTILITY_MODEL:-claude-haiku-4-5}
+  CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+  DEV_AUTH_ENABLED: "true"
+  DEV_JWT_KEY: ${DEV_JWT_KEY:-local-dev-key-change-me-0123456789abcdefghijkl}
+  EMBED_ORIGINS: http://localhost:8080
+  INGEST_MAX_CONCURRENCY: "4"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ragos
+      POSTGRES_PASSWORD: ragos-local-only
+      POSTGRES_DB: ragos
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ragos"]
+      interval: 5s
+      retries: 20
+
+  tei:
+    # Self-hosted embedding model (no token cost). First start downloads ~1.2 GB into the hf-cache volume.
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    command: ["--model-id", "Qwen/Qwen3-Embedding-0.6B",
+              "--revision", "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
+              "--auto-truncate", "--max-batch-tokens", "16384"]
+    volumes: [hf-cache:/data]
+    ports: ["8081:80"]
+    # No healthcheck (image has no curl): the worker and /api/readyz wait for TEI via the embedding profile guard.
+
+  bootstrap:
+    build: .
+    command: ["rag-os", "bootstrap"]
+    environment: *app-env
+    volumes: ["./config:/app/config", "raw:/data/raw"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      tei: { condition: service_started }
+
+  api:
+    build: .
+    environment:
+      <<: *app-env
+      SERVICE_NAME: rag-api
+    volumes: ["./config:/app/config", "./samples:/app/samples:ro", "raw:/data/raw"]
+    depends_on:
+      bootstrap: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/healthz', timeout=3)"]
+      interval: 10s
+      retries: 10
+
+  worker:
+    build: .
+    command: ["rag-os", "worker"]
+    environment:
+      <<: *app-env
+      SERVICE_NAME: rag-worker
+    volumes: ["./config:/app/config", "raw:/data/raw"]
+    depends_on:
+      bootstrap: { condition: service_completed_successfully }
+
+  chat-ui:
+    build: ./chat-ui
+    environment:
+      API_UPSTREAM: http://api:8000
+      EMBED_ORIGINS: http://localhost:8080
+      DEV_EMBED_HOST_ENABLED: "true"
+    ports: ["8080:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  hf-cache:
+  raw:

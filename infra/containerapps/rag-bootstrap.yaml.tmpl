@@ -1,0 +1,47 @@
+# rag-bootstrap - Container Apps JOB (manual): database migrations, index creation from the embedding profile,
+# access policy and facets. Idempotent; started by 08-bootstrap.ps1 and after every embedding-profile change.
+location: "{{LOCATION}}"
+name: rag-bootstrap
+type: Microsoft.App/jobs
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: ingest
+  configuration:
+    triggerType: Manual
+    replicaTimeout: 3600
+    replicaRetryLimit: 1
+    manualTriggerConfig:
+      parallelism: 1
+      replicaCompletionCount: 1
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+    secrets:
+      - name: appinsights-connection-string
+        keyVaultUrl: "{{KEY_VAULT_URI}}/secrets/appinsights-connection-string"
+        identity: "{{MI_ID}}"
+  template:
+    containers:
+      - name: bootstrap
+        image: "{{IMAGE_API}}"
+        command:
+          - rag-os
+        args:
+          - bootstrap
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: SERVICE_NAME
+            value: rag-bootstrap
+          - name: OTEL_SERVICE_NAME
+            value: rag-bootstrap
+          {{COMMON_ENV}}
+          - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+            secretRef: appinsights-connection-string

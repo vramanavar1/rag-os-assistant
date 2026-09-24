@@ -1,0 +1,30 @@
+# Folder-convention rules: one glob tags every matching document (cheapest classification layer).
+# Recommended layout:  /<department>/<region>/<doc_type>/<file>
+# Later layers override earlier ones: source defaults < path rules < <file>.meta.json < manifest.csv.
+version: 1
+rules:
+  # department from the first folder
+  - { glob: "hr/**",      facets: { department: [HR] },      acl: { department: [HR] } }
+  - { glob: "finance/**", facets: { department: [Finance] }, acl: { department: [Finance] } }
+  - { glob: "sales/**",   facets: { department: [Sales] },   acl: { department: [Sales] } }
+  - { glob: "it/**",      facets: { department: [IT] },      acl: { department: ["*"] } }      # IT policies: everyone
+  - { glob: "legal/**",   facets: { department: [Legal] },   acl: { department: [Legal], clearance: 2 } }
+  - { glob: "support/**", facets: { department: [Support] },
+      acl: { department: ["*"], clearance: 0 } }                                   # support material: everyone
+
+  # region from the second folder - one rule per value in the region facet. A folder with no rule leaves
+  # acl_region unset, and because region is `required: true` that document is invisible to everyone.
+  - { glob: "*/global/**", facets: { region: [Global] }, acl: { region: [Global] } }
+  - { glob: "*/emea/**",   facets: { region: [EMEA] },   acl: { region: [EMEA] } }
+  - { glob: "*/uk/**",     facets: { region: [UK] },     acl: { region: [UK] } }
+  - { glob: "*/de/**",     facets: { region: [DE] },     acl: { region: [DE] } }
+  - { glob: "*/amer/**",   facets: { region: [AMER] },   acl: { region: [AMER] } }
+  - { glob: "*/us/**",     facets: { region: [US] },     acl: { region: [US] } }
+  - { glob: "*/apac/**",   facets: { region: [APAC] },   acl: { region: [APAC] } }
+  - { glob: "*/in/**",     facets: { region: [IN] },     acl: { region: [IN] } }
+
+  # document type from the third folder
+  - { glob: "*/*/policies/**",  facets: { doc_type: [Policy] } }
+  - { glob: "*/*/procedures/**", facets: { doc_type: [SOP] } }
+  - { glob: "*/*/contracts/**", facets: { doc_type: [Contract] }, acl: { clearance: 2 } }
+  - { glob: "*/*/pricing/**",   facets: { doc_type: [RateCard] } }

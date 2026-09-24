@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-os"
+version = "0.1.0"
+description = "RAG-OS: permission-aware knowledge assistant on Microsoft Foundry"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+dependencies = [
+    # API / runtime
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "tenacity>=9.0",
+    "pyyaml>=6.0",
+    "croniter>=3.0",
+    "numpy>=1.26",
+    # state store
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
+    # auth
+    "pyjwt[crypto]>=2.9",
+    # Azure (keyless via DefaultAzureCredential)
+    "azure-identity>=1.17",
+    "aiohttp>=3.9",  # async transport for the azure-* aio clients
+    "azure-search-documents>=11.5",
+    "azure-storage-blob>=12.22",
+    "azure-servicebus>=7.12",
+    "azure-keyvault-secrets>=4.8",
+    "azure-monitor-opentelemetry>=1.6",
+    "opentelemetry-api>=1.27",
+    # LLM providers
+    "openai>=1.50",
+    "anthropic>=0.70",
+    # parsers
+    "pypdf>=5.0",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "xlrd>=2.0",
+    "charset-normalizer>=3.3",
+    "defusedxml>=0.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.112",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML",
+    "xlwt>=1.3",  # test fixtures: generates legacy .xls files
+]
+
+[project.scripts]
+rag-os = "rag_os.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_os"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs docker compose services (postgres, tei)",
+]
+addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 125
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
+# SIM905: a stop-word sentence is more readable than a 40-element list literal
+ignore = ["S101", "S311", "RUF012", "B008", "SIM905"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/rag_os/domain", "src/rag_os/application"]
+strict = true
+ignore_missing_imports = true

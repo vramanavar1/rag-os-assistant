@@ -1,0 +1,72 @@
+# rag-embed-ingest - TEI ingestion embedding pool. INTERNAL only; scales to zero when idle.
+# GPU mode:  turing image on the serverless T4 profile (gpu-t4), a full T4 per replica (8 vCPU / 56 GiB).
+# Fallback:  cpu image on the 'ingest' profile (07 switches automatically when the GPU profile is unavailable).
+location: "{{LOCATION}}"
+name: rag-embed-ingest
+type: Microsoft.App/containerApps
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: {{EMBED_INGEST_PROFILE}}
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: false
+      targetPort: 80
+      transport: http
+      allowInsecure: true   # callers use http://rag-embed-ingest inside the environment
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+  template:
+    containers:
+      - name: tei
+        image: "{{IMAGE_EMBED_INGEST}}"
+        resources:
+          cpu: {{EMBED_INGEST_CPU}}
+          memory: {{EMBED_INGEST_MEMORY}}
+        env:
+          - name: MAX_BATCH_TOKENS
+            value: "{{EMBED_INGEST_MAX_BATCH_TOKENS}}"
+          - name: MAX_CLIENT_BATCH_SIZE
+            value: "64"
+          - name: RAYON_NUM_THREADS
+            value: "{{EMBED_INGEST_THREADS}}"
+          - name: TOKENIZATION_WORKERS
+            value: "{{EMBED_INGEST_THREADS}}"
+        probes:
+          - type: Startup
+            # GPU replicas start cold (scale from zero): allow up to ~4 minutes to load the model.
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 10
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+    scale:
+      minReplicas: {{EMBED_INGEST_MIN_REPLICAS}}
+      maxReplicas: {{EMBED_INGEST_MAX_REPLICAS}}
+      rules:
+        - name: http-concurrency
+          http:
+            metadata:
+              concurrentRequests: "{{EMBED_INGEST_CONCURRENCY}}"

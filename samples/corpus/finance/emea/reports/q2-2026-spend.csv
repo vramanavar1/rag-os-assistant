@@ -1,0 +1,7 @@
+cost_center,category,q2_budget_eur,q2_actual_eur,variance_pct,owner
+CC-1001,Travel,120000,98450,-17.96,Finance EMEA
+CC-1001,Software,340000,361200,6.24,Finance EMEA
+CC-2040,Marketing events,210000,187300,-10.81,Sales EMEA
+CC-3100,Cloud infrastructure,520000,548900,5.56,IT EMEA
+CC-3100,Hardware,95000,71200,-25.05,IT EMEA
+CC-4200,Training,60000,52400,-12.67,HR EMEA

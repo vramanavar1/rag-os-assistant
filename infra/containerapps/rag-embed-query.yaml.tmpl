@@ -1,0 +1,71 @@
+# rag-embed-query - TEI (CPU) query-time embedding pool with the model baked into the image. INTERNAL only.
+# Separate from rag-embed-ingest so user queries never queue behind bulk document batches.
+location: "{{LOCATION}}"
+name: rag-embed-query
+type: Microsoft.App/containerApps
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: query
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: false
+      targetPort: 80
+      transport: http
+      allowInsecure: true   # callers use http://rag-embed-query inside the environment
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+  template:
+    containers:
+      - name: tei
+        image: "{{IMAGE_EMBED_QUERY}}"
+        resources:
+          cpu: 2.0
+          memory: 4Gi
+        env:
+          - name: MAX_BATCH_TOKENS
+            value: "{{EMBEDDER_MAX_BATCH_TOKENS_CPU}}"
+          - name: MAX_CLIENT_BATCH_SIZE
+            value: "64"
+          # Match the container's vCPUs (the TEI cpu image defaults to 8 threads).
+          - name: RAYON_NUM_THREADS
+            value: "2"
+          - name: TOKENIZATION_WORKERS
+            value: "2"
+        probes:
+          - type: Startup
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 10
+          - type: Liveness
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          - type: Readiness
+            httpGet:
+              path: /health
+              port: 80
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+    scale:
+      minReplicas: {{EMBED_QUERY_MIN_REPLICAS}}
+      maxReplicas: {{EMBED_QUERY_MAX_REPLICAS}}
+      rules:
+        - name: http-concurrency
+          http:
+            metadata:
+              concurrentRequests: "{{EMBED_QUERY_CONCURRENCY}}"

@@ -1,0 +1,7 @@
+path,facet.doc_type,facet.topic,facet.confidentiality,acl.department,acl.region,acl.clearance,owner,notes
+hr/uk/policies/parental-leave-policy.md,Policy,Leave,Internal,,,1,hr-ops@contoso.example,folder rules already set HR/UK
+hr/de/policies/elternzeit.md,Policy,Leave,Internal,,,1,hr-ops@contoso.example,German original; language set per source default
+sales/emea/contracts/msa-fabrikam.docx,Contract,,Confidential,Sales;Legal,,2,legal@contoso.example,legal reviews contracts too
+finance/emea/reports/q2-2026-spend.csv,Report,,Confidential,Finance,,2,fp-a@contoso.example,reports/ has no path rule
+support/global/faq/product-faq.json,FAQ,Troubleshooting,Public,*,Global,0,support@contoso.example,readable by everyone
+it/global/policies/password-policy.md,Policy,Security,Internal,*,Global,1,infosec@contoso.example,everyone must be able to read it

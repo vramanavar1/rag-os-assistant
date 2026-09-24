@@ -1,0 +1,93 @@
+# rag-api - FastAPI query/admin API. INTERNAL ingress only: reachable from rag-chat-ui (nginx) as http://rag-api.
+# Placeholders are replaced by infra/scripts/07-container-apps.ps1, then applied with: az containerapp create|update --yaml
+# Secrets are Key Vault references resolved with the user-assigned identity; no secret value appears in this file.
+location: "{{LOCATION}}"
+name: rag-api
+type: Microsoft.App/containerApps
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: query
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: false
+      targetPort: 8000
+      transport: http
+      # Plain http inside the environment (nginx proxies to http://rag-api); nothing outside the environment can reach it.
+      allowInsecure: true
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+    secrets:
+      - name: dev-jwt-signing-key
+        keyVaultUrl: "{{KEY_VAULT_URI}}/secrets/dev-jwt-signing-key"
+        identity: "{{MI_ID}}"
+      - name: appinsights-connection-string
+        keyVaultUrl: "{{KEY_VAULT_URI}}/secrets/appinsights-connection-string"
+        identity: "{{MI_ID}}"
+  template:
+    containers:
+      - name: api
+        image: "{{IMAGE_API}}"
+        command:
+          - uvicorn
+        args:
+          - rag_os.api.main:app
+          - --host
+          - 0.0.0.0
+          - --port
+          - "8000"
+          - --proxy-headers
+          # Trust X-Forwarded-* from the environment's ingress/nginx (the app is internal-only).
+          - --forwarded-allow-ips
+          - "*"
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: SERVICE_NAME
+            value: rag-api
+          - name: OTEL_SERVICE_NAME
+            value: rag-api
+          {{COMMON_ENV}}
+          - name: DEV_JWT_KEY
+            secretRef: dev-jwt-signing-key
+          - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+            secretRef: appinsights-connection-string
+        probes:
+          - type: Startup
+            httpGet:
+              path: /api/healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 10
+          - type: Liveness
+            httpGet:
+              path: /api/healthz
+              port: 8000
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          - type: Readiness
+            # /readyz checks the TEI pools against the embedding profile, the index and the database.
+            httpGet:
+              path: /api/readyz
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+    scale:
+      minReplicas: {{API_MIN_REPLICAS}}
+      maxReplicas: {{API_MAX_REPLICAS}}
+      rules:
+        - name: http-concurrency
+          http:
+            metadata:
+              concurrentRequests: "{{API_CONCURRENCY}}"

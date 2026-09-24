@@ -1,0 +1,31 @@
+# DEMO FIXTURE - NOT A USER DIRECTORY.
+#
+# These identities exist so the product can be demonstrated without an identity provider. They are served only
+# when DEV_AUTH_ENABLED=true (it is $false in Azure, see infra/env/dev.sample.psd1), and they are never
+# consulted for a Microsoft Entra ID token: real callers are authorised purely from the claims inside their own
+# bearer token, and RAG-OS stores no user records anywhere. Nobody is ever "added to this file" in production -
+# in Entra the equivalent action is adding someone to a group. See "Where a caller's attributes come from" in
+# README.md.
+#
+# `claims` are raw token claims in the same shape a real token carries them; the access policy maps them.
+principals:
+  - id: hr-emea
+    display_name: Priya (HR, UK)
+    claims: { departments: [HR], regions: [UK], clearance: 1, employee_id: E1001 }
+  - id: sales-us
+    display_name: Marcus (Sales, US)
+    claims: { departments: [Sales], regions: [US], clearance: 1, employee_id: E2002 }
+  - id: finance-global
+    display_name: Aiko (Finance, Global)
+    claims: { departments: [Finance], regions: [Global], clearance: 2, employee_id: E3003 }
+  - id: support-de
+    display_name: Lena (Support, DE - public content only)
+    claims: { departments: [Support], regions: [DE], clearance: 0, employee_id: E5005 }
+  - id: sme-reviewer
+    display_name: Sam (HR SME, reviewer)
+    claims: { departments: [HR], regions: [Global], clearance: 2, employee_id: E4004 }
+    roles: [rag.sme, rag.contributor]
+  - id: admin
+    display_name: Alex (Platform admin)
+    claims: { departments: [IT], regions: [Global], clearance: 3, employee_id: E0001 }
+    roles: [rag.admin]

@@ -1,0 +1,5 @@
+path,facet.doc_type,facet.topic,facet.confidentiality,acl.clearance,acl.department
+finance/emea/reports/q2-2026-spend.csv,Report,,Confidential,2,Finance
+hr/uk/policies/parental-leave-policy.md,Policy,Leave,Internal,1,
+hr/us/policies/pto-policy.txt,Policy,Leave,Internal,1,
+legal/global/policies/data-retention.jsonl,Policy,,Internal,1,*

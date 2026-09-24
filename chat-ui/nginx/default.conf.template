@@ -1,0 +1,204 @@
+# RAG-OS chat-ui: nginx site config.
+# Rendered at container start by the image's /docker-entrypoint.d/20-envsubst-on-templates.sh
+# into /etc/nginx/conf.d/default.conf. Only the variables named in NGINX_ENVSUBST_FILTER are
+# substituted (set by 10-embed-origins.envsh, which also validates and derives them):
+#   API_UPSTREAM_PROXY  scheme://host[:port] nginx connects to (short names qualified via resolv.conf)
+#   API_UPSTREAM_HOST   Host header sent upstream (host[:port] exactly as given in API_UPSTREAM)
+#   NGINX_RESOLVERS     nameservers from /etc/resolv.conf (runtime DNS => nginx starts without the API)
+#   EMBED_ORIGINS_CSP   space-separated origins allowed to frame /embed
+#   DEV_EMBED_HOST_ENABLED  "true" | "false"
+# Every other $name below is an nginx variable and is left untouched.
+
+log_format ragui_json escape=json
+    '{"time":"$time_iso8601","logger":"nginx","remote_addr":"$remote_addr",'
+    '"method":"$request_method","path":"$uri","status":$status,"bytes":$body_bytes_sent,'
+    '"request_time_s":$request_time,"upstream_status":"$upstream_status",'
+    '"upstream_time_s":"$upstream_response_time","correlation_id":"$correlation_id",'
+    '"request_id":"$request_id","user_agent":"$http_user_agent"}';
+
+# Correlation: reuse a well-formed inbound X-Correlation-ID, otherwise nginx's $request_id.
+map $http_x_correlation_id $correlation_id {
+    default                                   $request_id;
+    "~^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"    $http_x_correlation_id;
+}
+
+map $http_x_forwarded_proto $forwarded_proto {
+    default   $http_x_forwarded_proto;
+    ""        $scheme;
+}
+
+# HSTS only when the edge (Container Apps ingress) terminated TLS.
+map $http_x_forwarded_proto $hsts {
+    default   "";
+    https     "max-age=31536000; includeSubDomains";
+}
+
+# Only the embeddable chat may be framed by a host page; everything else is same-origin only.
+map $uri $frame_ancestors {
+    default                  "'self'";
+    ~^/embed(\.html)?$       "'self' ${EMBED_ORIGINS_CSP}";
+}
+
+# loader.js runs inside the host page, so it must be loadable cross-origin.
+map $uri $corp {
+    default                  "same-origin";
+    /embed/loader.js         "cross-origin";
+    ~^/embed(\.html)?$       "cross-origin";
+    ~^/api/                  "";
+}
+
+# Static files revalidate (ETag); the loader is cached 5 minutes; the API sets its own caching.
+map $uri $cache_control {
+    default                  "no-cache";
+    /embed/loader.js         "public, max-age=300";
+    ~^/api/                  "";
+}
+
+map $host $dev_embed_host_enabled {
+    default                  "${DEV_EMBED_HOST_ENABLED}";
+}
+
+server {
+    listen 8080 default_server;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    server_tokens off;
+    absolute_redirect off;
+    charset utf-8;
+    charset_types text/css text/javascript application/javascript application/json text/plain;
+    large_client_header_buffers 4 16k;
+    client_max_body_size 1m;
+    access_log /dev/stdout ragui_json;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/css text/javascript application/javascript application/json image/svg+xml;
+
+    # Security headers on every response (add_header is intentionally NOT used inside any
+    # location block: that would silently drop these inherited headers).
+    add_header X-Correlation-ID $correlation_id always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com; font-src 'self'; object-src 'none'; frame-src https://login.microsoftonline.com; frame-ancestors $frame_ancestors; base-uri 'none'; form-action 'self' https://login.microsoftonline.com" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()" always;
+    add_header Cross-Origin-Resource-Policy $corp always;
+    add_header Strict-Transport-Security $hsts always;
+    add_header Cache-Control $cache_control always;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # ---- pages
+    location = / {
+        try_files /index.html =404;
+    }
+    location = /embed {
+        try_files /embed.html =404;
+    }
+    location = /embed/ {
+        return 308 /embed;
+    }
+    location = /embed/loader.js {
+        try_files $uri =404;
+    }
+    location = /admin {
+        try_files /admin.html =404;
+    }
+    location = /admin/ {
+        return 308 /admin;
+    }
+
+    # ---- sign-in callback (Entra redirects here; see src/entra.ts)
+    location = /auth/callback {
+        try_files /auth-callback.html =404;
+    }
+
+    # ---- dev-only mock embedding host
+    location = /dev/embed-host {
+        if ($dev_embed_host_enabled != "true") {
+            return 404;
+        }
+        try_files /dev-embed-host.html =404;
+    }
+    location = /assets/devhost.js {
+        if ($dev_embed_host_enabled != "true") {
+            return 404;
+        }
+        try_files $uri =404;
+    }
+    location = /dev-embed-host.html {
+        internal;
+    }
+
+    location /assets/ {
+        try_files $uri =404;
+    }
+
+    # ---- API reverse proxy (the API itself is never exposed publicly)
+    location /api/ {
+        gzip off;
+        client_max_body_size 60m;
+        client_body_buffer_size 1m;
+
+        # Runtime DNS: resolve per request (cached 10s) so nginx starts even if the API is not up
+        # yet and follows Container Apps address changes.
+        resolver ${NGINX_RESOLVERS} valid=10s ipv6=off;
+        resolver_timeout 5s;
+        set $api_upstream "${API_UPSTREAM_PROXY}";
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host "${API_UPSTREAM_HOST}";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Correlation-ID $correlation_id;
+        proxy_set_header X-Request-ID $request_id;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_ssl_server_name on;
+
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+
+        # nginx sets these itself (see server block); avoid duplicates from the API.
+        proxy_hide_header X-Correlation-ID;
+        proxy_hide_header Content-Security-Policy;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header Referrer-Policy;
+        proxy_hide_header Permissions-Policy;
+        proxy_hide_header Strict-Transport-Security;
+        proxy_hide_header Cross-Origin-Resource-Policy;
+        proxy_hide_header X-Powered-By;
+
+        error_page 502 503 = @api_unavailable;
+        error_page 504 = @api_timeout;
+        error_page 413 = @too_large;
+
+        # Variable + no URI part: the original request URI (/api/...) is passed unchanged.
+        proxy_pass $api_upstream;
+    }
+
+    location @api_unavailable {
+        default_type application/problem+json;
+        return 502 '{"type":"about:blank","title":"API unavailable","status":502,"detail":"The knowledge API is not reachable right now. Please try again shortly.","correlation_id":"$correlation_id"}';
+    }
+    location @api_timeout {
+        default_type application/problem+json;
+        return 504 '{"type":"about:blank","title":"API timeout","status":504,"detail":"The knowledge API did not respond in time.","correlation_id":"$correlation_id"}';
+    }
+    location @too_large {
+        default_type application/problem+json;
+        return 413 '{"type":"about:blank","title":"Payload too large","status":413,"detail":"Requests (uploads) are limited to 60 MB.","correlation_id":"$correlation_id"}';
+    }
+
+    location / {
+        try_files $uri =404;
+    }
+}

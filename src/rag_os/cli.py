@@ -1,0 +1,166 @@
+"""rag-os command line.
+
+    rag-os serve                     run the API (uvicorn)
+    rag-os worker [--once]           run the ingestion worker (--once: exit when the queue is empty)
+    rag-os bootstrap                 create tables + index, record the embedding profile (idempotent)
+    rag-os discover --source ID      run discovery for one source (use where a local folder is mounted)
+    rag-os schedule-tick             run due scheduled sources + reconcile stuck documents (cron job)
+    rag-os status                    ingestion summary
+    rag-os sources                   configured instances + registered source types
+    rag-os explain --attr k=v ...    show the access filter for a set of attributes
+    rag-os ask "question" --as ID    ask as a dev principal (config/dev/principals.yaml)
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import sys
+from typing import Any
+
+from rag_os.infrastructure.settings import get_settings
+from rag_os.infrastructure.telemetry import setup_telemetry
+
+
+def _container():  # type: ignore[no-untyped-def]
+    from rag_os.composition import Container
+
+    s = get_settings()
+    c = Container(s)
+    setup_telemetry(s.service_name, s.log_level, c.settings.applicationinsights_connection_string, s.otel_enabled)
+    return c
+
+
+def _print(obj: Any) -> None:
+    print(json.dumps(obj, indent=2, default=str))
+
+
+async def _bootstrap() -> int:
+    c = _container()
+    try:
+        _print(await c.bootstrap())
+        st = await c.guard.check(c.index, {"query": c.embed_query}, force=True)
+        _print({"guard_ok": st.ok, "reasons": st.reasons})
+        return 0
+    finally:
+        await c.aclose()
+
+
+async def _discover(source_id: str, trigger: str) -> int:
+    c = _container()
+    try:
+        cfg = c.domain.sources.get(source_id)
+        if cfg is None:
+            print(f"unknown source '{source_id}'. Configured: {[s.id for s in c.domain.sources.sources]}")
+            return 2
+        run = await c.discover.run(c.source_factory.create(cfg), trigger)
+        _print(run.model_dump(mode="json"))
+        return 0 if run.status.value == "COMPLETED" else 1
+    finally:
+        await c.aclose()
+
+
+async def _schedule_tick() -> int:
+    c = _container()
+    try:
+        _print(await c.scheduler().run(c.domain.sources))
+        return 0
+    finally:
+        await c.aclose()
+
+
+async def _status() -> int:
+    c = _container()
+    try:
+        rows = c.state.summary(None)
+        _print({"by_source": rows, "queue": await c.queue.depth(), "controls": c.state.get_controls().model_dump()})
+        return 0
+    finally:
+        await c.aclose()
+
+
+async def _ask(question: str, principal_id: str) -> int:
+    from rag_os.api.routers.dev import _principals
+
+    c = _container()
+    try:
+        p = next((x for x in _principals(c).principals if x.id == principal_id), None)
+        if p is None:
+            print(f"unknown dev principal '{principal_id}'")
+            return 2
+        principal = c.claims.map({**p.claims, "sub": p.id, "roles": p.roles}, "dev")
+        ans = await c.answer.ask(principal, question)
+        _print(ans.model_dump(mode="json"))
+        return 0
+    finally:
+        await c.aclose()
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="rag-os", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sp = sub.add_parser("serve")
+    sp.add_argument("--host", default="0.0.0.0")  # noqa: S104 - container entrypoint
+    sp.add_argument("--port", type=int, default=8000)
+    wp = sub.add_parser("worker")
+    wp.add_argument("--once", action="store_true")
+    sub.add_parser("bootstrap")
+    dp = sub.add_parser("discover")
+    dp.add_argument("--source", required=True)
+    dp.add_argument("--trigger", default="manual")
+    sub.add_parser("schedule-tick")
+    sub.add_parser("status")
+    sub.add_parser("sources")
+    ep = sub.add_parser("explain")
+    ep.add_argument("--attr", action="append", default=[], help="name=value[,value2]  (repeatable)")
+    ep.add_argument("--role", action="append", default=[])
+    qp = sub.add_parser("ask")
+    qp.add_argument("question")
+    qp.add_argument("--as", dest="principal", default="hr-emea")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "serve":
+        import uvicorn
+
+        uvicorn.run("rag_os.api.main:app", host=args.host, port=args.port, proxy_headers=True, log_config=None)
+        return 0
+    if args.cmd == "worker":
+        from rag_os.worker.main import main_async
+
+        c = _container()
+        n = asyncio.run(main_async(c, once=args.once))
+        print(f"processed {n} messages")
+        return 0
+    if args.cmd == "bootstrap":
+        return asyncio.run(_bootstrap())
+    if args.cmd == "discover":
+        return asyncio.run(_discover(args.source, args.trigger))
+    if args.cmd == "schedule-tick":
+        return asyncio.run(_schedule_tick())
+    if args.cmd == "status":
+        return asyncio.run(_status())
+    if args.cmd == "sources":
+        from rag_os.infrastructure.registry import SOURCES
+
+        c = _container()
+        _print({"configured": [s.model_dump(mode="json") for s in c.domain.sources.sources],
+                "registered_types": SOURCES.describe()})
+        return 0
+    if args.cmd == "explain":
+        from rag_os.domain.access import Principal
+
+        c = _container()
+        attrs: dict[str, list[str] | int] = {}
+        for a in args.attr:
+            k, _, v = a.partition("=")
+            attrs[k] = int(v) if v.isdigit() else [x for x in v.split(",") if x]
+        _print(c.engine.explain(Principal(subject="cli", issuer_kind="cli", attributes=attrs, roles=set(args.role))))
+        return 0
+    if args.cmd == "ask":
+        return asyncio.run(_ask(args.question, args.principal))
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

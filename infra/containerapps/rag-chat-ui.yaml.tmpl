@@ -1,0 +1,63 @@
+# rag-chat-ui - nginx serving the chat, /auth/callback, /embed + loader.js, /admin; proxies /api/* to rag-api.
+# The ONLY external ingress of RAG-OS. nginx sets Content-Security-Policy frame-ancestors from EMBED_ORIGINS.
+location: "{{LOCATION}}"
+name: rag-chat-ui
+type: Microsoft.App/containerApps
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: query
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 8080
+      transport: auto
+      allowInsecure: false
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+  template:
+    containers:
+      - name: chat-ui
+        image: "{{IMAGE_CHAT_UI}}"
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: API_UPSTREAM
+            value: http://rag-api
+          - name: EMBED_ORIGINS
+            value: {{EMBED_ORIGINS_YAML}}
+          # The container serves /dev/embed-host only when this is "true" (it ignores DEV_AUTH_ENABLED, which
+          # is an API setting). Keep both in step: the mock host needs dev tokens from the API.
+          - name: DEV_EMBED_HOST_ENABLED
+            value: "{{DEV_AUTH_ENABLED}}"
+          - name: APP_ENV
+            value: "{{APP_ENV}}"
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 15
+            failureThreshold: 3
+          - type: Readiness
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+    scale:
+      minReplicas: {{CHAT_UI_MIN_REPLICAS}}
+      maxReplicas: {{CHAT_UI_MAX_REPLICAS}}
+      rules:
+        - name: http-concurrency
+          http:
+            metadata:
+              concurrentRequests: "100"

@@ -1,0 +1,22 @@
+{
+  "name": "rag-os-chat-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RAG-OS chat, embed, admin console and embed loader (static assets served by nginx).",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "~6.0.3"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "^5.22.0"
+  }
+}

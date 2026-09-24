@@ -1,0 +1,49 @@
+# rag-scheduler - Container Apps JOB (cron): runs discovery for the sources that are due, plus reconciliation.
+# Same image as rag-api, command `rag-os schedule-tick`. One replica per execution; the app must tolerate an
+# overlapping tick if a run takes longer than the cron interval (it uses a database lease).
+location: "{{LOCATION}}"
+name: rag-scheduler
+type: Microsoft.App/jobs
+tags:
+  {{TAGS}}
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    "{{MI_ID}}": {}
+properties:
+  environmentId: "{{ENV_ID}}"
+  workloadProfileName: ingest
+  configuration:
+    triggerType: Schedule
+    replicaTimeout: 1800
+    replicaRetryLimit: 0   # the next tick retries
+    scheduleTriggerConfig:
+      cronExpression: "{{SCHEDULER_CRON}}"
+      parallelism: 1
+      replicaCompletionCount: 1
+    registries:
+      - server: "{{ACR_LOGIN_SERVER}}"
+        identity: "{{MI_ID}}"
+    secrets:
+      - name: appinsights-connection-string
+        keyVaultUrl: "{{KEY_VAULT_URI}}/secrets/appinsights-connection-string"
+        identity: "{{MI_ID}}"
+  template:
+    containers:
+      - name: scheduler
+        image: "{{IMAGE_API}}"
+        command:
+          - rag-os
+        args:
+          - schedule-tick
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: SERVICE_NAME
+            value: rag-scheduler
+          - name: OTEL_SERVICE_NAME
+            value: rag-scheduler
+          {{COMMON_ENV}}
+          - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+            secretRef: appinsights-connection-string

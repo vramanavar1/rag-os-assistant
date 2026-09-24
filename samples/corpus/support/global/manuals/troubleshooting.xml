@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<troubleshooting product="Contoso Connect" version="5.2">
+  <issue code="E101">
+    <symptom>Sync client shows "Authentication expired".</symptom>
+    <resolution>Sign out of the sync client, clear cached credentials, and sign in again. Tokens expire after 90 days.</resolution>
+  </issue>
+  <issue code="E204">
+    <symptom>Uploads stall at 99 percent.</symptom>
+    <resolution>Check that the file is not locked by another application and that at least 2 GB of free disk space is available.</resolution>
+  </issue>
+  <issue code="E310">
+    <symptom>Shared links return "Access denied".</symptom>
+    <resolution>The link owner must grant access; links created before version 5.0 must be regenerated.</resolution>
+  </issue>
+</troubleshooting>

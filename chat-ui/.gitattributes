@@ -1,0 +1,5 @@
+# Container scripts and templates must keep LF endings (they run inside Linux).
+*.sh        text eol=lf
+*.envsh     text eol=lf
+*.template  text eol=lf
+Dockerfile  text eol=lf

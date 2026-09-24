@@ -1,0 +1,13 @@
+{
+  "facets": {
+    "doc_type": ["Contract"],
+    "topic": ["Pricing"],
+    "confidentiality": ["Confidential"]
+  },
+  "acl": {
+    "department": ["Sales", "Legal"],
+    "region": ["EMEA"],
+    "clearance": 2,
+    "employee_id": ["E1001"]
+  }
+}

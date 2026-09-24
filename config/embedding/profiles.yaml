@@ -1,0 +1,61 @@
+# Embedding profiles: the contract shared by ingestion and query.
+# Changing ANY field changes the fingerprint -> a new index (kb-<domain>-<fingerprint>) that must be re-ingested.
+# Select with EMBEDDING_PROFILE=<name>. Exactly ONE profile is active; `provider:` picks the adapter.
+#
+# PREFIX DIRECTION - the instruction goes on the QUERY, never on the document.
+# A profile with document_prefix set and query_prefix empty is rejected at load. A full swap (both set, the
+# wrong way round) CANNOT be detected: re-ingesting under it is internally consistent - same fingerprint, same
+# index, quietly worse recall. scripts/smoke.py is the only thing that would notice, because it asserts on what
+# a real question actually retrieves. Copy prefixes from the model card; do not invent them.
+profiles:
+  # DEFAULT - self-hosted, open-weights (Apache-2.0), zero per-token cost. Served by Hugging Face TEI.
+  qwen3-0.6b-1024:
+    provider: tei
+    model: Qwen/Qwen3-Embedding-0.6B
+    model_revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3   # pinned commit (also baked into the embedder image)
+    dimensions: 1024
+    normalize: true
+    # From the model's config_sentence_transformers.json - queries MUST use the instruction, documents none.
+    query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+    document_prefix: ""
+    max_input_tokens: 8192
+    chunking: { chunker_version: "1", chunk_tokens: 450, overlap_tokens: 60, max_chunk_tokens: 1200 }
+
+  # Same model truncated to 512 dims (Matryoshka) - halves index size for multi-million document corpora.
+  qwen3-0.6b-512:
+    provider: tei
+    model: Qwen/Qwen3-Embedding-0.6B
+    model_revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+    dimensions: 512
+    native_dimensions: 1024
+    normalize: true
+    query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+    document_prefix: ""
+    max_input_tokens: 8192
+    chunking: { chunker_version: "1", chunk_tokens: 450, overlap_tokens: 60, max_chunk_tokens: 1200 }
+
+  # Remote alternative: Azure OpenAI deployment on the Foundry account (billed per token).
+  aoai-3-small-1536:
+    provider: azure_openai
+    model: text-embedding-3-small
+    dimensions: 1536
+    normalize: true
+    max_input_tokens: 8191
+    chunking: { chunker_version: "1", chunk_tokens: 450, overlap_tokens: 60, max_chunk_tokens: 1200 }
+
+  # Automated tests only (deterministic hashing vectors). Never use in a deployment.
+  # Two of them, so the test suite can prove that CHANGING the profile re-embeds the corpus rather than
+  # silently queueing nothing - which is what it used to do.
+  test-fake-256:
+    provider: fake
+    model: fake-hash
+    dimensions: 256
+    normalize: true
+    chunking: { chunker_version: "1", chunk_tokens: 200, overlap_tokens: 30, max_chunk_tokens: 600 }
+
+  test-fake-512:
+    provider: fake
+    model: fake-hash
+    dimensions: 512
+    normalize: true
+    chunking: { chunker_version: "1", chunk_tokens: 200, overlap_tokens: 30, max_chunk_tokens: 600 }
