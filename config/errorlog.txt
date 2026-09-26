@@ -1,34 +1,23 @@
-Step                  Minutes Result
-----                  ------- ------
-06-registry-build.ps1    1.90 FAILED
-
-
-Step 6 (06-registry-build.ps1) failed:
-    az command failed (exit 1): az acr build -r acrragosdevragos -g rg-ragos-dev -t rag-chat-ui:20260924155053 -f Dockerfile --platform linux --timeout 3600 C:\VSquareThoughts\rag-os-assistant\chat-ui
-    9129ac345f44: Verifying Checksum
-    9129ac345f44: Download complete
-    4e478d39b8c6: Verifying Checksum
-    4e478d39b8c6: Download complete
-    4e478d39b8c6: Pull complete
-    9129ac345f44: Pull complete
-    Step 4/19 : WORKDIR /app
-    Step 5/19 : COPY pyproject.toml uv.lock README.md ./
-    COPY failed: file not found in build context or excluded by .dockerignore: stat pyproject.toml: file does not exist
-    2026/09/24 15:52:35 Container failed during run: build. No retries remaining.
-    failed to run step ID: build: exit status 1
-    Run ID: cf5 failed after 10s. Error: failed during run, err: exit status 1
-
-Provisioning stopped at step 6 (06-registry-build.ps1). Fix the error above, then resume with:
-    ./infra/scripts/provision-all.ps1 -Env dev -From 6
-Earlier steps are not repeated. To re-run just the one step: ./infra/scripts/06-registry-build.ps1 -Env dev
-Exception: C:\VSquareThoughts\rag-os-assistant\infra\scripts\common.ps1:320
-Line |
- 320 |          throw $message
-     |          ~~~~~~~~~~~~~~
-     | az command failed (exit 1): az acr build -r acrragosdevragos -g rg-ragos-dev -t rag-chat-ui:20260924155053 -f Dockerfile
-     | --platform linux --timeout 3600 C:\VSquareThoughts\rag-os-assistant\chat-ui 9129ac345f44: Verifying Checksum 9129ac345f44:
-     | Download complete 4e478d39b8c6: Verifying Checksum 4e478d39b8c6: Download complete 4e478d39b8c6: Pull complete 9129ac345f44:
-     | Pull complete Step 4/19 : WORKDIR /app Step 5/19 : COPY pyproject.toml uv.lock README.md ./ COPY failed: file not found in
-     | build context or excluded by .dockerignore: stat pyproject.toml: file does not exist 2026/09/24 15:52:35 Container failed
-     | during run: build. No retries remaining. failed to run step ID: build: exit status 1 Run ID: cf5 failed after 10s. Error:
-     | failed during run, err: exit status 1
+2026-09-26T05:37:53.66485  Connecting to the container 'chat-ui'...
+2026-09-26T05:37:53.70376  Successfully Connected to container: 'chat-ui' [Revision: 'rag-chat-ui--0000001', Replica: 'rag-chat-ui--0000001-59d44c9c9d-lwd6w']
+2026-09-26T05:23:35.315358869Z /docker-entrypoint.sh: Configuration complete; ready for start up
+2026-09-26T05:23:35.330626440Z 2026/09/26 05:23:35 [notice] 1#1: using the "epoll" event method
+2026-09-26T05:23:35.330658010Z 2026/09/26 05:23:35 [notice] 1#1: nginx/1.27.5
+2026-09-26T05:23:35.330661636Z 2026/09/26 05:23:35 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
+2026-09-26T05:23:35.330664371Z 2026/09/26 05:23:35 [notice] 1#1: OS: Linux 6.6.150.1-1.azl3
+2026-09-26T05:23:35.330666886Z 2026/09/26 05:23:35 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1048576:1048576
+2026-09-26T05:23:35.330748509Z 2026/09/26 05:23:35 [notice] 1#1: start worker processes
+2026-09-26T05:23:35.374271909Z 2026/09/26 05:23:35 [notice] 1#1: start worker process 53
+2026-09-26T05:23:35.374560926Z 2026/09/26 05:23:35 [notice] 1#1: start worker process 54
+2026-09-26T05:23:35.375198815Z 2026/09/26 05:23:35 [notice] 1#1: start worker process 55
+2026-09-26T05:23:35.375206359Z 2026/09/26 05:23:35 [notice] 1#1: start worker process 56
+2026-09-26T05:23:36.267945633Z 2026/09/26 05:23:36 [notice] 1#1: signal 17 (SIGCHLD) received from 19
+2026-09-26T05:23:36.268228063Z 2026/09/26 05:23:36 [notice] 1#1: unknown process 19 exited with code 0
+2026-09-26T05:35:13.992593960Z 2026/09/26 05:35:13 [error] 54#54: *97 upstream timed out (110: Operation timed out) while reading response header from upstream, client: 100.100.0.160, server: _, request: "GET /api/readyz HTTP/1.1", upstream: "http://100.100.245.135:80/api/readyz", host: "rag-chat-ui.agreeablesand-2f85fe50.westus.azurecontainerapps.io"
+2026-09-26T05:35:13.992616350Z {"time":"2026-09-26T05:35:13+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/api/readyz","status":504,"bytes":163,"request_time_s":120.100,"upstream_status":"504","upstream_time_s":"120.099","correlation_id":"bec6609b22009bd46c4c6d0a31cb8d65","request_id":"bec6609b22009bd46c4c6d0a31cb8d65","user_agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"}
+2026-09-26T05:35:14.376850811Z {"time":"2026-09-26T05:35:14+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/favicon.ico","status":404,"bytes":548,"request_time_s":0.000,"upstream_status":"","upstream_time_s":"","correlation_id":"88572195b8723357a5e7cafec5420340","request_id":"88572195b8723357a5e7cafec5420340","user_agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"}
+2026-09-26T05:36:46.262884321Z {"time":"2026-09-26T05:36:46+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/index.html","status":200,"bytes":693,"request_time_s":0.000,"upstream_status":"","upstream_time_s":"","correlation_id":"1b0aec8b3b40ab6673168e93277766f2","request_id":"1b0aec8b3b40ab6673168e93277766f2","user_agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"}
+2026-09-26T05:36:46.504314768Z {"time":"2026-09-26T05:36:46+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/assets/styles.css","status":200,"bytes":8297,"request_time_s":0.000,"upstream_status":"","upstream_time_s":"","correlation_id":"49e06754fb9cc83260af2a7c028b6850","request_id":"49e06754fb9cc83260af2a7c028b6850","user_agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"}
+2026-09-26T05:36:46.507649712Z {"time":"2026-09-26T05:36:46+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/assets/chat.js","status":200,"bytes":97713,"request_time_s":0.000,"upstream_status":"","upstream_time_s":"","correlation_id":"e07611cb97aabff5f8c1d4bb39df81f2","request_id":"e07611cb97aabff5f8c1d4bb39df81f2","user_agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"}
+2026-09-26T05:37:39.231332343Z {"time":"2026-09-26T05:37:39+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/api/public-config","status":499,"bytes":0,"request_time_s":51.820,"upstream_status":"-","upstream_time_s":"51.818","correlation_id":"9b627e4a-a45a-44d2-bd59-8e32ccf65624","request_id":"5128212f740964737a680c23c53b2ab2","user_agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"}
+2026-09-26T05:38:53.74968  No logs since last 60 seconds

@@ -27,6 +27,13 @@ def create_app(settings: Settings | None = None, container: Container | None = N
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Logging first. Container() is the slowest thing in startup - it reads the whole domain config over
+        # HTTPS - and configuring telemetry after it meant that phase produced no log line at all: a process
+        # stuck loading config looked identical to one that had crashed, with "Waiting for application startup."
+        # as the last thing anyone saw. The connection string is only known after Container() resolves secrets,
+        # so telemetry is set up twice: locally first, then again with the exporter once it is available.
+        setup_telemetry(settings.service_name, settings.log_level, None, False)
+        log.info("loading configuration", extra={"config_store": settings.config_store})
         c = container or Container(settings)
         setup_telemetry(settings.service_name, settings.log_level, c.settings.applicationinsights_connection_string,
                         settings.otel_enabled)

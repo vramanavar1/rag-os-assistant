@@ -50,7 +50,7 @@ switch ($Task) {
         Invoke-Step 'pytest (incl. integration marker)' { uv run --extra dev pytest -q -m "integration or not integration" }
     }
     'lint' {
-        Invoke-Step 'ruff' { uv run --extra dev ruff check src tests scripts }
+        Invoke-Step 'ruff' { uv run --extra dev ruff check src tests scripts embedder }
         Invoke-Step 'mypy (domain + application)' { uv run --extra dev mypy }
     }
     'build' { Invoke-Step 'docker compose build' { docker compose build } }

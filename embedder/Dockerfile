@@ -25,27 +25,13 @@ ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     HF_HUB_DISABLE_TELEMETRY=1
 RUN pip install "huggingface_hub>=0.30,<2"
-# - Refuses anything but a full commit SHA (a branch name would make builds non-reproducible).
-# - Skips alternative weight formats (ONNX/OpenVINO/GGUF/...) and, when safetensors exist, *.bin duplicates.
-# - Writes refs/<sha>: huggingface_hub (Python) only records refs for branch/tag names, while older versions of the Rust
-#   hub client bundled in TEI resolve `--revision <x>` by reading refs/<x> before snapshots/<commit>/. Writing it keeps
-#   the cache hit on those versions and is harmless on newer ones.
-RUN python -c "\
-import os, pathlib, re; \
-from huggingface_hub import HfApi, snapshot_download; \
-repo, rev, cache = os.environ['MODEL_ID'], os.environ.get('MODEL_REVISION', ''), '/data'; \
-assert re.fullmatch('[0-9a-f]{40}', rev), 'MODEL_REVISION must be a full 40-character commit SHA, got: ' + repr(rev); \
-files = HfApi().list_repo_files(repo, revision=rev); \
-has_st = any(f.endswith('.safetensors') for f in files); \
-skip = ['*.onnx', 'onnx/*', 'openvino/*', '*.gguf', '*.h5', '*.msgpack', '*.ot', '*.tflite', 'coreml/*']; \
-skip += ['*.bin', '*.pt', '*.pth'] if has_st else []; \
-snap = pathlib.Path(snapshot_download(repo, revision=rev, cache_dir=cache, ignore_patterns=skip)); \
-assert snap.name == rev, 'unexpected snapshot folder ' + snap.name; \
-assert (snap / 'config.json').exists() and (snap / 'tokenizer.json').exists(), 'config.json / tokenizer.json missing'; \
-ref = pathlib.Path(cache, 'models--' + repo.replace('/', '--'), 'refs', rev); \
-ref.parent.mkdir(parents=True, exist_ok=True); \
-ref.write_text(rev); \
-print('Cached', repo, '@', rev, sorted(str(p.relative_to(snap)) for p in snap.rglob('*') if p.is_file()))"
+# The download lives in download_model.py rather than inline here. ACR Tasks scans this Dockerfile before
+# building it, with a stricter parser than Docker's that does not join backslash continuations first - so a
+# continuation line beginning with 'from' was read as a FROM instruction and the run died in three seconds with
+# "unable to understand line", before the build began. A local docker build parses the inline form fine, which
+# is what made it invisible until it reached Azure.
+COPY download_model.py /tmp/download_model.py
+RUN python /tmp/download_model.py
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Stage 2: TEI runtime. Do NOT set WORKDIR or ENTRYPOINT: the turing image starts via a relative ./entrypoint.sh.

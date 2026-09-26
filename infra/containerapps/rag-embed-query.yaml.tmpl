@@ -46,6 +46,8 @@ properties:
               port: 80
             initialDelaySeconds: 10
             periodSeconds: 10
+            # Explicit: the default is 1s, and the first probe lands while TEI is still loading the model.
+            timeoutSeconds: 5
             failureThreshold: 10
           - type: Liveness
             httpGet:

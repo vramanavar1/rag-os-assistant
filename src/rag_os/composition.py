@@ -296,9 +296,22 @@ class Container:
                                   f"configuration is {self.guard.fp}; use a new index (ACTIVE_INDEX) and re-ingest")
         else:
             action = "profile verified"
+        # Reported, not raised. By the time we get here the three things nothing else can do are done -
+        # migrations, the index, the recorded profile - and a typo in sources.yaml is not a reason to throw them
+        # away. Raising here meant the job reported "Failed", 08 stopped, and an operator reasonably concluded
+        # the index had never been built. A broken source still stops ITS OWN ingestion, so it is surfaced
+        # loudly: in the job's output, and as a [warn] per source in step 08.
+        source_problems: list[str] = []
         for cfg in self.domain.sources.sources:
-            self.source_factory.validate(cfg)
+            try:
+                self.source_factory.validate(cfg)
+            except Exception as e:
+                source_problems.append(f"{cfg.id} ({cfg.type}): {e}")
+        if source_problems:
+            log.error("source configuration problems; ingestion for these sources will not run",
+                      extra={"problems": source_problems})
         return {"index": self.index_name, "profile_fingerprint": self.guard.fp, "action": action,
+                "source_problems": source_problems,
                 "migrations": migrations, "fields": len(self.schema.fields),
                 "sources": [s.id for s in self.domain.sources.sources]}
 

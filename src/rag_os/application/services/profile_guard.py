@@ -82,6 +82,30 @@ class ProfileGuard:
             log.error("embedding profile guard failed", extra={"reasons": reasons})
         return self._status
 
+    async def refusal_reason(self, index: SearchIndex, embedders: dict[str, EmbeddingProvider]) -> str | None:
+        """None when queries may proceed, else the reason code to refuse a query with.
+
+        Classified from index_profile_fp rather than by matching reason strings:
+
+          fp is None  - the index has no recorded profile, so nothing has ever been ingested into it. A brand-new
+                        deployment whose bootstrap has not run looks exactly like this.
+          fp differs  - the index holds vectors from a different embedding model. Queries must NOT be served:
+                        a different model is a different vector space, so results would be confidently wrong
+                        rather than merely empty.
+          otherwise   - the embedder pools themselves are unreachable.
+
+        Note an index that was bootstrapped but holds no documents is NOT any of these - the profile matches, so
+        the query runs and returns no hits, which the caller already answers politely.
+        """
+        st = await self.check(index, embedders)
+        if st.ok:
+            return None
+        if st.index_profile_fp is None:
+            return "index_not_ready"
+        if st.index_profile_fp != self.fp:
+            return "embedding_profile_mismatch"
+        return "search_unavailable"
+
     async def require(self, index: SearchIndex, embedders: dict[str, EmbeddingProvider]) -> None:
         st = await self.check(index, embedders)
         if not st.ok:

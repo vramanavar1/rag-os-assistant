@@ -141,19 +141,30 @@ class FileConfigRepository(_BaseRepo):
         p.write_text(text, encoding="utf-8")
 
 
+# Startup reads config over HTTPS before the server is listening, so these are deliberately short.
+_BLOB_CONNECT_TIMEOUT_S = 10
+_BLOB_READ_TIMEOUT_S = 30
+
+
 @CONFIG_REPOS.register("blob", description="YAML blobs in the CONFIG_CONTAINER (keyless).")
 class BlobConfigRepository(_BaseRepo):
     def __init__(self, account_url: str | None, container: str = "config", connection_string: str | None = None,
                  **_: Any) -> None:
         from azure.storage.blob import ContainerClient
 
+        # These reads happen inside Container(), which the API builds in its ASGI lifespan - before uvicorn
+        # opens its socket. azure-core defaults to 300s connect and 300s read per attempt, with retries on top,
+        # so a storage account that black-holes packets leaves the process with no listener for many minutes:
+        # the Startup probe gets connection-refused, the platform restarts the container, and it begins again.
+        # Bounded here so that failure surfaces as an error with a message instead of a silent restart loop.
+        timeouts = {"connection_timeout": _BLOB_CONNECT_TIMEOUT_S, "read_timeout": _BLOB_READ_TIMEOUT_S}
         if connection_string:
-            self._cc = ContainerClient.from_connection_string(connection_string, container)
+            self._cc = ContainerClient.from_connection_string(connection_string, container, **timeouts)
         elif account_url:
             from azure.identity import DefaultAzureCredential
 
             self._cc = ContainerClient(account_url=account_url, container_name=container,
-                                       credential=DefaultAzureCredential())
+                                       credential=DefaultAzureCredential(), **timeouts)
         else:
             raise ConfigError("BLOB_ACCOUNT_URL is required for CONFIG_STORE=blob")
 

@@ -47,6 +47,8 @@ properties:
               port: 80
             initialDelaySeconds: 30
             periodSeconds: 20
+            # Explicit: the default is 1s, which a cold GPU replica loading a model will not answer within.
+            timeoutSeconds: 10
             failureThreshold: 10
           - type: Liveness
             httpGet:

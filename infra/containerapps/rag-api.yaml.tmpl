@@ -67,6 +67,9 @@ properties:
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 5
+            # Explicit: the platform default is 1s, unforgiving for the first request into a process that is
+            # still warming up. Budget before a restart is 55s (5 + 10 x 5).
+            timeoutSeconds: 5
             failureThreshold: 10
           - type: Liveness
             httpGet:
@@ -76,9 +79,15 @@ properties:
             timeoutSeconds: 5
             failureThreshold: 3
           - type: Readiness
-            # /readyz checks the TEI pools against the embedding profile, the index and the database.
+            # Deliberately /healthz, not /readyz. Readiness decides whether this replica stays in the internal
+            # ingress, so the question it must answer is "can this replica serve HTTP" - not "is the whole
+            # knowledge base usable". Gating it on shared downstream state took every replica out at once when
+            # the search index was missing, and the ingress then had no backend at all: the chat UI's /api/*
+            # requests hung until nginx's 120s read timeout, with no way to reach even /healthz to ask why.
+            # /api/readyz remains the operator's diagnostic and still returns 503 with reasons; a query against
+            # an unusable index is refused by the chat endpoint itself, with a reason the caller can read.
             httpGet:
-              path: /api/readyz
+              path: /api/healthz
               port: 8000
             periodSeconds: 10
             timeoutSeconds: 5

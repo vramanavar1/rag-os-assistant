@@ -46,12 +46,14 @@ properties:
               path: /healthz
               port: 8080
             periodSeconds: 15
+            timeoutSeconds: 5
             failureThreshold: 3
           - type: Readiness
             httpGet:
               path: /healthz
               port: 8080
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
     scale:
       minReplicas: {{CHAT_UI_MIN_REPLICAS}}

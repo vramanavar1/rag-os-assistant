@@ -50,8 +50,19 @@ $script:RagOsNotFoundPattern = '(?i)(ResourceNotFound|ResourceGroupNotFound|NotF
 # Deterministic failures (bad name, quota denied, unsupported region, already exists) are in neither.
 $script:RagOsTransientPattern = @(
     'TooManyRequests', 'Too many requests', 'RequestThrottled', 'throttl',        # 429
-    'InternalServerError', 'ServiceUnavailable', 'ServerTimeout', 'GatewayTimeout', 'BadGateway',
-    '\(50[0234]\)', 'status code: 50[0234]',                                      # 5xx
+    # Both spellings of every 5xx. ARM's own error pages use the spaced, human form - 'Service Unavailable' -
+    # while the SDK uses CamelCase, and having only the latter is what turned a one-minute Azure blip into a
+    # failed deployment: Invoke-Az saw no match, did not retry, and step 08 abandoned a running bootstrap job.
+    'InternalServerError', 'Internal Server Error',
+    'ServiceUnavailable', 'Service Unavailable',
+    'ServerTimeout', 'Server Timeout',
+    'GatewayTimeout', 'Gateway Timeout',
+    'BadGateway', 'Bad Gateway',
+    '\(50[0234]\)', 'status code: 50[0234]', '\b50[0234]\b.{0,40}(?:Service Unavailable|Bad Gateway|Gateway Timeout|Internal Server Error)',
+    # az choking on an HTML error page. The CLI asks for JSON, ARM returns a maintenance page, and json.loads
+    # fails - so the traceback is about quoting rather than about Azure. It is never a real answer.
+    'Expecting property name enclosed in double quotes', 'JSONDecodeError',
+    'Cannot deserialize', 'DOCTYPE html',
     'Operation timed out', 'timed out', 'Connection reset', 'Connection aborted', 'connection was closed',
     'Temporary failure', 'EOF occurred', 'Max retries exceeded', 'ConnectionError', 'ReadTimeout',
     'RetryableError', 'please retry', 'Please try again', 'try again later'

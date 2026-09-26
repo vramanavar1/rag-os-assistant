@@ -164,3 +164,78 @@ def test_config_write_requires_etag_and_validates(client: TestClient) -> None:
     assert stale.status_code == 409
     ok = client.put("/api/admin/config/facets", headers={**admin, "If-Match": cur["etag"]}, json={"yaml": cur["yaml"]})
     assert ok.status_code == 200
+
+
+# --------------------------------------------------------------- "nothing to answer from" states
+# Four states look alike from outside and must not be answered alike. Three of them are the caller's normal
+# experience and get a plain sentence; one is a correctness hazard and must never return retrieved content.
+
+
+def _ask(client: TestClient, container: Container) -> dict:
+    container.guard._status = None  # the guard caches for 60s; each case needs its own verdict
+    r = client.post("/api/chat", json={"question": "what is the leave policy?"},
+                    headers=dev_token(client, "admin"))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_an_empty_but_bootstrapped_index_still_answers_politely(client: TestClient, container: Container) -> None:
+    """The regression this whole change most endangered.
+
+    A deployment on day one has a real index with nothing in it. That is not an error and never was - the query
+    runs, finds nothing, and AnswerQuery refuses with NOT_FOUND_MESSAGE. Adding a guard to the chat path must
+    not turn this ordinary state into a failure.
+    """
+    body = _ask(client, container)
+    assert body["refused"] is True
+    assert body["refusal_reason"] == "no_relevant_context", body
+    assert body["answer"] == "I could not find this in the documents available to you."
+    assert body["citations"] == []
+
+
+def test_an_index_that_was_never_bootstrapped_says_so_without_a_stack_trace(
+        client: TestClient, container: Container, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Before: DependencyUnavailable("search query failed", status 404) - a dependency error shown to whoever
+    asked a question. Now: a plain sentence, and a reason code the admin UI can act on."""
+    monkeypatch.setattr(container.index, "read_profile", lambda: _none())
+    body = _ask(client, container)
+    assert body["refused"] is True
+    assert body["refusal_reason"] == "index_not_ready", body
+    assert "has not been set up yet" in body["answer"]
+    assert body["citations"] == []
+
+
+def test_a_profile_mismatch_refuses_and_returns_no_content(
+        client: TestClient, container: Container, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The one state where a polite "no information" would be actively harmful.
+
+    An index built with a different embedding model is a different vector space: results would be confidently
+    wrong rather than empty. The property that matters is that no retrieved content comes back at all.
+    """
+    monkeypatch.setattr(container.index, "read_profile",
+                        lambda: _value({"fingerprint": "0000000000", "model": "some-other-model"}))
+    body = _ask(client, container)
+    assert body["refused"] is True
+    assert body["refusal_reason"] == "embedding_profile_mismatch", body
+    assert body["citations"] == [], "a mismatched index must never return retrieved content"
+
+
+async def _none() -> None:
+    return None
+
+
+async def _value(v: dict) -> dict:
+    return v
+
+
+def test_readyz_still_reports_the_detail_for_the_operator(client: TestClient, container: Container,
+                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """Readiness moved off /readyz for routing, but /readyz itself is unchanged - it is how an operator finds
+    out why search is refusing, and it must still say 503 with reasons."""
+    container.guard._status = None
+    monkeypatch.setattr(container.index, "read_profile", lambda: _none())
+    r = client.get("/api/readyz")
+    assert r.status_code == 503, r.text
+    reasons = r.json()["checks"]["embedding_profile"]["reasons"]
+    assert any("no recorded embedding profile" in x for x in reasons), reasons
+    assert client.get("/api/healthz").status_code == 200, "healthz is what keeps the replica in the ingress"

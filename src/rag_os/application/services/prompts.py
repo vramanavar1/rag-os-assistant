@@ -22,6 +22,22 @@ conversation for missing context. Output only the rewritten question."""
 
 NO_ACCESS_MESSAGE = "You don't have access to any documents that could answer this question."
 NOT_FOUND_MESSAGE = "I could not find this in the documents available to you."
+# Nothing to answer from, for reasons that are not the caller's fault. Deliberately in the same shape as the two
+# above: whoever asked a question gets a plain sentence, never a dependency error or a stack trace. The operator
+# gets the detail instead - a loud log line, /api/readyz, and a distinct refusal_reason the admin UI can show.
+INDEX_NOT_READY_MESSAGE = (
+    "The knowledge base has not been set up yet, so there are no documents to answer from. "
+    "Please contact your administrator."
+)
+SEARCH_UNAVAILABLE_MESSAGE = (
+    "Search is temporarily unavailable while the knowledge base is being updated. Please try again shortly."
+)
+# refusal_reason -> what the caller is told. The reason codes come from ProfileGuard.refusal_reason.
+GUARD_REFUSALS = {
+    "index_not_ready": INDEX_NOT_READY_MESSAGE,
+    "embedding_profile_mismatch": SEARCH_UNAVAILABLE_MESSAGE,
+    "search_unavailable": SEARCH_UNAVAILABLE_MESSAGE,
+}
 
 _CITE = re.compile(r"\[(\d{1,3})\]")
 
