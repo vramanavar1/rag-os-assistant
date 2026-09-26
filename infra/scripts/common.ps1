@@ -644,6 +644,146 @@ function Ensure-AzResource {
     return $created
 }
 
+function Format-ReadyzReasons {
+    <#
+    .SYNOPSIS  /api/readyz's JSON body as one line per check: 'state_db: ok', 'embedding_profile: <reasons>'.
+    .DESCRIPTION
+        readyz answers "why not" in a structured body; interpolating the whole blob into a single line buried the
+        one sentence that mattered. Returns an array so a wait can join it and a failure report can list it.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Content, [int]$StatusCode = 0)
+    $lines = @()
+    try {
+        $body = ($Content -replace '^HTTP \d+:\s*', '') | ConvertFrom-Json
+        foreach ($name in $body.checks.PSObject.Properties.Name) {
+            $check = $body.checks.$name
+            # Scalars (state_db, llm_answer) carry no properties, and under StrictMode asking one for a property
+            # it does not have is a terminating error - which the catch below would then hide, turning the whole
+            # body into the raw-text fallback. So establish which shape this is before touching anything.
+            # Assigned as plain statements, not `$x = if (...) { @() }`: an empty array returned out of an
+            # if-expression arrives as $null, and $null.Count is a terminating error under StrictMode.
+            $props = @()
+            if ($check -is [psobject] -and $check -isnot [string]) { $props = @($check.PSObject.Properties.Name) }
+            $reasons = @()
+            if ($props -contains 'reasons') { $reasons = @($check.reasons) }
+            $detail =
+            if ($props.Count -eq 0) { "$check" }
+            elseif ($reasons.Count -gt 0) { $reasons -join '; ' }
+            elseif ($props -contains 'ok' -and $check.ok) { 'ok' }
+            # Not ok, and nothing to say about why, is worth naming as such rather than printing a bare 'ok=False'.
+            elseif ($props -contains 'ok') { 'not ok (no reasons reported)' }
+            else { "$check" }
+            # The index and its fingerprint are already in the body, but were only ever read on the SUCCESS path -
+            # so a 503 never said which index the verdict was about, the one fact needed to act on it. Skipped
+            # when a reason already names the index, which the index-state reasons do.
+            if ($props -contains 'index' -and $check.index -and $detail -notlike "*$($check.index)*") {
+                $detail += " [index $($check.index), profile $($check.fingerprint)]"
+            }
+            $lines += "${name}: $detail"
+        }
+    }
+    catch {
+        # Left non-fatal: the fallback below still reports the raw body, which is what matters. Recorded so a
+        # malformed body is distinguishable from an empty one when someone runs with -Verbose.
+        Write-Verbose "readyz body is not the expected JSON: $($_.Exception.Message)"
+    }
+    if ($lines.Count -eq 0) {
+        $short = "$Content".Trim()
+        if ($short.Length -gt 160) { $short = $short.Substring(0, 157) + '...' }
+        $lines = @($(if ($short) { "HTTP ${StatusCode}: $short" } else { "HTTP $StatusCode" }))
+    }
+    return $lines
+}
+
+function Wait-Until {
+    <#
+    .SYNOPSIS  Polls a condition until it is true, narrating what it is still waiting for.
+    .DESCRIPTION
+        Distinct from Invoke-WithRetry, which retries something that ERRORED. This waits for something that is
+        legitimately not ready yet - a 3 GB image still pulling, a model still loading, a role still replicating -
+        where the right behaviour is patience, not a retry.
+
+        -Condition returns @{ Ok = <bool>; Detail = '<what it is waiting for>' }. A line is printed only when
+        Detail CHANGES, which is what makes a ten-minute wait readable: a handful of lines showing the thing
+        converge, rather than forty identical ones or forty seconds of silence.
+    .OUTPUTS
+        @{ Ok; Detail; Elapsed } - the final state, so the caller decides whether to warn, throw, or carry on.
+    .EXAMPLE
+        Wait-Until -Activity 'rag-api /api/readyz' -TimeoutMinutes 10 -Condition {
+            $r = Invoke-WebRequest -Uri $url -TimeoutSec 30 -SkipHttpErrorCheck
+            @{ Ok = ($r.StatusCode -eq 200); Detail = "HTTP $($r.StatusCode)" }
+        }
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Activity,
+        [Parameter(Mandatory)][scriptblock]$Condition,
+        [int]$TimeoutMinutes = 10,
+        [int]$IntervalSeconds = 15,
+        # What Ok means for this caller. A job wait is satisfied by a TERMINAL state, which may well be 'Failed',
+        # so announcing it as 'ready' would be a lie; it passes -ReadyLabel 'finished' and judges the status itself.
+        [string]$ReadyLabel = 'ready'
+    )
+    $started = Get-Date
+    $deadline = $started.AddMinutes($TimeoutMinutes)
+    $lastDetail = $null
+    $detail = ''
+    while ($true) {
+        try {
+            $state = & $Condition
+            $detail = "$($state.Detail)"
+            if ($state.Ok) {
+                Write-Ok "$Activity $ReadyLabel after $(Format-Elapsed (Get-Date).Subtract($started))"
+                return @{ Ok = $true; Detail = $detail; Elapsed = (Get-Date).Subtract($started) }
+            }
+        }
+        catch {
+            # A condition that throws is just another way of saying "not yet" - a service that is still starting
+            # refuses connections rather than answering politely.
+            $detail = ($_.Exception.Message -split "`r?`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
+        }
+        if ($detail -ne $lastDetail) {
+            Write-Host "    [wait] $Activity : $detail" -ForegroundColor DarkYellow
+            $lastDetail = $detail
+        }
+        if ((Get-Date) -ge $deadline) {
+            return @{ Ok = $false; Detail = $detail; Elapsed = (Get-Date).Subtract($started) }
+        }
+        Start-Sleep -Seconds $IntervalSeconds
+    }
+}
+
+function Format-Elapsed {
+    <# .SYNOPSIS  A timespan as '4m10s' - short enough to sit inside a status line. #>
+    param([Parameter(Mandatory)][timespan]$Span)
+    if ($Span.TotalMinutes -ge 1) { return "$([int]$Span.TotalMinutes)m$($Span.Seconds)s" }
+    return "$([int]$Span.TotalSeconds)s"
+}
+
+function Wait-ContainerAppReady {
+    <#
+    .SYNOPSIS  Waits until a container app has at least -MinReplicas replicas with every container ready.
+    .DESCRIPTION
+        "0/2 replicas ready" distinguishes an image still pulling from one that is running and refusing - a
+        distinction an HTTP probe cannot make, because both look like a connection that goes nowhere. The
+        embedder pools are the reason this exists: a ~3 GB image plus a model load is minutes, so the first
+        several minutes of a fresh deployment are a wait, not a fault.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ResourceGroup,
+        [Parameter(Mandatory)][string]$Name,
+        [int]$MinReplicas = 1,
+        [int]$TimeoutMinutes = 10
+    )
+    return Wait-Until -Activity "$Name replicas" -TimeoutMinutes $TimeoutMinutes -Condition {
+        $replicas = @(Invoke-Az @('containerapp', 'replica', 'list', '-g', $ResourceGroup, '-n', $Name,
+                '--query', '[].{name:name, containers:properties.containers[].ready}') -AllowNotFound)
+        $ready = @($replicas | Where-Object { $_ -and (@($_.containers) -notcontains $false) -and @($_.containers).Count -gt 0 })
+        @{ Ok = ($ready.Count -ge $MinReplicas); Detail = "$($ready.Count)/$($replicas.Count) replicas ready" }
+    }
+}
+
 function Invoke-WithRetry {
     <#
     .SYNOPSIS  Runs a script block, retrying when the error message matches -RetryOn (linear backoff, capped at 60 s).
@@ -920,6 +1060,42 @@ function Get-EmbeddingProfileProvider {
         if ($inProfile) {
             if ($line -match '^\s{0,2}\S') { break }                    # dedent: next profile started
             if ($line -match '^\s+provider:\s*([a-z_]+)') { return $Matches[1] }
+        }
+    }
+    return $null
+}
+
+function Get-EmbeddingProfileField {
+    <#
+    .SYNOPSIS  One scalar field of the active embedding profile, as text, or $null.
+    .DESCRIPTION
+        The generalisation of Get-EmbeddingProfileProvider (which stays, because it is called in several places
+        and reads better at those call sites). Same deliberate limits: same one-field-at-a-time scan, same
+        contract that $null means "unknown, carry on" rather than "absent, fail".
+
+        Values are returned as strings and compared as strings by callers - `dimensions: 1024` and a psd1
+        `1024` must compare equal, and a quoted YAML scalar must not compare differently to a bare one, so
+        surrounding quotes and a trailing comment are stripped.
+    .EXAMPLE
+        Get-EmbeddingProfileField -Config $Config -Name 'model'
+        Get-EmbeddingProfileField -Config $Config -Name 'model_revision'
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Config, [Parameter(Mandatory)][string]$Name)
+    $path = Join-Path $Config.RepoRoot 'config/embedding/profiles.yaml'
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    if (-not $Config.EmbeddingProfile) { return $null }
+    $want = [regex]::Escape([string]$Config.EmbeddingProfile)
+    $field = [regex]::Escape($Name)
+    $inProfile = $false
+    foreach ($line in (Get-Content -LiteralPath $path)) {
+        if ($line -match "^\s{2}$want\s*:\s*$") { $inProfile = $true; continue }
+        if (-not $inProfile) { continue }
+        if ($line -match '^\s{0,2}\S') { break }                       # dedent: the next profile started
+        if ($line -match "^\s+$field\s*:\s*(.+?)\s*$") {
+            $value = $Matches[1]
+            $value = ($value -replace '\s+#.*$', '').Trim()             # trailing comment
+            return $value.Trim('"').Trim("'")
         }
     }
     return $null

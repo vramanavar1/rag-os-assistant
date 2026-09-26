@@ -270,6 +270,7 @@ class Container:
             state=self.state, raw=self.raw, parser_for=parser_for, chunker=TokenChunker(),
             embedder=self.embed_ingest, index=self.index, mapper=self.mapper, engine=self.engine,
             facets=self.domain.facets, tagger=self.tagger, classifier=classifier, profile=self.profile,
+            guard=self.guard,
             index_semaphore=self.index_semaphore, index_batch=s.ingest_index_batch, max_file_mb=s.ingest_max_file_mb)
 
     def scheduler(self) -> SchedulerTick:

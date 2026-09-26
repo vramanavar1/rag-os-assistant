@@ -68,6 +68,9 @@ class InMemorySearchIndex(SearchIndex):
     async def ensure_index(self, schema: IndexSchema) -> None:
         self.fields = _check_schema(self.fields, schema)
 
+    async def index_exists(self) -> bool:
+        return self.fields is not None
+
     async def read_profile(self) -> dict[str, Any] | None:
         return self.profile
 
@@ -159,6 +162,9 @@ class SqlLocalSearchIndex(SearchIndex):
                 c.execute(ins.on_conflict_do_update(index_elements=["index_name"], set_={"fields": fields}))
 
         await asyncio.to_thread(_do)
+
+    async def index_exists(self) -> bool:
+        return await asyncio.to_thread(self._meta_row) is not None
 
     async def read_profile(self) -> dict[str, Any] | None:
         row = await asyncio.to_thread(self._meta_row)

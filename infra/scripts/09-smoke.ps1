@@ -21,7 +21,10 @@
 param(
     [string]$Env = 'dev',
     [string[]]$ExtraArgs = @(),
-    [switch]$SkipPython
+    [switch]$SkipPython,
+    # Run the smoke tests even when the embedding alignment check fails. The results are not trustworthy: a
+    # mismatch means the answers are drawn from a vector space the queries do not share.
+    [switch]$SkipAlignmentCheck
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 $Config = Initialize-RagOsScript -Env $Env -Title '09 smoke test'
@@ -63,6 +66,21 @@ if ($apiFqdn) {
     catch { $apiReachable = $false }
 }
 Test-Assert 'rag-api is NOT reachable from outside' (-not $apiReachable) "($apiFqdn)"
+
+# ------------------------------------------------------------------------------------ embedding alignment gate
+# Before anything functional, because a mismatch does not make the smoke test fail cleanly - it makes the
+# ingestion check fail by TIMEOUT, four minutes later, reading like a broken worker. And it throws rather than
+# joining $failures: every assertion after this one would be measuring a system whose retrieval is meaningless,
+# so there is nothing to learn by continuing.
+if ($SkipAlignmentCheck) { Write-Warn 'Skipping the embedding alignment check (-SkipAlignmentCheck).' }
+else {
+    & (Join-Path $PSScriptRoot 'Test-EmbeddingAlignment.ps1') -Env $Env
+    if ($LASTEXITCODE -ne 0) {
+        throw ('Embedding alignment check failed - see above. The documents and the queries may not share a ' +
+            'vector space, which makes every retrieval result meaningless rather than merely wrong. Fix it, or ' +
+            'pass -SkipAlignmentCheck to run the smoke tests anyway.')
+    }
+}
 
 # ---------------------------------------------------------------------------------------------- functional checks
 if ($SkipPython) { Write-Info 'Skipping scripts/smoke.py (-SkipPython)' }

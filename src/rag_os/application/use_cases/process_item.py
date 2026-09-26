@@ -31,6 +31,7 @@ from rag_os.application.ports import (
 )
 from rag_os.application.services.access_policy import AccessPolicyEngine
 from rag_os.application.services.index_schema import IndexDocumentMapper
+from rag_os.application.services.profile_guard import ProfileGuard
 from rag_os.application.services.tagging import TagResolver
 from rag_os.domain.classification import FacetSchema
 from rag_os.domain.documents import (
@@ -83,6 +84,7 @@ class ProcessItem:
         tagger: TagResolver,
         classifier: Classifier,
         profile: EmbeddingProfile,
+        guard: ProfileGuard,
         index_semaphore: asyncio.Semaphore,
         index_batch: int = 500,
         max_file_mb: int = 100,
@@ -99,10 +101,30 @@ class ProcessItem:
         self.tagger = tagger
         self.classifier = classifier
         self.profile = profile
+        self.guard = guard
         self.fp = profile.fingerprint()
         self.index_sem = index_semaphore
         self.index_batch = index_batch
         self.max_bytes = max_file_mb * 1024 * 1024
+
+    def _embedded_by(self) -> str | None:
+        """What the ingestion pool reported about itself, as "model@revision".
+
+        Every other stamp in this system is derived from configuration, so they all agree with each other by
+        construction and none of them can reveal a pool that drifted. This one is an observation, so it can
+        disagree - which is the only way a chunk embedded by the wrong model becomes findable afterwards.
+
+        The worker probes the pool at startup and the guard keeps what it saw, so this costs no round trip.
+        None when it was never asked; the field is then absent rather than filled in with a guess.
+        """
+        info = self.guard.observed("ingest") or self.guard.observed("query")
+        if not info:
+            return None
+        model = str(info.get("model") or "").strip()
+        if not model:
+            return None
+        revision = str(info.get("revision") or "").strip()
+        return f"{model}@{revision}" if revision else model
 
     # ------------------------------------------------------------------ entry point
 
@@ -178,12 +200,13 @@ class ProcessItem:
         self.state.transition(doc_id, DocumentStatus.CLASSIFIED, stage="classify", tags=tags, review_status=review)
 
         acl = self.engine.validate_doc_acl(tags.acl)
+        observed = self._embedded_by()
         docs = [
             self.mapper.to_document(IndexedChunk(
                 chunk_id=chunk_id(doc_id, version, d.ordinal), doc_id=doc_id, doc_version=version,
                 ordinal=d.ordinal, title=title[:500], heading=d.heading[:500], content=d.text, page=d.page,
                 source_id=rec.source_id, path=rec.path, content_type=rec.content_type, embedding_fp=self.fp,
-                facets=tags.facets, acl=acl, vector=v, is_current=True,
+                embedded_by=observed, facets=tags.facets, acl=acl, vector=v, is_current=True,
                 effective_date=str(meta.get("effective_date")) if meta.get("effective_date") else None,
             ))
             for d, v in zip(drafts, vectors, strict=True)
@@ -208,7 +231,7 @@ class ProcessItem:
         template = self.mapper.to_document(IndexedChunk(
             chunk_id="x", doc_id=rec.doc_id, doc_version=rec.indexed_version, ordinal=0, title="", heading="",
             content="", page=None, source_id=rec.source_id, path=rec.path, content_type=rec.content_type,
-            embedding_fp=self.fp, facets=rec.tags.facets, acl=acl, vector=[],
+            embedding_fp=self.fp, embedded_by=self._embedded_by(), facets=rec.tags.facets, acl=acl, vector=[],
         ))
         tag_fields = {k: template[k] for k in self._tag_fields() if k in template}
         docs = [{"chunk_id": chunk_id(rec.doc_id, rec.indexed_version, i), **tag_fields}

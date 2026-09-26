@@ -78,10 +78,13 @@ async def test_profile_guard_detects_model_revision_and_index_mismatch() -> None
     st = await guard.check(index, {"query": emb}, force=True)
     assert not st.ok
     joined = " ".join(st.reasons)
-    assert "model" in joined and "revision" in joined and "no recorded embedding profile" in joined
+    # The index was never created here, so the reason must say that rather than the older sentence which also
+    # covered an index that exists but was never stamped - those need different remedies.
+    assert "model" in joined and "revision" in joined
+    assert "index 'kb-x' does not exist" in joined, joined
     await index.write_profile({"fingerprint": "other"})
     with pytest.raises(ProfileMismatch):
-        guard._status = None
+        guard.invalidate()
         await guard.require(index, {"query": emb})
     await emb.aclose()
 

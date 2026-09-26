@@ -3,6 +3,8 @@
 .SYNOPSIS
     Step 08 - upload config/** to the config blob container, run the rag-bootstrap job, start the scheduler, print the URLs.
 .DESCRIPTION
+    0. Runs Test-Connectivity.ps1 -Preflight first: the job talks to PostgreSQL, Search and Blob itself, so an
+       unreachable one of those is a guaranteed 30-minute failure. -SkipConnectivityCheck bypasses it.
     1. Seeds the config container from config/** keeping relative paths (sources/sources.yaml,
        access-policy/access-policy.yaml, classification/facets.yaml, embedding/profiles.yaml, ...). Files that are
        already in the container are left alone - admins edit them through the API - unless -OverwriteConfig.
@@ -21,12 +23,28 @@ param(
     # because the admin API writes those same blobs and its edits are the newer truth.
     [switch]$OverwriteConfig,
     [switch]$SkipScheduler,
+    # The pre-flight only reads; skip it if a hop is known-bad and you want the job attempted regardless.
+    [switch]$SkipConnectivityCheck,
     [int]$TimeoutMinutes = 30
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 $Config = Initialize-RagOsScript -Env $Env -Title '08 bootstrap'
 $rg = $Config.Names.ResourceGroup
 $storage = Get-Output -Config $Config -Name 'storageName' -ProducedBy '03-data.ps1'
+
+# ------------------------------------------------------------------------------------- connectivity pre-flight
+# The bootstrap job reaches PostgreSQL, Search and Blob directly from its own container - not through rag-api. If
+# one of those is unreachable the job still starts, still runs and still fails, up to 30 minutes later, with the
+# cause buried in container logs. These checks read only and take seconds, so they run before anything is spent.
+if (-not $SkipConnectivityCheck) {
+    & (Join-Path $PSScriptRoot 'Test-Connectivity.ps1') -Env $Env -Preflight
+    # The child's `exit` does not end this script - it sets $LASTEXITCODE, and Test-Connectivity sets it on every
+    # path so this test cannot read a code left behind by some earlier az call.
+    if ($LASTEXITCODE -ne 0) {
+        throw ("Connectivity pre-flight failed - see the FAIL line(s) above. Fix the hop, or pass " +
+            "-SkipConnectivityCheck to run the job anyway.")
+    }
+}
 
 # ---------------------------------------------------------------------------------------------- config upload
 if (-not $SkipUpload) {
@@ -77,30 +95,38 @@ function Start-JobAndWait {
     $execution = Invoke-Az @('containerapp', 'job', 'start', '-g', $rg, '-n', $JobName, '--query', 'name', '-o', 'tsv')
     if (-not $execution) { throw "Could not start job $JobName." }
     Write-Info "execution: $execution"
-    $deadline = (Get-Date).AddMinutes($Minutes)
-    $status = 'Running'
-    $pollFailures = 0
-    while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 15
-        # A poll that fails is not a job that failed. Letting the exception out of this loop abandoned a running
+    # Kept in a hashtable, not in plain variables: the condition below runs as a scriptblock, and mutating this
+    # object is what carries the status and the failure count back out to the diagnostics that follow.
+    $poll = @{ Status = 'Running'; Failures = 0; Consecutive = 0 }
+    $running = @('Running', 'Processing', 'Unknown', '')
+    $null = Wait-Until -Activity "$JobName execution $execution" -ReadyLabel 'finished' -TimeoutMinutes $Minutes -Condition {
+        # A poll that fails is not a job that failed. Letting the exception out of here abandoned a running
         # bootstrap job during a one-minute ARM outage: nothing was stopped, and none of the diagnostics below
         # were printed, so the job's outcome was simply unknown. The job can easily outlive a control-plane blip,
         # so keep asking until the deadline and only give up on the answer, never on the job.
         try {
-            $status = Invoke-Az @('containerapp', 'job', 'execution', 'show', '-g', $rg, '-n', $JobName, '--job-execution-name', $execution,
+            $poll.Status = Invoke-Az @('containerapp', 'job', 'execution', 'show', '-g', $rg, '-n', $JobName, '--job-execution-name', $execution,
                 '--query', 'properties.status', '-o', 'tsv')
-            $pollFailures = 0
+            $poll.Consecutive = 0
         }
         catch {
-            $pollFailures++
-            $status = 'Unknown'
-            Write-Warn "Could not read the status of $execution (attempt $pollFailures): $(($_.Exception.Message -split "`r?`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1))"
-            Write-Info '  The job itself is unaffected - this is the control plane. Still waiting.'
-            continue
+            $poll.Failures++
+            $poll.Consecutive++
+            $poll.Status = 'Unknown'
+            $first = ($_.Exception.Message -split "`r?`n" | Where-Object { $_ -match '\S' } | Select-Object -First 1)
+            # Warned once, on the first failure of a run: it has to stand out, because it is what decides at the
+            # end that the outcome is unknown and the execution must be left alone. Repeats of the same failure
+            # are carried by the wait's detail line instead, which prints only when the reason changes.
+            if ($poll.Consecutive -eq 1) {
+                Write-Warn "Could not read the status of $execution : $first"
+                Write-Info '  The job itself is unaffected - this is the control plane. Still waiting.'
+            }
+            return @{ Ok = $false; Detail = "status unreadable ($($poll.Consecutive)x, job unaffected): $first" }
         }
-        Write-Info "status: $status"
-        if ($status -notin @('Running', 'Processing', 'Unknown', '')) { break }
+        @{ Ok = ($poll.Status -notin $running); Detail = "status: $($poll.Status)" }
     }
+    $status = $poll.Status
+    $pollFailures = $poll.Failures
     if ($status -ne 'Succeeded') {
         # A run that is still going when the deadline passes has NOT stopped. Leaving it meant a re-run started a
         # second rag-bootstrap alongside it, and migrations/env.py takes no advisory lock - two concurrent
@@ -113,7 +139,7 @@ function Start-JobAndWait {
             Write-Info '  It may well have succeeded. Check with the first command below before re-running:'
             Write-Info '  two concurrent bootstrap executions would run migrations against one database at once.'
         }
-        elseif ($status -in @('Running', 'Processing', 'Unknown', '')) {
+        elseif ($status -in $running) {
             Write-Warn "$JobName did not finish within $Minutes minutes and is still running. Stopping execution $execution so a re-run cannot start a second one alongside it."
             try { $null = Invoke-Az @('containerapp', 'job', 'stop', '-g', $rg, '-n', $JobName, '--job-execution-name', $execution, '-o', 'none') }
             catch { Write-Warn "Could not stop it: $($_.Exception.Message.Split("`n")[0])" }
@@ -156,19 +182,48 @@ if (-not $SkipScheduler) {
 
 # ---------------------------------------------------------------------------------------------- readiness + URLs
 $baseUrl = Get-ChatUiUrl -Config $Config
-Write-Step "Waiting for $baseUrl/api/readyz"
-$ready = $false
-$reason = ''
-$deadline = (Get-Date).AddMinutes(10)
-while ((Get-Date) -lt $deadline) {
-    try {
-        $response = Invoke-WebRequest -Uri "$baseUrl/api/readyz" -TimeoutSec 20 -SkipHttpErrorCheck
-        if ($response.StatusCode -eq 200) { $ready = $true; break }
-        $reason = "HTTP $($response.StatusCode): $($response.Content)"
-    }
-    catch { $reason = $_.Exception.Message }
-    Start-Sleep -Seconds 15
+
+# Wait for what readyz depends on BEFORE asking readyz about it. 08 runs straight after 07, and a fresh
+# rag-embed-query pulls a ~3 GB image and loads a model - minutes during which /api/readyz cannot succeed and is
+# not meant to. Waiting here turns those minutes into a narrated wait instead of an opaque timeout.
+Write-Step 'Waiting for the workloads /api/readyz depends on'
+$null = Wait-ContainerAppReady -ResourceGroup $rg -Name 'rag-api' -TimeoutMinutes 10
+if ((Get-EmbeddingProfileProvider -Config $Config) -in @('tei', $null)) {
+    # /api/readyz probes the TEI query pool through the embedding-profile guard, so it cannot pass until this
+    # pool serves /health. 15 minutes: the image is large and the model is loaded at startup.
+    $null = Wait-ContainerAppReady -ResourceGroup $rg -Name 'rag-embed-query' -TimeoutMinutes 15
 }
+
+# One fast probe first. /api/healthz goes through the SAME nginx /api/ proxy block but returns instantly, so it
+# separates "the chat-ui -> rag-api hop is broken" from "the hop is fine, a dependency is not". Without it a
+# dependency that is merely slow looks exactly like a network fault.
+Write-Step "Checking $baseUrl/api/healthz (the chat-ui -> rag-api hop)"
+try {
+    $hop = Invoke-WebRequest -Uri "$baseUrl/api/healthz" -TimeoutSec 20 -SkipHttpErrorCheck
+    if ($hop.StatusCode -eq 200) { Write-Ok 'chat-ui reaches rag-api (HTTP 200)' }
+    else {
+        Write-Warn "chat-ui -> rag-api returned HTTP $($hop.StatusCode). /api/healthz is a static response, so this is the hop itself, not a dependency."
+        Write-Info "  Diagnose it with: ./infra/scripts/Test-Connectivity.ps1 -Env $Env"
+    }
+}
+catch {
+    Write-Warn "chat-ui -> rag-api could not be reached: $($_.Exception.Message.Split("`n")[0])"
+    Write-Info "  Diagnose it with: ./infra/scripts/Test-Connectivity.ps1 -Env $Env"
+}
+
+Write-Step "Waiting for $baseUrl/api/readyz"
+$response = $null
+# 40s per attempt, deliberately above readyz's own worst case of 32s (12s database + 20s profile guard). At 20s
+# we cut off every slow-but-working attempt, which nginx logged as a 499 with no upstream response - a timeout
+# that read exactly like a broken network.
+$readyState = Wait-Until -Activity '/api/readyz' -TimeoutMinutes 10 -Condition {
+    $script:response = Invoke-WebRequest -Uri "$baseUrl/api/readyz" -TimeoutSec 40 -SkipHttpErrorCheck
+    $detail = if ($script:response.StatusCode -eq 200) { 'HTTP 200' }
+    else { @(Format-ReadyzReasons -Content $script:response.Content -StatusCode $script:response.StatusCode) -join '; ' }
+    @{ Ok = ($script:response.StatusCode -eq 200); Detail = $detail }
+}
+$ready = $readyState.Ok
+$reason = if ($ready) { '' } else { "$($readyState.Detail)" }
 if ($ready) {
     Write-Ok '/api/readyz is healthy'
     # Name the index explicitly. "The index is in place" should be something the transcript states, not
@@ -176,25 +231,24 @@ if ($ready) {
     # than from the job's own claim about itself.
     try {
         $checks = ($response.Content | ConvertFrom-Json).checks.embedding_profile
-        if ($checks.index) { Write-Info "index: $($checks.index)  (embedding profile $($checks.fingerprint))" }
+        if ($checks.index) {
+            Write-Info "index: $($checks.index)  (embedding profile $($checks.fingerprint))"
+            # Recorded, not just printed: 09 compares what the API is querying NOW against the index bootstrap
+            # actually created. A profile changed in between produces a NEW, EMPTY index - and an empty index
+            # answers every question with "I could not find this", which reads like missing content.
+            Save-Outputs -Config $Config -Values @{
+                embeddingIndex       = "$($checks.index)"
+                embeddingFingerprint = "$($checks.fingerprint)"
+            }
+        }
     }
     catch { Write-Verbose 'readyz returned 200 but no index detail could be parsed' }
 }
 else {
-    Write-Fail "/api/readyz did not return 200 within 10 minutes."
-    # readyz answers "why not" in a structured body; interpolating the whole blob into one line buried it.
-    $listed = $false
-    try {
-        $body = ($reason -replace '^HTTP \d+:\s*', '') | ConvertFrom-Json
-        foreach ($name in $body.checks.PSObject.Properties.Name) {
-            $check = $body.checks.$name
-            $detail = if ($check -is [string]) { $check } elseif ($check.reasons) { $check.reasons -join '; ' } else { "ok=$($check.ok)" }
-            Write-Info "  ${name}: $detail"
-            $listed = $true
-        }
+    Write-Fail "/api/readyz did not return 200 within $(Format-Elapsed $readyState.Elapsed)."
+    foreach ($line in @(Format-ReadyzReasons -Content $(if ($response) { $response.Content } else { '' }) -StatusCode $(if ($response) { $response.StatusCode } else { 0 }))) {
+        Write-Info "  $line"
     }
-    catch { }
-    if (-not $listed) { Write-Info "  $reason" }
     Write-Info 'Usual causes, in the order worth checking:'
     Write-Info "  1. az containerapp logs show -g $rg -n rag-api --tail 100"
     Write-Info '  2. An embedding-profile mismatch between rag-api and the TEI pools (EMBEDDING_PROFILE must match'

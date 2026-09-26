@@ -317,33 +317,23 @@ def test_an_unknown_outcome_is_not_stopped_and_says_so() -> None:
 def test_step_08_lists_readyz_reasons_instead_of_the_raw_body() -> None:
     """/api/readyz answers "why not" in a structured body; one interpolated blob buries it.
 
-    The reason that matters most reads `index has no recorded embedding profile (run rag-os bootstrap)`, which
-    is the whole answer - it should not have to be picked out of a line of JSON.
+    The reason that matters most reads `index ... does not exist (run rag-os bootstrap)`, which is the whole
+    answer - it should not have to be picked out of a line of JSON.
+
+    This calls Format-ReadyzReasons itself. It used to re-implement the same walk in PowerShell inside the test,
+    which meant it went on passing while the real function dropped the index name from every failing check and
+    raised on a scalar check - the two defects that made a 503 unreadable in practice.
     """
     body = ('HTTP 503: {"status":"not_ready","checks":{"state_db":"ok","embedding_profile":'
             '{"ok":false,"fingerprint":"a1b2c3d4e5","index":"kb-enterprise-a1b2c3d4e5",'
-            '"reasons":["index has no recorded embedding profile (run rag-os bootstrap)"]},'
+            '"reasons":["index \'kb-enterprise-a1b2c3d4e5\' does not exist (run rag-os bootstrap)"]},'
             '"llm_answer":"aoai"}}')
-    src = Path(tempfile.mkdtemp()) / "body.txt"
-    src.write_text(body, encoding="utf-8")
-    got = run_pwsh(f"""
-$reason = Get-Content -LiteralPath '{src.as_posix()}' -Raw
-$lines = [System.Collections.Generic.List[string]]::new()
-$parsed = ($reason -replace '^HTTP \d+:\s*', '') | ConvertFrom-Json
-foreach ($name in $parsed.checks.PSObject.Properties.Name) {{
-    $check = $parsed.checks.$name
-    $detail = if ($check -is [string]) {{ $check }}
-              elseif ($check.reasons) {{ $check.reasons -join '; ' }}
-              else {{ "ok=$($check.ok)" }}
-    $lines.Add("${{name}}: $detail")
-}}
-ConvertTo-Json -InputObject @{{ lines = @($lines); index = $parsed.checks.embedding_profile.index }} -Depth 4 |
-    Set-Content -LiteralPath $out -Encoding utf8NoBOM
-""")
-    lines = got["lines"]
+    lines = readyz_lines(body)
     assert any(ln.startswith("state_db: ok") for ln in lines), lines
-    assert any("no recorded embedding profile" in ln and ln.startswith("embedding_profile:") for ln in lines), lines
-    assert got["index"] == "kb-enterprise-a1b2c3d4e5", "the index name is in the body and should be reported"
+    assert any("does not exist" in ln and ln.startswith("embedding_profile:") for ln in lines), lines
+    # The "HTTP 503: " prefix that 08 puts in front of a captured body must not defeat the parse.
+    assert not any(ln.startswith("HTTP 503:") for ln in lines), f"fell back to the raw body: {lines}"
+    assert any("kb-enterprise-a1b2c3d4e5" in ln for ln in lines), "the index name is in the body and must survive"
 
 
 def test_step_08_reports_the_index_and_any_bad_sources() -> None:
@@ -356,3 +346,101 @@ def test_step_08_reports_the_index_and_any_bad_sources() -> None:
     assert "$checks.index" in source, "08 should name the index once readyz reports healthy"
     assert "source_problems" in source, "08 should read the bad sources the bootstrap job reports"
     assert "misconfigured and will not ingest" in source, "and say what that means for them"
+
+
+# ------------------------------------------------------------- reading a 503 body back out for the operator
+# `/api/readyz` is the only place a dependency failure is reported: no container probe points at it, so Azure
+# shows everything green while queries refuse. That makes the body the whole diagnosis, and anything that drops
+# part of it on the floor costs a round trip to Azure to recover.
+READYZ_BODIES = {
+    "index_missing": {
+        "status": "not_ready",
+        "checks": {
+            "state_db": "ok",
+            "embedding_profile": {
+                "ok": False, "fingerprint": "1d77e0a5cc", "index": "kb-enterprise-1d77e0a5cc",
+                "reasons": ["index 'kb-enterprise-1d77e0a5cc' does not exist (run `rag-os bootstrap`)"]},
+            "llm_answer": "aoai"}},
+    "db_and_embedder": {
+        "status": "not_ready",
+        "checks": {
+            "state_db": "error: OperationalError",
+            "embedding_profile": {
+                "ok": False, "fingerprint": "abc123", "index": "kb-x",
+                "reasons": ["query: embedder unavailable (DependencyUnavailable)"]},
+            "llm_answer": "aoai"}},
+    "no_reasons": {
+        "status": "not_ready",
+        "checks": {
+            "state_db": "ok",
+            "embedding_profile": {"ok": False, "fingerprint": "abc123", "index": "kb-x", "reasons": []},
+            "llm_answer": "aoai"}},
+    "healthy": {
+        "status": "ready",
+        "checks": {
+            "state_db": "ok",
+            "embedding_profile": {"ok": True, "fingerprint": "abc123", "index": "kb-x", "reasons": []},
+            "llm_answer": "aoai"}},
+}
+
+
+def readyz_lines(body: str, status: int = 503) -> list[str]:
+    src = Path(tempfile.mkdtemp()) / "body.txt"
+    src.write_text(body, encoding="utf-8")
+    return run_pwsh(f"""
+$body = Get-Content -LiteralPath '{src.as_posix()}' -Raw
+$lines = @(Format-ReadyzReasons -Content $body -StatusCode {status})
+ConvertTo-Json -InputObject @{{ lines = $lines }} -Depth 5 | Set-Content -LiteralPath $out -Encoding utf8NoBOM
+""")["lines"]
+
+
+@needs_pwsh
+def test_every_check_in_a_503_body_is_reported() -> None:
+    lines = readyz_lines(json.dumps(READYZ_BODIES["db_and_embedder"]))
+    joined = "\n".join(lines)
+    assert any(ln.startswith("state_db: error: OperationalError") for ln in lines), joined
+    assert any("embedder unavailable" in ln for ln in lines), joined
+    # The raw-body fallback is what this must NOT do - it means the JSON walk threw and said nothing.
+    assert not any(ln.startswith("HTTP 503:") for ln in lines), f"fell back to the raw body: {joined}"
+
+
+@needs_pwsh
+def test_a_failing_check_still_names_the_index_it_judged() -> None:
+    """index and fingerprint were read only on the SUCCESS path, so a 503 never said which index it meant."""
+    lines = readyz_lines(json.dumps(READYZ_BODIES["db_and_embedder"]))
+    joined = "\n".join(lines)
+    assert "kb-x" in joined and "abc123" in joined, f"the failing check must name its index: {joined}"
+
+
+@needs_pwsh
+def test_the_index_is_not_repeated_when_the_reason_already_names_it() -> None:
+    lines = readyz_lines(json.dumps(READYZ_BODIES["index_missing"]))
+    profile_line = next(ln for ln in lines if ln.startswith("embedding_profile:"))
+    assert profile_line.count("kb-enterprise-1d77e0a5cc") == 1, f"said twice: {profile_line}"
+
+
+@needs_pwsh
+def test_a_scalar_check_prints_its_value_not_a_missing_property() -> None:
+    """llm_answer is a plain string. Asking it for `.ok` printed `llm_answer: ok=`, and asking a string for a
+    property it does not have is a terminating error under StrictMode - which the catch then hid, sending the
+    whole body to the raw-text fallback."""
+    lines = readyz_lines(json.dumps(READYZ_BODIES["healthy"]), status=200)
+    assert "llm_answer: aoai" in lines, lines
+    assert not any("ok=" in ln for ln in lines), f"no bare ok= should survive: {lines}"
+
+
+@needs_pwsh
+def test_not_ok_with_nothing_to_say_is_named_as_such() -> None:
+    lines = readyz_lines(json.dumps(READYZ_BODIES["no_reasons"]))
+    profile_line = next(ln for ln in lines if ln.startswith("embedding_profile:"))
+    assert "no reasons reported" in profile_line, profile_line
+
+
+@needs_pwsh
+def test_a_body_that_is_not_readyz_json_still_reports_something() -> None:
+    """An nginx error page reaches this too. 502 means nginx synthesised it and never got an answer from the
+    app, which is a different fault from the app answering 503 - so the text has to survive."""
+    html = "<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>"
+    lines = readyz_lines(html, status=502)
+    assert len(lines) == 1 and "502 Bad Gateway" in lines[0], lines
+    assert readyz_lines("", status=0) == ["HTTP 0"], "an empty body still has to produce a line"

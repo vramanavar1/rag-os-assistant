@@ -172,7 +172,7 @@ def test_config_write_requires_etag_and_validates(client: TestClient) -> None:
 
 
 def _ask(client: TestClient, container: Container) -> dict:
-    container.guard._status = None  # the guard caches for 60s; each case needs its own verdict
+    container.guard.invalidate()  # the guard caches for 60s; each case needs its own verdict
     r = client.post("/api/chat", json={"question": "what is the leave policy?"},
                     headers=dev_token(client, "admin"))
     assert r.status_code == 200, r.text
@@ -232,10 +232,193 @@ def test_readyz_still_reports_the_detail_for_the_operator(client: TestClient, co
                                                           monkeypatch: pytest.MonkeyPatch) -> None:
     """Readiness moved off /readyz for routing, but /readyz itself is unchanged - it is how an operator finds
     out why search is refusing, and it must still say 503 with reasons."""
-    container.guard._status = None
+    container.guard.invalidate()
     monkeypatch.setattr(container.index, "read_profile", lambda: _none())
     r = client.get("/api/readyz")
     assert r.status_code == 503, r.text
     reasons = r.json()["checks"]["embedding_profile"]["reasons"]
     assert any("no recorded embedding profile" in x for x in reasons), reasons
     assert client.get("/api/healthz").status_code == 200, "healthz is what keeps the replica in the ingress"
+
+
+# ------------------------------------------------------------------ telling apart the reasons readyz can give
+# A 503 from /api/readyz is the only signal an operator gets: no probe points at it, so the platform reports
+# everything green while queries refuse. The body is therefore the whole diagnosis, and two states that need
+# different remedies must not arrive wearing the same sentence.
+def readyz_reasons(client: TestClient, query: str = "") -> list[str]:
+    r = client.get(f"/api/readyz{query}")
+    assert r.status_code == 503, f"expected the guard to refuse: {r.status_code} {r.text}"
+    checks = r.json()["checks"]["embedding_profile"]
+    assert checks["index"] and checks["fingerprint"], f"a 503 must still say which index it judged: {checks}"
+    return list(checks["reasons"])
+
+
+def test_a_missing_index_and_an_unstamped_index_read_differently(client: TestClient, container: Container,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Both leave read_profile() returning None, and they used to produce the same sentence.
+
+    "run bootstrap" is right for both, but only one of them means the index was created and then something
+    stopped before it was stamped - which is a different thing to go and look at.
+    """
+    monkeypatch.setattr(container.index, "read_profile", lambda: _none())
+
+    container.guard.invalidate()
+    monkeypatch.setattr(container.index, "index_exists", lambda: _false())
+    missing = " ".join(readyz_reasons(client))
+    assert "does not exist" in missing, missing
+
+    container.guard.invalidate()
+    monkeypatch.setattr(container.index, "index_exists", lambda: _true())
+    unstamped = " ".join(readyz_reasons(client))
+    assert "exists but has no recorded embedding profile" in unstamped, unstamped
+    assert missing != unstamped, "two different causes must not produce the same sentence"
+
+
+def test_a_search_failure_is_reported_as_one_not_as_a_missing_index(client: TestClient, container: Container,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """read_profile() used to be called unguarded, so a Search outage escaped the guard entirely.
+
+    The body then lost `index` and `fingerprint` and carried a bare exception name, and - worse - the refusal
+    path classified it as "index_not_ready", telling the user to run bootstrap when Search was the fault.
+    """
+    container.guard.invalidate()
+    monkeypatch.setattr(container.index, "read_profile", lambda: _raise(RuntimeError("search says no")))
+    reasons = " ".join(readyz_reasons(client))
+    assert "unreadable" in reasons and "RuntimeError" in reasons, reasons
+    assert "search says no" not in reasons, "readyz is public; the message belongs in the log, not the body"
+    assert "bootstrap" not in reasons, "Search being down is not a reason to tell someone to bootstrap"
+
+
+def test_fresh_bypasses_the_guard_cache_and_the_default_does_not(client: TestClient, container: Container,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """The guard caches for 60s, so re-curling to watch a dependency recover can show a stale verdict."""
+    calls: list[bool] = []
+    real = container.index.read_profile
+
+    def counted():  # type: ignore[no-untyped-def]
+        calls.append(True)
+        return real()
+
+    container.guard.invalidate()
+    monkeypatch.setattr(container.index, "read_profile", counted)
+
+    client.get("/api/readyz")
+    after_first = len(calls)
+    assert after_first == 1, "the first call has nothing cached, so it must do the work"
+
+    client.get("/api/readyz")
+    assert len(calls) == after_first, "the default must use the cached verdict - 08 polls this every 15s"
+
+    client.get("/api/readyz?fresh=1")
+    assert len(calls) == after_first + 1, "?fresh=1 must re-ask the dependencies"
+
+
+async def _true() -> bool:
+    return True
+
+
+async def _false() -> bool:
+    return False
+
+
+async def _raise(exc: Exception) -> None:
+    raise exc
+
+
+# ------------------------------------------------------------------------------- rag-os doctor, from inside
+def test_doctor_shows_the_real_error_that_readyz_withholds(container: Container,
+                                                           monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """readyz is public, so it names exception types only. The CLI runs where the operator is authenticated."""
+    import asyncio as _asyncio
+
+    from rag_os.cli import _doctor_report
+
+    container.guard.invalidate()
+    monkeypatch.setattr(container.index, "read_profile", lambda: _raise(RuntimeError("search says no")))
+    code = _asyncio.run(_doctor_report(container))
+    out = capsys.readouterr().out
+    assert code == 1, "an unusable index must be a non-zero exit, so a script can act on it"
+    assert "search says no" in out, "the point of running it in the container is seeing the actual error"
+    assert container.index_name in out and container.guard.fp in out, out
+
+
+def test_doctor_never_writes(container: Container, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """Looking must not change what is being looked at.
+
+    `rag-os bootstrap` also reports guard reasons, but it creates the index and stamps the profile on the way -
+    so using it to diagnose destroys the evidence of what was wrong.
+    """
+    import asyncio as _asyncio
+
+    from rag_os.cli import _doctor_report
+
+    def _forbidden(*_a: object, **_k: object) -> None:
+        raise AssertionError("doctor must not write")
+
+    monkeypatch.setattr(container.index, "write_profile", _forbidden)
+    monkeypatch.setattr(container.index, "ensure_index", _forbidden)
+    container.guard.invalidate()
+    _asyncio.run(_doctor_report(container))
+    assert "index" in capsys.readouterr().out
+
+
+# ---------------------------------------------- the ingestion pool: visible, but allowed to be asleep
+# rag-embed-ingest runs with GpuMinReplicas = 0, so "not running" is its normal resting state. Folding that
+# into readiness would put /api/readyz at 503 on a healthy idle system, every operator would learn to ignore
+# it, and the case it exists to catch would arrive looking exactly like the noise.
+class _Pool:
+    def __init__(self, info: object | None = None, error: Exception | None = None) -> None:
+        self._info, self._error = info, error
+
+    async def info(self) -> object:
+        if self._error:
+            raise self._error
+        return self._info
+
+
+def test_readyz_stays_healthy_while_the_ingestion_pool_is_scaled_to_zero(
+        client: TestClient, container: Container, monkeypatch: pytest.MonkeyPatch) -> None:
+    container.guard.invalidate()
+    monkeypatch.setattr(type(container), "embed_ingest",
+                        property(lambda _self: _Pool(error=ConnectionError("no replicas"))))
+    r = client.get("/api/readyz")
+    assert r.status_code == 200, f"an idle ingestion pool is not a fault:\n{r.text}"
+    profile = r.json()["checks"]["embedding_profile"]
+    assert profile["ok"] is True
+    assert any("ingest" in n for n in profile["notes"]), f"it must still be reported: {profile}"
+
+
+def test_readyz_fails_when_the_ingestion_pool_answers_with_a_different_model(
+        client: TestClient, container: Container, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The corruption case: documents would be embedded into a space the queries do not share."""
+    from rag_os.domain.embedding import EmbedderInfo
+
+    container.guard.invalidate()
+    # The test container runs the `fake` provider, and _compare_embedder deliberately skips every comparison
+    # for it - there is no server to disagree with. Give the guard a provider that does compare, without
+    # touching guard.fp, so the index-stamp check keeps passing and only the pool is under test.
+    monkeypatch.setattr(container.guard, "profile", container.profile.model_copy(update={"provider": "tei"}))
+    drifted = EmbedderInfo(model="some-other/model", revision="zzz", dimensions=container.profile.dimensions)
+    monkeypatch.setattr(type(container), "embed_ingest", property(lambda _self: _Pool(info=drifted)))
+    matching = EmbedderInfo(model=container.profile.model, revision=container.profile.model_revision,
+                            dimensions=container.profile.dimensions)
+    monkeypatch.setattr(type(container), "embed_query", property(lambda _self: _Pool(info=matching)))
+    r = client.get("/api/readyz")
+    assert r.status_code == 503, "a pool serving the wrong model is exactly what this must catch"
+    reasons = " ".join(r.json()["checks"]["embedding_profile"]["reasons"])
+    assert "ingest" in reasons and "some-other/model" in reasons, reasons
+
+
+def test_doctor_tolerates_a_sleeping_ingestion_pool(container: Container, monkeypatch: pytest.MonkeyPatch,
+                                                    capsys) -> None:
+    import asyncio as _asyncio
+
+    from rag_os.cli import _doctor_report
+
+    container.guard.invalidate()
+    monkeypatch.setattr(type(container), "embed_ingest",
+                        property(lambda _self: _Pool(error=ConnectionError("no replicas"))))
+    code = _asyncio.run(_doctor_report(container))
+    out = capsys.readouterr().out
+    assert code == 0, f"scaled to zero is not a fault:\n{out}"
+    assert "ConnectionError" in out, "it should still be visible in the report"

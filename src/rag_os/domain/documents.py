@@ -219,6 +219,8 @@ class IndexedChunk(BaseModel):
     path: str
     content_type: str | None
     embedding_fp: str
+    # None when the pool was never asked. Absent evidence is recorded as absent, not guessed at from config.
+    embedded_by: str | None = None
     facets: dict[str, list[str]]
     acl: dict[str, list[str] | int]
     vector: list[float]

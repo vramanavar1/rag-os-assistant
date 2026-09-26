@@ -91,14 +91,25 @@ foreach ($p in $providers) {
         $null = Invoke-Az @('provider', 'register', '--namespace', $p, '-o', 'none')
     }
 }
-$deadline = (Get-Date).AddMinutes(15)
+# One 15-minute budget for the whole set rather than per provider: they register concurrently, so polling them
+# one at a time only serialises the reporting. The wait prints a line whenever the pending list shrinks, which is
+# what turns a silent multi-minute pause into a visible "still waiting on Microsoft.Search".
+# $states is a hashtable so the condition can record into it: assigning a *variable* inside the scriptblock would
+# not survive back to this scope, but mutating the object it holds does.
+$states = @{}
+$null = Wait-Until -Activity 'provider registration' -TimeoutMinutes 15 -IntervalSeconds 10 -Condition {
+    foreach ($ns in $providers) {
+        if ($states[$ns] -eq 'Registered') { continue }   # settled; asking again only costs a round trip
+        $states[$ns] = Invoke-Az @('provider', 'show', '--namespace', $ns, '--query', 'registrationState', '-o', 'tsv')
+    }
+    $pending = @($providers | Where-Object { $states[$_] -ne 'Registered' })
+    @{
+        Ok     = ($pending.Count -eq 0)
+        Detail = "$($providers.Count - $pending.Count)/$($providers.Count) registered; waiting on $($pending -join ', ')"
+    }
+}
 foreach ($p in $providers) {
-    do {
-        $state = Invoke-Az @('provider', 'show', '--namespace', $p, '--query', 'registrationState', '-o', 'tsv')
-        if ($state -eq 'Registered' -or (Get-Date) -gt $deadline) { break }
-        Start-Sleep -Seconds 10
-    } while ($true)
-    Add-Check "Provider $p" ($state -eq 'Registered' ? 'PASS' : 'FAIL') $state
+    Add-Check "Provider $p" ($states[$p] -eq 'Registered' ? 'PASS' : 'FAIL') $states[$p]
 }
 
 # ---------------------------------------------------------------------------------------------- region checks

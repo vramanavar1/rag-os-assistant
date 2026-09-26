@@ -34,6 +34,11 @@ def build_schema(
         IndexField("source_id", "string", filterable=True, facetable=True),
         IndexField("content_type", "string", filterable=True, facetable=True),
         IndexField("embedding_fp", "string", filterable=True),
+        # What the embedding pool REPORTED about itself when this chunk was written, as "model@revision".
+        # embedding_fp above records what was CONFIGURED, so the two agreeing is the evidence that the
+        # vectors here and the vectors a query is embedded into came from the same model. Filterable so a
+        # suspect batch can be found: $filter=embedded_by ne '<expected>'.
+        IndexField("embedded_by", "string", filterable=True),
         IndexField("is_current", "bool", filterable=True),
         IndexField("effective_date", "string", filterable=True, sortable=True),
         IndexField("vector", "vector", retrievable=False, dimensions=profile.dimensions),
@@ -78,6 +83,7 @@ class IndexDocumentMapper:
             "source_id": c.source_id,
             "content_type": c.content_type,
             "embedding_fp": c.embedding_fp,
+            "embedded_by": c.embedded_by,
             "is_current": c.is_current,
             "effective_date": c.effective_date,
             "vector": c.vector,

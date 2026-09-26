@@ -183,6 +183,7 @@ PostgreSQL-free SQL queue. You still need a TEI server on `:8081`.
 Copy-Item infra/env/dev.sample.psd1 infra/env/dev.psd1   # fill in subscription, region, prefix, Entra settings
 ./infra/scripts/provision-all.ps1 -Env dev               # 00 prereqs … 08 bootstrap (idempotent, re-runnable)
 ./infra/scripts/09-smoke.ps1 -Env dev                    # end-to-end checks through the public URL
+./infra/scripts/Test-Connectivity.ps1 -Env dev           # every network hop, if something cannot reach something
 ```
 
 When it finishes, the script prints the chat URL (`https://rag-chat-ui.<env-domain>`), the admin console and the

@@ -203,3 +203,44 @@ async def test_the_worker_alone_refuses_to_skip_a_stale_profile_document(setting
         assert (await c2.processor.handle(msg)).status != "skipped"
     finally:
         await c2.aclose()
+
+
+# ---------------------------------------------------------- what actually produced the vectors, per chunk
+# Every other stamp in the system is derived from configuration: the index description, the per-document
+# `embedding_fp`, the index name. They agree with each other by construction, so none of them can reveal a pool
+# that quietly began serving a different model. `embedded_by` records what the pool REPORTED, so it can
+# disagree - which is the only thing that makes such a chunk findable after the fact.
+async def test_a_chunk_records_the_model_the_pool_reported_not_the_one_configured(container: Container) -> None:
+    from rag_os.domain.embedding import EmbedderInfo
+
+    # The pool says it is serving something other than the configured profile. Same dimensionality, so nothing
+    # downstream rejects it - this is exactly the silent case.
+    drifted = EmbedderInfo(model="some-other/model", revision="deadbeef",
+                           dimensions=container.profile.dimensions)
+
+    class Drifted:
+        async def info(self) -> EmbedderInfo:
+            return drifted
+
+    container.guard.invalidate()
+    await container.guard.check(container.index, {"ingest": Drifted()})  # type: ignore[dict-item]
+
+    await ingest_sample(container)
+    docs = container.index.docs.values()  # type: ignore[attr-defined]
+    assert docs, "nothing was indexed, so this would prove nothing"
+    stamped = {d.get("embedded_by") for d in docs}
+    assert stamped == {"some-other/model@deadbeef"}, stamped
+
+    configured = {d["embedding_fp"] for d in docs}
+    assert configured == {container.guard.fp}, "embedding_fp must keep meaning 'what was configured'"
+    assert container.profile.model != "some-other/model", "the test corpus must actually differ from the profile"
+
+
+async def test_the_stamp_is_absent_rather_than_guessed_when_the_pool_was_never_asked(
+        container: Container) -> None:
+    """A guess that happens to match configuration would be indistinguishable from evidence."""
+    container.guard.invalidate()
+    await ingest_sample(container)
+    docs = list(container.index.docs.values())  # type: ignore[attr-defined]
+    assert docs
+    assert {d.get("embedded_by") for d in docs} == {None}, "no observation means no claim"

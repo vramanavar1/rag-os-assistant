@@ -179,6 +179,13 @@ class AzureSearchIndex(SearchIndex):
             await self._indexes.create_or_update_index(existing)
             log.info("search index fields added", extra={"index": schema.name, "fields": added})
 
+    async def index_exists(self) -> bool:
+        try:
+            await self._indexes.get_index(self.index_name)
+        except ResourceNotFoundError:
+            return False
+        return True
+
     async def read_profile(self) -> dict[str, Any] | None:
         try:
             idx = await self._indexes.get_index(self.index_name)

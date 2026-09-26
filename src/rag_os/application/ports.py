@@ -185,6 +185,14 @@ class SearchIndex(ABC):
         """Create the index or add new fields in place. Must refuse incompatible changes."""
 
     @abstractmethod
+    async def index_exists(self) -> bool:
+        """Whether the index itself is there.
+
+        Distinct from read_profile() returning None, which is also what an index that exists but was never
+        stamped with a profile looks like. The two need different remedies, so they need different answers.
+        """
+
+    @abstractmethod
     async def read_profile(self) -> dict[str, Any] | None: ...
 
     @abstractmethod

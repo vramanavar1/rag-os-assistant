@@ -36,6 +36,8 @@ References to **section** N mean a numbered section of this guide.
     * [Step 06 — `06-registry-build.ps1`](#step-06--06-registry-buildps1)
     * [Step 07 — `07-container-apps.ps1`](#step-07--07-container-appsps1)
     * [Step 08 — `08-bootstrap.ps1`](#step-08--08-bootstrapps1)
+    * [Diagnosing a 503 from `/api/readyz`](#diagnosing-a-503-from-apireadyz)
+    * [Step 09 — embedding alignment](#step-09--embedding-alignment)
     * [Steps 09-10 — verification](#steps-09-10--verification)
 4. [Key Vault secrets](#4-key-vault-secrets)
     * [Rotation](#rotation)
@@ -83,7 +85,7 @@ References to **section** N mean a numbered section of this guide.
 | 05 | `05-foundry.ps1` | Foundry account, project, model deployments | 01, 02 | 3-5 min |
 | 06 | `06-registry-build.ps1` | ACR + 4 images built in the cloud | 01, 02 | 15-30 min |
 | 07 | `07-container-apps.ps1` | environment, workload profiles, 5 apps + 2 jobs | **01-06** | 10-15 min |
-| 08 | `08-bootstrap.ps1` | config upload, migrations, index, first discovery, `output.txt` | 07 | 5-10 min |
+| 08 | `08-bootstrap.ps1` | connectivity pre-flight, config upload, migrations, index, first discovery, `output.txt` | 07 | 5-10 min |
 | 09 | `09-smoke.ps1` | verification (optional but recommended) | 08 | 2 min |
 | 10 | `10-loadtest.ps1` | latency under ingestion load (optional) | 08 | 20-60 min |
 
@@ -123,6 +125,8 @@ rather than half-deploying.
 | `provision-all.ps1` | The orchestrator above. |
 | `Write-OutputSheet.ps1` | Regenerates `output.txt`, the wiring sheet ([section 4](#4-key-vault-secrets)). Step 08 runs it for you. |
 | `99-teardown.ps1` | Deletes the resource group and purges what it can. Asks first unless `-Force` ([section 11](#11-update-rollback-teardown)). |
+| `Test-Connectivity.ps1` | Every network hop the deployment depends on, plus copy-paste tests for the container-to-container hops that can only be reached from inside ([step 08](#step-08--08-bootstrapps1)). Step 08 runs it as a pre-flight. |
+| `Test-EmbeddingAlignment.ps1` | Checks that the index, the query path and the ingestion path all use the same embedding model ([step 09](#step-09--embedding-alignment)). Step 09 runs it as a gate. |
 | `Scale-SearchReplicas.ps1` | Temporary AI Search capacity for a backfill ([section 10](#10-operations)). |
 | `Set-IngestionControls.ps1` | Pause, resume or throttle ingestion without a redeploy ([section 10](#10-operations)). |
 | `common.ps1` | Shared helpers. Not run directly. |
@@ -567,8 +571,44 @@ Expected: `rag-chat-ui` has an external FQDN; `rag-api`, `rag-embed-query`, `rag
 ```powershell
 ./infra/scripts/08-bootstrap.ps1 -Env dev
 ```
-Uploads `config/**` to the `config` container, runs `rag-bootstrap` (migrations, index, policy, facets) and waits,
-starts `rag-scheduler` once, waits for `/api/readyz`, writes `output.txt` ([section 4](#4-key-vault-secrets)) and prints the URLs.
+Runs a connectivity pre-flight, uploads `config/**` to the `config` container, runs `rag-bootstrap` (migrations,
+index, policy, facets) and waits, starts `rag-scheduler` once, waits for `/api/readyz`, writes `output.txt`
+([section 4](#4-key-vault-secrets)) and prints the URLs.
+
+**The pre-flight runs first, before anything is spent.** The bootstrap job reaches PostgreSQL, AI Search and Blob
+storage *directly from its own container* - not through `rag-api` - so if one of those is unreachable the job
+still starts, still runs and still fails, up to 30 minutes later, with the cause buried in container logs.
+`Test-Connectivity.ps1 -Preflight` checks those hops in seconds and stops the step if one is down. A failure of
+the chat-UI -> API hop is only a warning here, because the job does not use it. Skip the check with
+`-SkipConnectivityCheck` if you know a hop is bad and want the job attempted anyway.
+
+**Then it waits for what `/api/readyz` depends on, rather than polling it blind.** 08 runs immediately after 07,
+and a fresh `rag-embed-query` is still pulling a ~3 GB image and loading a model - minutes during which
+`/api/readyz` *cannot* succeed and is not meant to. The step waits for `rag-api` and (on a self-hosted profile)
+`rag-embed-query` to report a ready replica first, printing a line whenever the reason changes:
+
+```text
+    [wait] rag-embed-query replicas : 0/1 replicas ready
+    [ok] rag-embed-query replicas ready after 6m15s
+==> Checking https://<chat-ui>/api/healthz (the chat-ui -> rag-api hop)
+    [ok] chat-ui reaches rag-api (HTTP 200)
+    [wait] /api/readyz : index has no recorded embedding profile (run rag-os bootstrap)
+    [ok] /api/readyz ready after 1m30s
+```
+
+`/api/healthz` is probed once before readiness. It goes through the **same** nginx `/api/` proxy block but
+returns instantly, which separates "the hop is broken" from "the hop is fine, a dependency is not":
+
+| `/api/healthz` | `/api/readyz` | Meaning |
+|---|---|---|
+| 200 | 200 | Everything is up. |
+| 200 | 503 | The hop is fine; a dependency is not - the body names which. |
+| fails | - | The chat-UI -> `rag-api` hop really is broken. Run `Test-Connectivity.ps1`. |
+
+Each readiness attempt allows **30 s**, deliberately more than the 25 s `/api/readyz` can spend on its own checks
+(5 s database + 20 s embedding-profile guard). With a smaller client timeout every slow-but-working attempt was
+cut off, which nginx logged as `status:499` with `upstream_status:"-"` - a log line that reads exactly like a
+broken network when nothing was broken at all.
 
 This step **fails** if `/api/readyz` does not return 200 within 10 minutes. The resources exist at that point, but
 nothing can serve a query, and step 09 would fail with a less obvious error — so the run stops here rather than
@@ -583,8 +623,132 @@ curl https://<chat-ui-fqdn>/api/healthz
 | Problem | Fix |
 |---|---|
 | Bootstrap job `Failed` | Print the logs with the command the script prints, or the KQL in [section 10](#10-operations). Usual causes: the managed identity is not a PostgreSQL Entra admin (step 03), or Search roles are still propagating. |
-| `/api/readyz` stays unhealthy | Profile mismatch between the TEI pools and `config/embedding/profiles.yaml` — compare `curl http://…/info` output with the profile (model id + revision + dimensions). |
+| `/api/readyz` returns 503 | **Read the body — it names the cause.** See [Diagnosing a 503 from `/api/readyz`](#diagnosing-a-503-from-apireadyz) below. |
 | Upload skipped | There is no `config/` folder in the repo yet. |
+| Pre-flight fails on PostgreSQL | From your machine that hop needs the `AllowClientIp` firewall rule - re-run step 03, which adds it for the address in `dev.psd1`. |
+| Pre-flight fails on Search or Blob | A network path or role problem the job would hit too. Fix it before re-running; `-SkipConnectivityCheck` only hides it. |
+| Something is only reachable *inside* a container | `./infra/scripts/Test-Connectivity.ps1 -Env dev -SnippetsOnly` prints tests to paste into each app's **Monitoring -> Console**, using only the tools that image actually contains. |
+
+### Diagnosing a 503 from `/api/readyz`
+
+**A 503 means the application answered.** It is not a connectivity fault, and the container app is healthy —
+`/api/healthz` returning 200 over the same host, port and ingress proves the path works. Two facts make this
+conclusive:
+
+* **nginx never produces a 503 here.** `proxy_intercept_errors` is off, so an upstream 503 is passed through
+  byte-for-byte. nginx's own "upstream unreachable" path returns **502** with a fixed
+  `{"title":"API unavailable"}` body. So: **502 = nginx synthesised it and never reached the app; 503 with
+  `{"status":"not_ready"}` = the app answered.**
+* **No probe points at `/api/readyz`** — Startup, Liveness and Readiness are all on `/api/healthz`, deliberately
+  ([step 07](#step-07--07-container-appsps1)). That is why the replica stays in the ingress and Azure reports
+  everything green while queries refuse, and it is why nothing in `az containerapp` will show you this.
+
+`/api/readyz` is therefore the *only* signal, and its body is the whole diagnosis.
+
+```powershell
+# From anywhere - the chat UI proxies /api/ without authentication
+curl -sS https://<chat-ui-fqdn>/api/readyz | ConvertFrom-Json | ConvertTo-Json -Depth 6
+
+# Parsed into one line per check, with the index it judged
+./infra/scripts/Test-Connectivity.ps1 -Env dev
+```
+
+From inside the container (**Monitoring → Console**), which also rules out nginx and the ingress — `rag-api`
+has no curl, and `urlopen` raises on 503, so `http.client` is used:
+
+```sh
+python3 -c "import http.client,json;c=http.client.HTTPConnection('localhost',8000,timeout=45);c.request('GET','/api/readyz');r=c.getresponse();print('status',r.status);print(json.dumps(json.loads(r.read()),indent=2))"
+rag-os doctor    # read-only: index, stored vs expected fingerprint, DB and both embedder pools, with real errors
+```
+
+`./infra/scripts/Test-Connectivity.ps1 -Env dev -SnippetsOnly` prints these ready to paste.
+
+#### What the body can say
+
+| `checks` value | Meaning | What to do |
+|---|---|---|
+| `state_db: "error: OperationalError"` | PostgreSQL unreachable, authentication refused, or firewalled | The managed identity must be a PostgreSQL Entra admin and your address needs the `AllowClientIp` rule — both from [step 03](#step-03--03-dataps1). `rag-os doctor` prints the real error. |
+| `state_db: "error: TimeoutError"` | Slower than the 12s budget | Usually a network path problem rather than the database itself. |
+| `query: embedder unavailable (<ExcType>)` | The TEI query pool is not answering `/info` | Normal for the first minutes after [step 07](#step-07--07-container-appsps1) — a ~3 GB image and a model load. Otherwise check it is not scaled to zero. |
+| `query: model 'x' != profile 'y'` | The pool serves a different model than the profile expects | Align `EmbeddingProfile` in the psd1 with what the pool actually runs ([section 7](#7-embedding-profiles-which-to-run-and-how-to-change-it)). |
+| `query: revision …` / `query: dimensions …` | Same, for the revision and the vector width | As above. Dimensions compare against the *native* width, before any MRL truncation. |
+| `index '<name>' does not exist` | The index was never created | `rag-os bootstrap`, or re-run [step 08](#step-08--08-bootstrapps1). |
+| `index '<name>' exists but has no recorded embedding profile` | Created, then something stopped before it was stamped | Look at why the bootstrap job did not finish, then re-run it. |
+| `index profile <a> != configured profile <b>` | `ActiveIndex` is pinned to an index built with a different profile | Unpin it, or bootstrap into the profile's own index. A different model is a different vector space, so queries are refused rather than answered wrongly. |
+| `index profile unreadable (<ExcType>)` | AI Search itself could not be asked | A role assignment that has not replicated, a network path, or throttling — not a bootstrap problem. |
+
+The body names exception **types**, never their messages: this endpoint is public. The full errors go to the
+container log and to `rag-os doctor`.
+
+#### If re-running shows the same reason
+
+The guard caches its verdict for 60 seconds, so a dependency that has just recovered can still read as broken.
+Add `?fresh=1` to force a live re-check:
+
+```sh
+curl -sS "https://<chat-ui-fqdn>/api/readyz?fresh=1"
+```
+
+### Step 09 — embedding alignment
+
+Before the functional smoke tests, step 09 runs:
+
+```powershell
+./infra/scripts/Test-EmbeddingAlignment.ps1 -Env dev
+./infra/scripts/Test-EmbeddingAlignment.ps1 -Env dev -SkipLive   # config only, nothing deployed needed
+```
+
+**Why this has its own gate.** Searching an index with a vector from a *different* model does not fail. If the
+dimensions happen to match, the query succeeds, returns the right *number* of hits, and they are arbitrary
+passages presented with full confidence — because cosine similarity between two unrelated vector spaces is
+noise. It reads as "the answers got worse", which is indistinguishable from a dozen other causes, and it passes
+every other health check in this document.
+
+It runs **before** `scripts/smoke.py` and throws rather than accumulating a failure, because a mismatch does not
+make the smoke test fail cleanly: the upload check fails by *timeout*, four minutes later, reading like a broken
+ingestion worker. Override with `-SkipAlignmentCheck` if you know and accept it.
+
+| Check | What drifts, and why nothing else catches it |
+|---|---|
+| psd1 vs `config/embedding/profiles.yaml` | The psd1 calls its own `EmbeddingDimensions` "informational", so the two can disagree silently. |
+| `EMBEDDING_PROFILE` on `rag-api` **and** `rag-ingest-worker` | Step 07 renders both from one block, but a `-Only` redeploy updates one app and not the other. |
+| Both TEI pools' running images | The check in [step 07](#step-07--07-container-appsps1) compares the build *manifest*, not what is deployed, and is skipped entirely when `EnableGpu = $false`. |
+| The running index and fingerprint | From `/api/readyz`, compared with the index [step 08](#step-08--08-bootstrapps1) actually created. A profile changed in between yields a **new, empty** index — which answers every question with "I could not find this". |
+
+**The pools disagreeing with each other is the serious one.** Both can differ from the psd1 and still be
+consistent with each other, which only means the psd1 is stale. Differing from *each other* means documents and
+queries are embedded into different spaces.
+
+#### What is enforced at runtime, and what is not
+
+`/api/readyz` and `rag-os doctor` compare **both** pools against the profile. The ingestion pool is treated as
+*advisory*: `GpuMinReplicas = 0`, so it scales to zero when idle and "not running" is its normal resting state —
+that is reported as a note and does not fail readiness. A pool that **answers** and reports a different model
+does fail, wherever it is.
+
+The ingestion worker verifies its pool once, at startup ([worker logs](#10-operations): *"embedding profile
+verified"*). It is **not** re-verified per batch, so a pool that drifts while the worker is running will write
+vectors until someone looks. That is what the per-chunk stamp below is for.
+
+#### Finding chunks written by the wrong model
+
+Every chunk carries two fields. `embedding_fp` is the **configured** profile fingerprint. `embedded_by` is what
+the pool **reported** about itself, as `model@revision`. Everything else in the system is derived from
+configuration and so agrees by construction; `embedded_by` is the only value that can contradict it.
+
+```
+# Azure AI Search, on the index named by /api/readyz
+$filter=embedded_by ne 'Qwen/Qwen3-Embedding-0.6B@97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3'
+```
+
+Anything returned was embedded by something else and must be re-ingested. An empty result means every chunk was
+written by the model you expect.
+
+> **Worth knowing per provider.** For `tei` this is real evidence: the value comes from the server's own
+> `/info`. For `azure_openai` the SDK echoes the configured model back, so only *dimensions* are genuinely
+> observed and `embedded_by` cannot contradict configuration. It records what was reported, which for AOAI is
+> less than you might hope. A chunk written before this field existed has no value at all, which is recorded as
+> absent rather than guessed.
 
 ### Steps 09-10 — verification
 See [section 10](#10-operations).

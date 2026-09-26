@@ -1,35 +1,35 @@
 {
   "images": {
     "rag-embedder-turing": {
-      "tag": "4661f70-dirty-20260926051249",
-      "digest": "sha256:f5ead57988741c2e07645d50313fde814a62257a2fcd275bd2c6a97b97207173",
-      "ref": "acrragosdevragos.azurecr.io/rag-embedder-turing@sha256:f5ead57988741c2e07645d50313fde814a62257a2fcd275bd2c6a97b97207173",
-      "recordedAt": "2026-09-26T05:21:08.0572731Z",
+      "tag": "d7d67ff",
+      "digest": "sha256:807068df498d93bbe1bd77a479e86656a02519ccd54beed2f20145ecee1c80e1",
+      "ref": "acrragosdevragos.azurecr.io/rag-embedder-turing@sha256:807068df498d93bbe1bd77a479e86656a02519ccd54beed2f20145ecee1c80e1",
+      "recordedAt": "2026-09-26T06:52:23.8873156Z",
       "modelId": "Qwen/Qwen3-Embedding-0.6B",
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     },
     "rag-api": {
-      "tag": "4661f70-dirty-20260926051249",
-      "digest": "sha256:8526dd73843334db6bf5155a158823c920f50aed0d420f5a696af1d338b9d067",
-      "ref": "acrragosdevragos.azurecr.io/rag-api@sha256:8526dd73843334db6bf5155a158823c920f50aed0d420f5a696af1d338b9d067",
-      "recordedAt": "2026-09-26T05:20:46.7328607Z"
+      "tag": "d7d67ff",
+      "digest": "sha256:6df3fa269d8102057ef66d0ddcd5d81bb1360c805f77e9fbdee5206e258adce6",
+      "ref": "acrragosdevragos.azurecr.io/rag-api@sha256:6df3fa269d8102057ef66d0ddcd5d81bb1360c805f77e9fbdee5206e258adce6",
+      "recordedAt": "2026-09-26T06:52:02.9705722Z"
     },
     "rag-chat-ui": {
-      "tag": "4661f70-dirty-20260926051249",
-      "digest": "sha256:e3aa033c05f7902e8ca36a5ecb4d8862e2ff38f907994dee8afa510fbae0eedd",
-      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:e3aa033c05f7902e8ca36a5ecb4d8862e2ff38f907994dee8afa510fbae0eedd",
-      "recordedAt": "2026-09-26T05:20:53.6787043Z"
+      "tag": "d7d67ff",
+      "digest": "sha256:390d76afba84af70756c84c6facfd4a7188ef2c667cc102173e64a3823a62494",
+      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:390d76afba84af70756c84c6facfd4a7188ef2c667cc102173e64a3823a62494",
+      "recordedAt": "2026-09-26T06:52:10.1868408Z"
     },
     "rag-embedder-cpu": {
-      "tag": "4661f70-dirty-20260926051249",
-      "digest": "sha256:9d9bbc3f6c89a339d350bf0fe40db67cbc5b9942a1a7de2dc4250e1eba33ce33",
-      "ref": "acrragosdevragos.azurecr.io/rag-embedder-cpu@sha256:9d9bbc3f6c89a339d350bf0fe40db67cbc5b9942a1a7de2dc4250e1eba33ce33",
-      "recordedAt": "2026-09-26T05:21:00.6122225Z",
+      "tag": "d7d67ff",
+      "digest": "sha256:d8816931d8c142beb0396078acfd08c09dc0f41dd409d45d63ce34333f825516",
+      "ref": "acrragosdevragos.azurecr.io/rag-embedder-cpu@sha256:d8816931d8c142beb0396078acfd08c09dc0f41dd409d45d63ce34333f825516",
+      "recordedAt": "2026-09-26T06:52:17.3052257Z",
       "modelId": "Qwen/Qwen3-Embedding-0.6B",
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     }
   },
-  "tag": "4661f70-dirty-20260926051249",
+  "tag": "d7d67ff",
   "embedding": {
     "profile": "qwen3-0.6b-1024",
     "model": "Qwen/Qwen3-Embedding-0.6B",
@@ -41,8 +41,8 @@
       "turing": "ghcr.io/huggingface/text-embeddings-inference:turing-1.9"
     },
     "serverImages": {
-      "rag-embedder-turing": "acrragosdevragos.azurecr.io/rag-embedder-turing@sha256:f5ead57988741c2e07645d50313fde814a62257a2fcd275bd2c6a97b97207173",
-      "rag-embedder-cpu": "acrragosdevragos.azurecr.io/rag-embedder-cpu@sha256:9d9bbc3f6c89a339d350bf0fe40db67cbc5b9942a1a7de2dc4250e1eba33ce33"
+      "rag-embedder-turing": "acrragosdevragos.azurecr.io/rag-embedder-turing@sha256:807068df498d93bbe1bd77a479e86656a02519ccd54beed2f20145ecee1c80e1",
+      "rag-embedder-cpu": "acrragosdevragos.azurecr.io/rag-embedder-cpu@sha256:d8816931d8c142beb0396078acfd08c09dc0f41dd409d45d63ce34333f825516"
     }
   },
   "registry": "acrragosdevragos.azurecr.io"

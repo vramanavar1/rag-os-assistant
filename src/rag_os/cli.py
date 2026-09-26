@@ -5,6 +5,7 @@
     rag-os bootstrap                 create tables + index, record the embedding profile (idempotent)
     rag-os discover --source ID      run discovery for one source (use where a local folder is mounted)
     rag-os schedule-tick             run due scheduled sources + reconcile stuck documents (cron job)
+    rag-os doctor                    why /api/readyz is refusing (read-only; prints the real errors)
     rag-os status                    ingestion summary
     rag-os sources                   configured instances + registered source types
     rag-os explain --attr k=v ...    show the access filter for a set of attributes
@@ -70,6 +71,82 @@ async def _schedule_tick() -> int:
         await c.aclose()
 
 
+async def _doctor() -> int:
+    """Why `/api/readyz` is refusing, from inside the container, without changing anything.
+
+    readyz answers the same question but is deliberately terse: it is public and unauthenticated through the
+    chat UI, so it names exception types rather than their messages. This runs where the operator is already
+    authenticated, so it can show the real errors.
+
+    Read-only on purpose. The only other command that reports guard reasons is `rag-os bootstrap`, which also
+    creates the index and stamps the profile - so until now there was no way to look without changing something,
+    and the act of looking destroyed the evidence of what had been wrong.
+    """
+    c = _container()
+    try:
+        return await _doctor_report(c)
+    finally:
+        await c.aclose()
+
+
+async def _doctor_report(c: Any) -> int:
+    report: dict[str, Any] = {"index": c.index_name, "expected_profile_fingerprint": c.guard.fp}
+    ok = True
+    try:
+        report["index_exists"] = await c.index.index_exists()
+    except Exception as e:
+        ok = False
+        report["index_exists"] = f"could not determine: {type(e).__name__}: {e}"
+    try:
+        stored = await c.index.read_profile()
+        report["stored_profile"] = stored
+        report["stored_profile_fingerprint"] = stored.get("fingerprint") if stored else None
+    except Exception as e:
+        ok = False
+        report["stored_profile"] = f"unreadable: {type(e).__name__}: {e}"
+
+    def _ping() -> str:
+        from sqlalchemy import text
+
+        with c.state.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return "ok"
+
+    try:
+        report["state_db"] = await asyncio.to_thread(_ping)
+    except Exception as e:
+        ok = False
+        # The full message, unlike readyz: this output is not public.
+        report["state_db"] = f"{type(e).__name__}: {e}"
+
+    embedders = {"query": c.embed_query, "ingest": c.embed_ingest}
+    pools: dict[str, Any] = {}
+    for pool, emb in embedders.items():
+        try:
+            pools[pool] = (await emb.info()).model_dump()
+        except Exception as e:
+            # The ingestion pool is allowed to be asleep; only the query pool must always answer.
+            if pool != "ingest":
+                ok = False
+            pools[pool] = f"{type(e).__name__}: {e}"
+    report["embedders"] = pools
+    report["profile"] = c.guard.profile.model_dump()
+
+    try:
+        st = await c.guard.check(c.index, {"query": c.embed_query, "ingest": c.embed_ingest}, force=True,
+                                 advisory_pools=frozenset({"ingest"}))
+        report["guard_ok"] = st.ok
+        report["reasons"] = st.reasons
+        report["notes"] = st.notes
+        ok = ok and st.ok
+    except Exception as e:
+        ok = False
+        report["guard_ok"] = False
+        report["reasons"] = [f"{type(e).__name__}: {e}"]
+    _print(report)
+    return 0 if ok else 1
+
+
 async def _status() -> int:
     c = _container()
     try:
@@ -110,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     dp.add_argument("--source", required=True)
     dp.add_argument("--trigger", default="manual")
     sub.add_parser("schedule-tick")
+    sub.add_parser("doctor")
     sub.add_parser("status")
     sub.add_parser("sources")
     ep = sub.add_parser("explain")
@@ -138,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_discover(args.source, args.trigger))
     if args.cmd == "schedule-tick":
         return asyncio.run(_schedule_tick())
+    if args.cmd == "doctor":
+        return asyncio.run(_doctor())
     if args.cmd == "status":
         return asyncio.run(_status())
     if args.cmd == "sources":
