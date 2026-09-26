@@ -984,7 +984,6 @@ function Import-RagOsConfig {
     if ($config.Prefix -cnotmatch '^[a-z][a-z0-9]{1,11}$') { throw "Prefix must be 2-12 lowercase letters/digits starting with a letter (got '$($config.Prefix)')." }
     if ($config.Env -cnotmatch '^[a-z][a-z0-9]{0,7}$') { throw "Env must be 1-8 lowercase letters/digits (got '$($config.Env)')." }
     if ($config.Env -ne $Env) { throw "infra/env/$Env.psd1 declares Env = '$($config.Env)'. They must match." }
-    if ($config.EmbedderModelRevision -notmatch '^[0-9a-f]{40}$') { throw 'EmbedderModelRevision must be a full 40-character commit SHA (pin the model).' }
     # Service Bus caps the lock at 5 minutes. Caught here rather than at the queue update, where an out-of-range
     # value made every subsequent run of step 03 fail on a queue that already existed and was otherwise fine.
     if ($config.QueueLockDuration -notmatch '^PT(\d+M)?(\d+S)?$' -or $config.QueueLockDuration -eq 'PT') {
@@ -1031,6 +1030,17 @@ function Import-RagOsConfig {
     $config.OutputsPath = Join-Path $script:RagOsEnvDir "$Env.outputs.json"
     $config.ImagesPath = Join-Path $script:RagOsEnvDir "$Env.images.json"
     $config.ResourceGroupId = "/subscriptions/$($config.SubscriptionId)/resourceGroups/$($names.ResourceGroup)"
+
+    # Checked here rather than with the other validation above, because it needs RepoRoot to read the profile -
+    # and it only applies to a self-hosted profile. A remote profile pins nothing: config/embedding/profiles.yaml
+    # gives `aoai-3-small-1536` no model_revision, because Azure OpenAI has no commit to pin. Demanding a SHA
+    # regardless made an otherwise correct remote configuration impossible to express: every script that loads
+    # the config threw before it did anything. $null (profile unreadable) keeps the strict behaviour.
+    $embedProvider = Get-EmbeddingProfileProvider -Config $config
+    if ($embedProvider -in @('tei', $null) -and $config.EmbedderModelRevision -notmatch '^[0-9a-f]{40}$') {
+        throw ("EmbedderModelRevision must be a full 40-character commit SHA (pin the model). " +
+            "Got '$($config.EmbedderModelRevision)'.")
+    }
     $allTags = [ordered]@{ 'app' = 'rag-os'; 'env' = $config.Env; 'managed-by' = 'rag-os-infra-scripts' }
     if ($config.Tags) { foreach ($key in $config.Tags.Keys) { $allTags[$key] = [string]$config.Tags[$key] } }
     $config.AllTags = $allTags

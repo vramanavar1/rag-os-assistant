@@ -162,3 +162,27 @@ async def test_observed_is_per_pool(pool_name: str) -> None:
     assert g.observed(pool_name) is not None
     other = "ingest" if pool_name == "query" else "query"
     assert g.observed(other) is None, "asking about one pool says nothing about the other"
+
+
+# ------------------------------------------------------- one provider, asked once, however many names it has
+# Both pools address one thing whenever they are configured to: the same TEI url, or - always - the same Azure
+# OpenAI deployment. /api/readyz passes them as two dictionary entries, so a naive loop probes the same object
+# twice. For TEI that is a wasted /info GET. For Azure OpenAI info() is a BILLED embeddings call, so it was
+# money spent on asking the same question twice, on every readiness refresh.
+async def test_one_provider_under_two_names_is_probed_once() -> None:
+    g, index = guard()
+    shared = Pool(MATCHING)
+    st = await g.check(index, {"query": shared, "ingest": shared}, advisory_pools=frozenset({"ingest"}))
+    assert shared.probes == 1, f"the same object must not be asked twice: {shared.probes} probes"
+    assert st.ok is True, st.reasons
+    # Both names still have to be reported: the caller asked about two pools and gets two answers.
+    assert set(st.embedder) == {"query", "ingest"}, st.embedder
+
+
+async def test_two_distinct_providers_are_both_probed() -> None:
+    """The de-duplication must be by identity, not by giving up on the second pool."""
+    g, index = guard()
+    query, ingest = Pool(MATCHING), Pool(DEVIATING)
+    st = await g.check(index, {"query": query, "ingest": ingest})
+    assert query.probes == 1 and ingest.probes == 1
+    assert st.ok is False, "a genuinely different second pool must still be compared"

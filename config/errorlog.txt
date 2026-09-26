@@ -1,23 +1,25 @@
-2026-09-26T07:35:32.05058  Connecting to the container 'chat-ui'...
-2026-09-26T07:35:32.08778  Successfully Connected to container: 'chat-ui' [Revision: 'rag-chat-ui--0000002', Replica: 'rag-chat-ui--0000002-f5c8459d4-csg4d']
-2026-09-26T07:06:29.808651800Z /docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh
-2026-09-26T07:06:29.808877485Z /docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
-2026-09-26T07:06:29.818055004Z 20-envsubst-on-templates.sh: Running envsubst on /etc/nginx/templates/default.conf.template to /etc/nginx/conf.d/default.conf
-2026-09-26T07:06:29.821045774Z /docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
-2026-09-26T07:06:29.823233603Z /docker-entrypoint.sh: Configuration complete; ready for start up
-2026-09-26T07:06:29.882650196Z 2026/09/26 07:06:29 [notice] 1#1: using the "epoll" event method
-2026-09-26T07:06:29.882871150Z 2026/09/26 07:06:29 [notice] 1#1: nginx/1.27.5
-2026-09-26T07:06:29.882879412Z 2026/09/26 07:06:29 [notice] 1#1: built by gcc 14.2.0 (Alpine 14.2.0) 
-2026-09-26T07:06:29.882885852Z 2026/09/26 07:06:29 [notice] 1#1: OS: Linux 6.6.150.1-1.azl3
-2026-09-26T07:06:29.882891791Z 2026/09/26 07:06:29 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1048576:1048576
-2026-09-26T07:06:29.882898120Z 2026/09/26 07:06:29 [notice] 1#1: start worker processes
-2026-09-26T07:06:29.884091630Z 2026/09/26 07:06:29 [notice] 1#1: start worker process 53
-2026-09-26T07:06:29.884105901Z 2026/09/26 07:06:29 [notice] 1#1: start worker process 54
-2026-09-26T07:06:29.884112441Z 2026/09/26 07:06:29 [notice] 1#1: start worker process 55
-2026-09-26T07:06:29.884118691Z 2026/09/26 07:06:29 [notice] 1#1: start worker process 56
-2026-09-26T07:06:30.759380495Z 2026/09/26 07:06:30 [notice] 1#1: signal 17 (SIGCHLD) received from 19
-2026-09-26T07:06:30.759419684Z 2026/09/26 07:06:30 [notice] 1#1: unknown process 19 exited with code 0
-2026-09-26T07:06:43.805438150Z {"time":"2026-09-26T07:06:43+00:00","logger":"nginx","remote_addr":"100.100.0.96","method":"GET","path":"/api/readyz","status":499,"bytes":0,"request_time_s":12.964,"upstream_status":"-","upstream_time_s":"12.962","correlation_id":"58f8ce9deec861661130a69fbb81e9e1","request_id":"58f8ce9deec861661130a69fbb81e9e1","user_agent":"Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-IN) PowerShell/7.6.6"}
-2026-09-26T07:07:18.819579169Z {"time":"2026-09-26T07:07:18+00:00","logger":"nginx","remote_addr":"100.100.0.74","method":"GET","path":"/api/readyz","status":499,"bytes":0,"request_time_s":19.543,"upstream_status":"-","upstream_time_s":"19.540","correlation_id":"781a854647258b131623f106afdcc793","request_id":"781a854647258b131623f106afdcc793","user_agent":"Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-IN) PowerShell/7.6.6"}
-2026-09-26T07:07:53.840107879Z {"time":"2026-09-26T07:07:53+00:00","logger":"nginx","remote_addr":"100.100.0.160","method":"GET","path":"/api/readyz","status":499,"bytes":0,"request_time_s":19.531,"upstream_status":"-","upstream_time_s":"19.531","correlation_id":"ba586e8ca557f4424a453ceaee11fe1a","request_id":"ba586e8ca557f4424a453ceaee11fe1a","user_agent":"Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26200; en-IN) PowerShell/7.6.6"}
-2026-09-26T07:36:32.13599  No logs since last 60 seconds
+Connecting to stream...
+2026-09-26T15:13:55.32676  Connecting to the container 'tei'...
+
+2026-09-26T15:13:55.41835  Successfully Connected to container: 'tei' [Revision: 'rag-embed-query--0000003', Replica: 'rag-embed-query--0000003-75cd55c95b-9t7x2']
+
+2026-09-26T15:09:18.289895423Z {"timestamp":"2026-09-26T15:09:18.289724Z","level":"INFO","message":"Maximum number of tokens per request: 16384","target":"text_embeddings_router","filename":"router/src/lib.rs","line_number":234}
+2026-09-26T15:09:18.289902075Z {"timestamp":"2026-09-26T15:09:18.289783Z","level":"INFO","message":"Starting 2 tokenization workers","target":"text_embeddings_core::tokenization","filename":"core/src/tokenization.rs","line_number":38}
+2026-09-26T15:09:18.291248341Z {"timestamp":"2026-09-26T15:09:18.289883Z","level":"INFO","message":"Starting model backend","target":"text_embeddings_router","filename":"router/src/lib.rs","line_number":284}
+2026-09-26T15:09:18.394310392Z {"timestamp":"2026-09-26T15:09:18.394157Z","level":"INFO","message":"Downloading `onnx/model.onnx`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":783}
+2026-09-26T15:09:18.474590118Z {"timestamp":"2026-09-26T15:09:18.474489Z","level":"WARN","message":"Could not download `onnx/model.onnx`: request error: HTTP status client error (404 Not Found) for url (https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/resolve/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/onnx/model.onnx)","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":787}
+2026-09-26T15:09:18.474620706Z {"timestamp":"2026-09-26T15:09:18.474516Z","level":"INFO","message":"Downloading `model.onnx`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":788}
+2026-09-26T15:09:18.546075733Z {"timestamp":"2026-09-26T15:09:18.545972Z","level":"WARN","message":"Could not download `model.onnx`: request error: HTTP status client error (404 Not Found) for url (https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/resolve/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/model.onnx)","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":792}
+2026-09-26T15:09:18.546104878Z {"timestamp":"2026-09-26T15:09:18.545991Z","level":"INFO","message":"Downloading `onnx/model.onnx_data`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":797}
+2026-09-26T15:09:18.617956702Z {"timestamp":"2026-09-26T15:09:18.617857Z","level":"WARN","message":"Could not download `onnx/model.onnx_data`: request error: HTTP status client error (404 Not Found) for url (https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/resolve/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/onnx/model.onnx_data)","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":801}
+2026-09-26T15:09:18.617989854Z {"timestamp":"2026-09-26T15:09:18.617876Z","level":"INFO","message":"Downloading `model.onnx_data`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":802}
+2026-09-26T15:09:18.690912778Z {"timestamp":"2026-09-26T15:09:18.690808Z","level":"WARN","message":"Could not download `model.onnx_data`: request error: HTTP status client error (404 Not Found) for url (https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/resolve/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/model.onnx_data)","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":806}
+2026-09-26T15:09:18.690944187Z {"timestamp":"2026-09-26T15:09:18.690831Z","level":"ERROR","message":"Model ONNX files not found in the repository. You can easily create ONNX files using the following scripts: https://gist.github.com/tomaarsen/4b00b0e3be8884efa64cfab9230b161f, or use this Space: https://huggingface.co/spaces/sentence-transformers/backend-export","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":465}
+2026-09-26T15:09:18.690954656Z {"timestamp":"2026-09-26T15:09:18.690842Z","level":"INFO","message":"Downloading `tokenizer_config.json`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":476}
+2026-09-26T15:09:18.691472518Z {"timestamp":"2026-09-26T15:09:18.691357Z","level":"ERROR","message":"Could not start ORT backend: Could not start backend: File at `/data/models--Qwen--Qwen3-Embedding-0.6B/snapshots/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/onnx/model.onnx` does not exist","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":489}
+2026-09-26T15:09:18.691490241Z {"timestamp":"2026-09-26T15:09:18.691379Z","level":"INFO","message":"Downloading `model.safetensors`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":672}
+2026-09-26T15:09:18.691601390Z {"timestamp":"2026-09-26T15:09:18.691501Z","level":"INFO","message":"Model weights downloaded in 122.639µs","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":507}
+2026-09-26T15:09:18.691612591Z {"timestamp":"2026-09-26T15:09:18.691524Z","level":"INFO","message":"Downloading `modules.json`","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":843,"span":{"name":"download_dense_modules"},"spans":[{"name":"download_dense_modules"}]}
+2026-09-26T15:09:18.691780158Z {"timestamp":"2026-09-26T15:09:18.691703Z","level":"INFO","message":"Dense modules downloaded in 184.035µs","target":"text_embeddings_backend","filename":"backends/src/lib.rs","line_number":519}
+2026-09-26T15:09:18.692394858Z {"timestamp":"2026-09-26T15:09:18.692313Z","level":"INFO","message":"Starting Qwen3 model on Cpu","target":"text_embeddings_backend_candle","filename":"backends/candle/src/lib.rs","line_number":364}
+2026-09-26T15:09:20.763749727Z {"timestamp":"2026-09-26T15:09:20.763594Z","level":"INFO","message":"Warming up model","target":"text_embeddings_router","filename":"router/src/lib.rs","line_number":302}

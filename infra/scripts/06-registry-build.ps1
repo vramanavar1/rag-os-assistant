@@ -153,14 +153,22 @@ $manifest.registry = $loginServer
 $manifest.tag = $Tag
 $embeddingImages = @{}
 foreach ($repo in @('rag-embedder-cpu', 'rag-embedder-turing')) { if ($manifest.images.ContainsKey($repo)) { $embeddingImages[$repo] = $manifest.images[$repo].ref } }
-$manifest.embedding = [ordered]@{
-    profile       = $Config.EmbeddingProfile
-    model         = $Config.EmbedderModelId
-    modelRevision = $Config.EmbedderModelRevision
-    dimensions    = $Config.EmbeddingDimensions
-    teiVersion    = $Config.TeiVersion
-    teiBaseImages = [ordered]@{ cpu = $teiCpu; turing = $teiTuring }
-    serverImages  = $embeddingImages
+# Recorded per provider. Written unconditionally this used to claim `profile: aoai-3-small-1536` beside
+# `model: Qwen/...` and image digests for servers that were deliberately not built - metadata that contradicts
+# itself, which Test-EmbeddingAlignment.ps1 then reads to decide whether the two pools agree.
+$manifest.embedding = [ordered]@{ profile = $Config.EmbeddingProfile; provider = ($embedProvider ?? 'unknown') }
+if ($embedProvider -in @('tei', $null)) {
+    $manifest.embedding.model = $Config.EmbedderModelId
+    $manifest.embedding.modelRevision = $Config.EmbedderModelRevision
+    $manifest.embedding.dimensions = $Config.EmbeddingDimensions
+    $manifest.embedding.teiVersion = $Config.TeiVersion
+    $manifest.embedding.teiBaseImages = [ordered]@{ cpu = $teiCpu; turing = $teiTuring }
+    $manifest.embedding.serverImages = $embeddingImages
+}
+else {
+    # The model is the deployment's, not an image's. Nothing here is built.
+    $manifest.embedding.model = $Config.EmbeddingModelName
+    $manifest.embedding.deployment = $Config.EmbeddingDeploymentName
 }
 $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Config.ImagesPath -Encoding utf8NoBOM
 

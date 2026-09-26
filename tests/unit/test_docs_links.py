@@ -147,3 +147,25 @@ def test_no_unclosed_content_swallowing_tag() -> None:
         opens = [n for n, t in raw_tags(DEPLOY_MD) if t.lower().startswith(f"<{tag}")]
         closes = [n for n, t in raw_tags(DEPLOY_MD) if t.lower().startswith(f"</{tag}")]
         assert len(opens) == len(closes), f"unbalanced <{tag}> in Deployment.md: opens={opens} closes={closes}"
+
+
+# ---------------------------------------------------------------------- links BETWEEN the two documents
+# Same-document anchors were checked from the start; cross-document ones never were, so README could point at a
+# Deployment.md heading that had been renamed and nothing noticed. The failure mode is identical either way -
+# the reader lands at the top of a 1400-line file and gives up.
+CROSS = {"Deployment.md": DEPLOYMENT, "README.md": README}
+
+
+def test_every_cross_document_anchor_resolves() -> None:
+    broken = []
+    for source_name, source in CROSS.items():
+        md = source.read_text(encoding="utf-8")
+        for target_name, target in CROSS.items():
+            if target_name == source_name:
+                continue
+            known = anchors(target.read_text(encoding="utf-8"))
+            pattern = rf"\]\({re.escape(target_name)}#([^)]+)\)"
+            for n, anchor in links(md, pattern):
+                if anchor not in known:
+                    broken.append(f"{source_name}:{n} -> {target_name}#{anchor}")
+    assert not broken, "links to headings in the other document that do not exist:\n  " + "\n  ".join(broken)

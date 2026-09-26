@@ -47,22 +47,64 @@ function Add-Result([string]$Check, [bool]$Ok, [string]$Detail, [switch]$Advisor
 # comparing against a value that was already wrong.
 Write-Step 'Declared configuration (psd1 vs config/embedding/profiles.yaml)'
 $profileName = [string]$Config.EmbeddingProfile
-Write-Info "profile: $profileName"
-foreach ($pair in @(
-        @{ Field = 'model'; Psd1 = 'EmbedderModelId' }
-        @{ Field = 'model_revision'; Psd1 = 'EmbedderModelRevision' }
-        @{ Field = 'dimensions'; Psd1 = 'EmbeddingDimensions' }
-    )) {
-    $yaml = Get-EmbeddingProfileField -Config $Config -Name $pair.Field
-    $psd1 = "$($Config[$pair.Psd1])"
-    if ($null -eq $yaml) {
-        # The documented contract of the profile readers: unknown is not a failure. An unreadable config file
-        # must never be the thing that blocks a deployment.
-        Add-Result "$($pair.Field)" $true "profiles.yaml did not state it - not compared" -Advisory
-        continue
+$provider = Get-EmbeddingProfileProvider -Config $Config
+Write-Info "profile: $profileName (provider $(if ($provider) { $provider } else { 'unknown' }))"
+
+if ($provider -eq 'azure_openai') {
+    # The self-hosted keys - EmbedderModelId, EmbedderModelRevision - describe an image that is not built and not
+    # deployed for a remote profile, so comparing the profile against them reports a mismatch that means nothing.
+    # This check originally did exactly that, and step 09 therefore failed on every correct remote configuration.
+    # What has to line up instead is the model the profile asks for against the model step 05 deploys, and the
+    # deployment name the apps were actually given.
+    Write-Info 'Remote provider: EmbedderModelId / EmbedderModelRevision describe the TEI image and do not apply.'
+
+    $yamlModel = Get-EmbeddingProfileField -Config $Config -Name 'model'
+    if ($null -eq $yamlModel) { Add-Result 'model' $true 'profiles.yaml did not state it - not compared' -Advisory }
+    else {
+        $deployed = "$($Config.EmbeddingModelName)"
+        Add-Result 'model' ($yamlModel -eq $deployed) $(
+            if ($yamlModel -eq $deployed) { $yamlModel }
+            else { "profiles.yaml '$yamlModel' != EmbeddingModelName '$deployed'" })
     }
-    Add-Result "$($pair.Field)" ($yaml -eq $psd1) $(
-        if ($yaml -eq $psd1) { $yaml } else { "psd1 '$psd1' != profiles.yaml '$yaml'" })
+
+    # Deploying the model and selecting it are two different settings, and only one of them is in the profile.
+    Add-Result 'DeployAoaiEmbedding' ([bool]$Config.DeployAoaiEmbedding) $(
+        if ($Config.DeployAoaiEmbedding) { 'true' }
+        else { 'false - step 05 creates no deployment, so AOAI_EMBED_DEPLOYMENT is never set' })
+
+    # Recorded by step 05. Without it step 07 silently omits AOAI_EMBED_DEPLOYMENT and the apps fail on their
+    # first embedding call, which is a long way from here.
+    $recorded = Get-Value (Get-Outputs -Config $Config) 'embeddingDeployment'
+    Add-Result 'embedding deployment recorded by 05' ([bool]$recorded) $(
+        if ($recorded) { $recorded } else { 'absent from outputs.json - re-run 05-foundry.ps1' })
+
+    # Advisory: nothing reads EmbeddingDimensions at runtime (the psd1 calls it informational and the profile is
+    # authoritative), but leaving it on the old value makes every other document here read as if it were wrong.
+    $yamlDims = Get-EmbeddingProfileField -Config $Config -Name 'dimensions'
+    if ($yamlDims -and "$($Config.EmbeddingDimensions)" -ne $yamlDims) {
+        Add-Result 'dimensions' $true (
+            "psd1 says $($Config.EmbeddingDimensions), the profile says $yamlDims - informational only, " +
+            'but worth aligning') -Advisory
+    }
+    elseif ($yamlDims) { Add-Result 'dimensions' $true $yamlDims }
+}
+else {
+    foreach ($pair in @(
+            @{ Field = 'model'; Psd1 = 'EmbedderModelId' }
+            @{ Field = 'model_revision'; Psd1 = 'EmbedderModelRevision' }
+            @{ Field = 'dimensions'; Psd1 = 'EmbeddingDimensions' }
+        )) {
+        $yaml = Get-EmbeddingProfileField -Config $Config -Name $pair.Field
+        $psd1 = "$($Config[$pair.Psd1])"
+        if ($null -eq $yaml) {
+            # The documented contract of the profile readers: unknown is not a failure. An unreadable config file
+            # must never be the thing that blocks a deployment.
+            Add-Result "$($pair.Field)" $true 'profiles.yaml did not state it - not compared' -Advisory
+            continue
+        }
+        Add-Result "$($pair.Field)" ($yaml -eq $psd1) $(
+            if ($yaml -eq $psd1) { $yaml } else { "psd1 '$psd1' != profiles.yaml '$yaml'" })
+    }
 }
 
 if (-not $SkipLive) {
@@ -84,7 +126,7 @@ if (-not $SkipLive) {
     # ------------------------------------------------------- 3. the two pools are running the same model
     # The model is baked into the image, not configured at runtime, so the only way to ask a running pool what
     # it serves is to map its image back to the manifest entry that recorded how it was built.
-    if ((Get-EmbeddingProfileProvider -Config $Config) -in @('tei', $null)) {
+    if ($provider -in @('tei', $null)) {
         Write-Step 'TEI pools (running image -> the model it was built from)'
         $manifest = $null
         if (Test-Path -LiteralPath $Config.ImagesPath) {

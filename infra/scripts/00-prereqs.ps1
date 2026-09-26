@@ -172,12 +172,29 @@ try {
     if ($Config.UtilityModelProvider -eq 'claude') {
         Test-Model 'Claude utility model' 'Anthropic' $Config.ClaudeUtilityModelName $Config.ClaudeModelVersion '' -Optional
     }
-    $usage = @(Invoke-Az @('cognitiveservices', 'usage', 'list', '-l', $loc, '--query',
-            "[?contains(name.value, '$($Config.AnswerModelName)')].{name:name.value, used:currentValue, limit:limit}"))
-    foreach ($u in $usage) {
-        $free = [double]$u.limit - [double]$u.used
-        $need = if ($u.name -like "*$($Config.AnswerModelSku)*") { [double]$Config.AnswerModelCapacity } else { 0 }
-        Add-Check "Quota $($u.name)" (($need -gt 0 -and $free -lt $need) ? 'WARN' : 'PASS') "used $($u.used) / limit $($u.limit)"
+    # Quota is per model and per SKU, so each deployment 05 will create needs its own look. The embedding one
+    # used to be missing entirely: step 05 asks for EmbeddingModelCapacity and, with nothing free, failed there
+    # with a raw insufficient-quota error - after 01 to 04 had already created resources.
+    $quotaTargets = @(@{ Label = 'answer model'; Model = $Config.AnswerModelName; Sku = $Config.AnswerModelSku
+            Need = $Config.AnswerModelCapacity })
+    if ($Config.DeployAoaiEmbedding) {
+        $quotaTargets += @{ Label = 'embedding model'; Model = $Config.EmbeddingModelName
+            Sku = $Config.EmbeddingModelSku; Need = $Config.EmbeddingModelCapacity }
+    }
+    foreach ($target in $quotaTargets) {
+        $usage = @(Invoke-Az @('cognitiveservices', 'usage', 'list', '-l', $loc, '--query',
+                "[?contains(name.value, '$($target.Model)')].{name:name.value, used:currentValue, limit:limit}"))
+        if (-not $usage) {
+            Add-Check "Quota $($target.Label) ($($target.Model))" 'WARN' 'no quota entry reported for this model'
+            continue
+        }
+        foreach ($u in $usage) {
+            $free = [double]$u.limit - [double]$u.used
+            $need = if ($u.name -like "*$($target.Sku)*") { [double]$target.Need } else { 0 }
+            Add-Check "Quota $($u.name)" (($need -gt 0 -and $free -lt $need) ? 'WARN' : 'PASS') $(
+                if ($need -gt 0 -and $free -lt $need) { "needs $need, only $free free (used $($u.used) / $($u.limit))" }
+                else { "used $($u.used) / limit $($u.limit)" })
+        }
     }
 }
 catch { Add-Check 'Foundry model catalog / quota' 'WARN' "could not query: $($_.Exception.Message.Split("`n")[0])" }

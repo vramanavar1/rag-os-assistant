@@ -32,6 +32,10 @@ properties:
         env:
           - name: MAX_BATCH_TOKENS
             value: "{{EMBEDDER_MAX_BATCH_TOKENS_CPU}}"
+          # Bounds the warm-up, and with it the start-up memory. Unset, TEI uses the model's own maximum (32768
+          # for Qwen3) and is OOM-killed on a 4Gi replica: attention memory is quadratic in sequence length.
+          - name: MAX_INPUT_LENGTH
+            value: "{{EMBEDDER_MAX_INPUT_TOKENS}}"
           - name: MAX_CLIENT_BATCH_SIZE
             value: "64"
           # Match the container's vCPUs (the TEI cpu image defaults to 8 threads).
@@ -45,10 +49,15 @@ properties:
               path: /health
               port: 80
             initialDelaySeconds: 10
-            periodSeconds: 10
+            periodSeconds: 15
             # Explicit: the default is 1s, and the first probe lands while TEI is still loading the model.
             timeoutSeconds: 5
-            failureThreshold: 10
+            # 10 + 15 x 40 = 610s. This is a MODEL-LOAD budget, not an HTTP one: embedding a 0.6B model on CPU
+            # is minutes of arithmetic before it serves anything. Warm-up measured 161s on the shipped settings
+            # at these exact limits, so the margin here is for slower vCPU, not for the happy path. The old
+            # budget was 110s (10 + 10 x 10), which restarted the replica forever at any memory limit.
+            # Liveness and Readiness stay tight on purpose: once WARM, a stalled /health should restart fast.
+            failureThreshold: 40
           - type: Liveness
             httpGet:
               path: /health

@@ -83,6 +83,12 @@ class Container:
         self.profile: EmbeddingProfile = self.config.load_embedding_profile(s.embedding_profile)
         self.index_name = s.active_index or self.profile.index_name(s.index_prefix, s.index_domain)
         self.guard = ProfileGuard(self.profile)
+        if self.profile.provider == "azure_openai" and not s.aoai_embed_deployment:
+            # Logged, not raised. Refusing to construct would crash-loop the API and take away the one surface
+            # that can explain the problem - /api/readyz reports it, and `rag-os doctor` prints it in full.
+            log.error("embedding profile '%s' uses Azure OpenAI but AOAI_EMBED_DEPLOYMENT is not set; every "
+                      "embedding call will fail. Set DeployAoaiEmbedding = $true and re-run 05-foundry.ps1.",
+                      s.embedding_profile)
         self._apply(load_domain_config(self.config))
         self._closables: list[Any] = []
 
@@ -162,8 +168,21 @@ class Container:
 
     @cached_property
     def embed_ingest(self) -> EmbeddingProvider:
-        if self.settings.tei_ingest == self.settings.tei_query_url and self.profile.provider == "tei":
+        """The query pool's provider when both pools address the same thing, otherwise its own.
+
+        The condition used to be tei-specific, so an `azure_openai` profile built two clients against ONE
+        deployment: two credential chains, two token caches - and because /api/readyz asks both pools to
+        describe themselves, two *billed* embedding calls per readiness check. There is no second endpoint for
+        AOAI to point at: the deployment is whatever AOAI_EMBED_DEPLOYMENT names.
+        """
+        if self.profile.provider == "azure_openai":
+            # One deployment, named by AOAI_EMBED_DEPLOYMENT. There is no second endpoint to point at, so a
+            # second client is a second credential chain and a second billed info() probe for the same answer.
             return self.embed_query
+        if self.profile.provider == "tei" and self.settings.tei_ingest == self.settings.tei_query_url:
+            return self.embed_query
+        # `fake` deliberately keeps two instances. Sharing would be harmless but it also merges their call
+        # counters, and the tests use the ingest counter to prove that re-tagging does not re-embed.
         return self._embedder("ingest")
 
     def _llm(self, name: str, role: str = "answer") -> LlmProvider:

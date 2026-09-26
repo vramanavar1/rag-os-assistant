@@ -207,3 +207,67 @@ def test_readiness_does_not_depend_on_shared_downstream_state() -> None:
     assert readiness, "rag-api should declare a Readiness probe"
     assert readiness[0]["path"] == "/api/healthz", (
         f"readiness is on {readiness[0]['path']}; /api/readyz reflects shared state, not this replica's health")
+
+
+# ----------------------------------------------------------------- the embedder pools must survive their own start
+# A TEI pool loading a 0.6B model on CPU spends minutes before it answers anything, and two numbers decide whether
+# it ever gets there. Both were wrong, and the symptom was identical to a hang: the container was OOM-killed
+# (exit 137, which writes nothing) immediately after logging "Warming up model", then restarted, forever.
+EMBEDDER_TEMPLATES = ["rag-embed-query.yaml.tmpl", "rag-embed-ingest.yaml.tmpl"]
+# Measured: warm-up alone took 161s at 2 vCPU on the shipped settings. Azure's vCPU is not a desktop core, so the
+# floor is set well above that rather than at it.
+MIN_STARTUP_BUDGET_S = 480
+
+
+def startup_budget_seconds(probe: dict[str, str]) -> int:
+    """What the platform actually allows before it gives up - a number that appears nowhere in the file."""
+    return (int(probe.get("initialDelaySeconds", 0))
+            + int(probe.get("periodSeconds", 10)) * int(probe.get("failureThreshold", 3)))
+
+
+def test_the_embedder_startup_budget_allows_for_a_model_load() -> None:
+    too_short = []
+    for name in EMBEDDER_TEMPLATES:
+        startup = [p for p in probes(TEMPLATES / name) if p["type"] == "Startup"]
+        assert startup, f"{name} should declare a Startup probe"
+        budget = startup_budget_seconds(startup[0])
+        if budget < MIN_STARTUP_BUDGET_S:
+            too_short.append(f"{name}: {budget}s (needs >= {MIN_STARTUP_BUDGET_S}s)")
+    assert not too_short, (
+        "these restart the replica before the model has finished loading, which looks exactly like a crash "
+        "loop with no error:\n  " + "\n  ".join(too_short))
+
+
+def test_the_startup_budget_reader_matches_the_probe_semantics() -> None:
+    """The formula is the whole check, so pin it to the shape the old, broken probe had."""
+    assert startup_budget_seconds(
+        {"initialDelaySeconds": "10", "periodSeconds": "10", "failureThreshold": "10"}) == 110, (
+        "the old query-pool probe allowed 110s; if this arithmetic is wrong the guard proves nothing")
+    assert startup_budget_seconds({"periodSeconds": "15", "failureThreshold": "40"}) == 600
+
+
+def test_the_embedder_pools_bound_their_input_length() -> None:
+    """Unset, TEI warms up for the model's own maximum - 32768 tokens for Qwen3 - and attention memory is
+    quadratic in that. It was OOM-killed at 4Gi AND at 8Gi, so no memory limit would have rescued it."""
+    missing = [name for name in EMBEDDER_TEMPLATES
+               if "MAX_INPUT_LENGTH" not in (TEMPLATES / name).read_text(encoding="utf-8")]
+    assert not missing, ("MAX_INPUT_LENGTH is unset, so warm-up is sized from the model maximum: " 
+                         + ", ".join(missing))
+
+
+def test_the_bounded_input_length_still_covers_the_largest_chunk() -> None:
+    """A bound below max_chunk_tokens would reject real documents at run time instead of at start-up."""
+    import re as _re
+
+    psd1 = (REPO / "infra" / "env" / "dev.psd1").read_text(encoding="utf-8")
+    profiles = (REPO / "config" / "embedding" / "profiles.yaml").read_text(encoding="utf-8")
+    m = _re.search(r"EmbedderMaxInputTokens\s*=\s*(\d+)", psd1)
+    assert m, "EmbedderMaxInputTokens is not set in dev.psd1"
+    bound = int(m.group(1))
+    largest = max(int(x) for x in _re.findall(r"max_chunk_tokens:\s*(\d+)", profiles))
+    assert bound > largest, f"MAX_INPUT_LENGTH {bound} must exceed the largest max_chunk_tokens {largest}"
+
+    batch = _re.search(r"EmbedderMaxBatchTokensCpu\s*=\s*(\d+)", psd1)
+    assert batch, "EmbedderMaxBatchTokensCpu is not set"
+    assert int(batch.group(1)) >= bound, (
+        f"TEI requires MAX_BATCH_TOKENS ({batch.group(1)}) >= MAX_INPUT_LENGTH ({bound})")

@@ -35,8 +35,10 @@ References to **section** N mean a numbered section of this guide.
     * [Step 05 — `05-foundry.ps1`](#step-05--05-foundryps1)
     * [Step 06 — `06-registry-build.ps1`](#step-06--06-registry-buildps1)
     * [Step 07 — `07-container-apps.ps1`](#step-07--07-container-appsps1)
+    * [When a TEI pool never becomes ready](#when-a-tei-pool-never-becomes-ready)
     * [Step 08 — `08-bootstrap.ps1`](#step-08--08-bootstrapps1)
     * [Diagnosing a 503 from `/api/readyz`](#diagnosing-a-503-from-apireadyz)
+    * [`rag-os doctor` - the read-only diagnostic](#rag-os-doctor---the-read-only-diagnostic)
     * [Step 09 — embedding alignment](#step-09--embedding-alignment)
     * [Steps 09-10 — verification](#steps-09-10--verification)
 4. [Key Vault secrets](#4-key-vault-secrets)
@@ -49,7 +51,7 @@ References to **section** N mean a numbered section of this guide.
     * [Which profile should I run?](#which-profile-should-i-run)
     * [How dimensions affect answer quality](#how-dimensions-affect-answer-quality)
     * [Levers that matter more than dimensions](#levers-that-matter-more-than-dimensions)
-    * [Switching to the remote embedder](#switching-to-the-remote-embedder)
+    * [Switching to Azure OpenAI embeddings](#switching-to-azure-openai-embeddings)
     * [Migrating to a different embedding model](#migrating-to-a-different-embedding-model)
 8. [Claude on Foundry](#8-claude-on-foundry)
     * [Which model for which role](#which-model-for-which-role)
@@ -127,6 +129,7 @@ rather than half-deploying.
 | `99-teardown.ps1` | Deletes the resource group and purges what it can. Asks first unless `-Force` ([section 11](#11-update-rollback-teardown)). |
 | `Test-Connectivity.ps1` | Every network hop the deployment depends on, plus copy-paste tests for the container-to-container hops that can only be reached from inside ([step 08](#step-08--08-bootstrapps1)). Step 08 runs it as a pre-flight. |
 | `Test-EmbeddingAlignment.ps1` | Checks that the index, the query path and the ingestion path all use the same embedding model ([step 09](#step-09--embedding-alignment)). Step 09 runs it as a gate. |
+| `rag-os doctor` | Not a script - a CLI inside the containers. Why the knowledge base is unusable, with the real errors ([below](#rag-os-doctor---the-read-only-diagnostic)). |
 | `Scale-SearchReplicas.ps1` | Temporary AI Search capacity for a backfill ([section 10](#10-operations)). |
 | `Set-IngestionControls.ps1` | Pause, resume or throttle ingestion without a redeploy ([section 10](#10-operations)). |
 | `common.ps1` | Shared helpers. Not run directly. |
@@ -565,7 +568,51 @@ Expected: `rag-chat-ui` has an external FQDN; `rag-api`, `rag-embed-query`, `rag
 | Revision fails: cannot resolve a Key Vault secret | Identity lacks *Key Vault Secrets User* or the secret is missing: re-run step 02. |
 | `rag-api` never becomes ready | `/api/readyz` fails on purpose when the TEI pools do not match the embedding profile. `az containerapp logs show -g rg-ragos-dev -n rag-api --tail 100`. |
 | GPU profile add fails | Quota/region. Fallback is automatic; request quota and re-run this step to switch back. |
+| `rag-embed-query` / `rag-embed-ingest` never become ready | Almost always the cold start, not the ONNX errors in the log. See [When a TEI pool never becomes ready](#when-a-tei-pool-never-becomes-ready). |
 | Worker never scales up | KEDA needs *Azure Service Bus Data Owner* on the namespace and `identity` on the scale rule — both set by steps 03 and 07. Check `az containerapp show -n rag-ingest-worker -g <rg> --query properties.template.scale`. |
+
+### When a TEI pool never becomes ready
+
+The log for a failing pool looks alarming and is mostly a red herring:
+
+```
+WARN   Could not download `onnx/model.onnx`: ... 404 Not Found
+ERROR  Model ONNX files not found in the repository
+ERROR  Could not start ORT backend: ... onnx/model.onnx does not exist
+INFO   Downloading `model.safetensors`
+INFO   Model weights downloaded in 122.639µs     <- already baked into the image; nothing was fetched
+INFO   Starting Qwen3 model on Cpu               <- fell back to the Candle backend, successfully
+INFO   Warming up model                          <- and the log stops here
+```
+
+**The ONNX 404s are normal.** Qwen3-Embedding-0.6B publishes no ONNX weights, so TEI tries them, fails, and falls
+back to Candle — which is what `Starting Qwen3 model on Cpu` says. Ignore everything above that line.
+
+**A log that stops at `Warming up model` is an OOM kill**, not a hang and not a timeout. The container is
+SIGKILLed (exit 137), and a SIGKILL writes nothing, so the last thing you see is the line before it died. It is
+then restarted, and does the same thing again.
+
+**The cause is `MAX_INPUT_LENGTH`, not the memory limit.** Unset, TEI sizes its warm-up from the model's own
+maximum — Qwen3 declares 32768 positions — while chunks are capped at 1200 tokens. Attention memory grows with
+the *square* of sequence length, so warm-up allocated for sequences ~27x longer than anything that would ever be
+sent. Measured on the real `cpu-1.9` image at the limits the templates request:
+
+| vCPU | Memory | `MAX_INPUT_LENGTH` / `MAX_BATCH_TOKENS` | Result |
+|---|---|---|---|
+| 2 | 4 GiB | unset / 16384 | **OOM-killed** after ~90 s |
+| 2 | **8 GiB** | unset / 16384 | **OOM-killed** after 38 s — more memory does not help |
+| 2 | 4 GiB | 2048 / 4096 | survives, but warm-up did not finish inside 9 minutes |
+| 2 | 4 GiB | **2048 / 2048** — what ships | **ready**, warm-up 161 s, peak 3390 MiB |
+
+Both values come from the psd1 (`EmbedderMaxInputTokens`, `EmbedderMaxBatchTokensCpu`). If you raise
+`max_chunk_tokens` in a profile, raise `EmbedderMaxInputTokens` above it — a bound below the largest chunk would
+reject real documents at query time instead of failing here.
+
+**Expect a cold start of a few minutes** even when correct. The Startup probe allows ~10 minutes for this reason;
+Liveness and Readiness stay tight, so a *warm* replica that stops answering is still restarted quickly.
+`EmbedQueryMinReplicas = 1` means the query pool pays this only on deploy or restart, but `rag-embed-ingest`
+scales to zero, so its first batch after an idle period waits for it. If that is unacceptable, Azure OpenAI has
+no cold start — see [Switching to Azure OpenAI embeddings](#switching-to-azure-openai-embeddings).
 
 ### Step 08 — `08-bootstrap.ps1`
 ```powershell
@@ -658,7 +705,7 @@ has no curl, and `urlopen` raises on 503, so `http.client` is used:
 
 ```sh
 python3 -c "import http.client,json;c=http.client.HTTPConnection('localhost',8000,timeout=45);c.request('GET','/api/readyz');r=c.getresponse();print('status',r.status);print(json.dumps(json.loads(r.read()),indent=2))"
-rag-os doctor    # read-only: index, stored vs expected fingerprint, DB and both embedder pools, with real errors
+rag-os doctor    # read-only; see 'rag-os doctor' below for how to run it and how to read the report
 ```
 
 `./infra/scripts/Test-Connectivity.ps1 -Env dev -SnippetsOnly` prints these ready to paste.
@@ -678,7 +725,7 @@ rag-os doctor    # read-only: index, stored vs expected fingerprint, DB and both
 | `index profile unreadable (<ExcType>)` | AI Search itself could not be asked | A role assignment that has not replicated, a network path, or throttling — not a bootstrap problem. |
 
 The body names exception **types**, never their messages: this endpoint is public. The full errors go to the
-container log and to `rag-os doctor`.
+container log and to [`rag-os doctor`](#rag-os-doctor---the-read-only-diagnostic).
 
 #### If re-running shows the same reason
 
@@ -688,6 +735,107 @@ Add `?fresh=1` to force a live re-check:
 ```sh
 curl -sS "https://<chat-ui-fqdn>/api/readyz?fresh=1"
 ```
+
+### `rag-os doctor` - the read-only diagnostic
+
+**What it is.** One command, run inside a container, that answers *"why is the knowledge base unusable?"* and
+prints the **real** errors. `/api/readyz` answers the same question but is deliberately terse: it is served
+unauthenticated through the chat UI, so it names exception *types* and never their messages. `doctor` runs where
+you are already authenticated, so it can show the message, the endpoint and the stored profile in full.
+
+**It never writes.** That matters because the only other command that reports guard reasons is `rag-os bootstrap`,
+which also creates the index and stamps the profile — so using it to diagnose destroys the evidence of what was
+wrong. `doctor` looks and changes nothing.
+
+**Exit code** is `0` when everything needed to serve a query is usable and `1` when it is not, so it can be used
+in a script or a CI step.
+
+#### How to run it
+
+`rag-os` is a console script installed by `uv` into `/app/.venv/bin`, which the image puts on `PATH`. It needs
+no module path, no `python -m` and no working directory. That it resolves is not a guess: `rag-ingest-worker`,
+`rag-bootstrap` and `rag-scheduler` are all started with a bare `command: [rag-os]`, so they would not run at
+all if it did not.
+
+**It is only in the workloads built from the API image**, and only one of those reliably has a console:
+
+| Workload | Kind | Has `rag-os` | Console usable? |
+|---|---|---|---|
+| `rag-api` | app | yes | **Yes — use this one.** `ApiMinReplicas = 2`, so a replica is always there. |
+| `rag-ingest-worker` | app | yes | Only while it happens to be running: `minReplicas: 0`, so it is asleep whenever the queue is empty. |
+| `rag-bootstrap`, `rag-scheduler` | **jobs** | yes | **No.** Container Apps *jobs* have no console and cannot be exec'd into — there is no `az containerapp job exec`. Start them with `az containerapp job start` and read the execution logs. |
+| `rag-chat-ui` | app | **no** | nginx image. No Python at all. |
+| `rag-embed-query`, `rag-embed-ingest` | apps | **no** | TEI image: it has `curl` but no `python3`. |
+
+1. **Portal → `rag-api` → Monitoring → Console** (container `api`). The route to use mid-incident:
+
+   ```sh
+   rag-os doctor
+   ```
+
+2. **From your machine**, via a shell in a running `rag-api` replica. `az containerapp exec` opens an
+   interactive SSH-like shell — `--command` selects the *shell*, not a command to run — so you land at a prompt
+   and type it there:
+
+   ```powershell
+   az containerapp exec -g rg-ragos-dev -n rag-api --command sh
+   # then, at the prompt:
+   rag-os doctor
+   ```
+
+3. **Locally**, against whatever your environment variables point at (a local stack, or Azure if you are signed
+   in and the firewall allows you):
+
+   ```powershell
+   uv run rag-os doctor
+   ```
+
+#### What it reports
+
+```jsonc
+{
+  "index": "kb-enterprise-1d77e0a5cc",          // the index this deployment queries
+  "expected_profile_fingerprint": "1d77e0a5cc", // from config/embedding/profiles.yaml
+  "index_exists": true,                         // distinguishes "never created" from "created, never stamped"
+  "stored_profile": { "fingerprint": "1d77e0a5cc", "model": "Qwen/Qwen3-Embedding-0.6B", "...": "..." },
+  "stored_profile_fingerprint": "1d77e0a5cc",   // must equal expected_profile_fingerprint
+  "state_db": "ok",                             // or "OperationalError: <the real message>"
+  "embedders": {
+    "query":  { "model": "Qwen/Qwen3-Embedding-0.6B", "revision": "97b0c614", "dimensions": 1024 },
+    "ingest": { "model": "Qwen/Qwen3-Embedding-0.6B", "revision": "97b0c614", "dimensions": 1024 }
+  },
+  "profile": { "name": "qwen3-0.6b-1024", "provider": "tei", "...": "..." },
+  "guard_ok": true,
+  "reasons": [],                                // why queries would be refused
+  "notes": []                                   // true but not failures, e.g. the ingest pool asleep
+}
+```
+
+**Read it in this order:**
+
+| If this is wrong | It means |
+|---|---|
+| `state_db` is not `"ok"` | PostgreSQL. The full error is here, unlike in `/api/readyz`. |
+| `index_exists` is `false` | Nothing was ever created. `rag-os bootstrap`, or re-run [step 08](#step-08--08-bootstrapps1). |
+| `index_exists` is `true` but `stored_profile` is `null` | Created, then something stopped before it was stamped. Find out why the bootstrap job did not finish. |
+| `stored_profile_fingerprint` ≠ `expected_profile_fingerprint` | The index holds vectors from a different model. Queries are refused rather than answered wrongly. |
+| `embedders.query` and `embedders.ingest` disagree | **The serious one.** Documents and queries are being embedded into different vector spaces. See [step 09 — embedding alignment](#step-09--embedding-alignment). |
+| either pool disagrees with `profile` | That pool is serving something other than what is configured. |
+| `embedders.ingest` shows an error | Usually fine — that pool scales to zero when idle. It appears in `notes`, not `reasons`. |
+
+`reasons` is the authoritative list: when it is empty and `guard_ok` is `true`, queries will be served.
+
+#### `rag-os bootstrap` from the same console
+
+The same binary, in the same containers, so `rag-os bootstrap` can be run from `rag-api`'s console too. It is
+idempotent and it is exactly what the `rag-bootstrap` job runs — migrations, then create the index and stamp the
+embedding profile. Use it when `doctor` reports `index_exists: false` or a `null` stored profile and you would
+rather not re-run [step 08](#step-08--08-bootstrapps1).
+
+It **writes**, which is the difference: reach for `doctor` to find out what is wrong and `bootstrap` to fix it,
+never `bootstrap` to find out — it creates and stamps on the way, so it destroys the evidence of what was wrong.
+Prefer `az containerapp job start -g <rg> -n rag-bootstrap` when nothing is urgent: the job is the supported path
+and its execution is recorded.
 
 ### Step 09 — embedding alignment
 
@@ -1058,28 +1206,144 @@ than a real tokenizer — the ~7× headroom between 1200 and 8192 is what makes 
 > worse recall. `scripts/smoke.py` is the only thing that would notice, because it asserts on what a real
 > question retrieves.
 
-### Switching to the remote embedder
+### Switching to Azure OpenAI embeddings
 
-Four things must happen together. Doing only the first is the common mistake.
+Every step below is required. The scripts now refuse the half-configured states rather than deploying them, so
+the failure modes are loud — but the re-ingest and the clean-up are yours, and nothing will remind you.
 
-1. **`EmbeddingProfile = 'aoai-3-small-1536'`** — this is what actually selects the model.
-2. **`DeployAoaiEmbedding = $true`** — otherwise step 05 creates no deployment and step 07 never sets
-   `AOAI_EMBED_DEPLOYMENT`. Step 05 now refuses to continue if you forget.
-3. **Re-ingest everything.** The fingerprint changes, so the index name changes, so the new index starts *empty*.
-4. **Stop paying for the TEI pools.** Steps 06 and 07 now skip building and deploying them for a non-`tei`
-   profile, and step 07 prints the `az containerapp delete` commands for any left from an earlier run.
-   **Also lower `QueryMinNodes` to 1** — the psd1 sizes it at 2 to fit `api(2) + chat-ui(1) + embed-query(2)` =
-   5 vCPU. Without the embedder that is 3 vCPU, so one D4 node is enough. The saving is only real once you
-   change it.
+#### Why, and what it costs
 
-> **The green-but-empty trap.** Switch the profile and re-run the bootstrap job *before* re-ingesting and you get
-> a new empty index: `/readyz` goes **green** and every question returns "I could not find that" with **HTTP
-> 200**. Every health signal says healthy while the assistant answers nothing. The procedure below ingests into
-> the new index *before* cutting over, for exactly this reason.
+| | Self-hosted TEI (default) | Azure OpenAI |
+|---|---|---|
+| Per-token cost | none | **billed per token, for queries and ingestion alike** |
+| Cold start | ~3 minutes on CPU (see the troubleshooting note below) | none |
+| Throughput ceiling | replicas and vCPU | **`EmbeddingModelCapacity` TPM quota** |
+| GPU quota needed | yes, for the ingestion pool | no |
+| Image builds | two multi-GB images | none |
+| Model identity checked | yes — `GET /info` reports what the server really loaded | **no** — see the limitation below |
 
-> **You also give up a real check.** With `tei`, `ProfileGuard` compares the model id and revision the server
-> genuinely reports from `GET /info`. With `azure_openai`, `info()` returns the profile back to itself, so model
-> and revision can never mismatch — it degrades to a reachability check, not an identity check.
+> **You give up a real check.** With `tei`, `ProfileGuard` compares the model id and revision the server actually
+> reports. With `azure_openai`, `info()` returns the configured profile back to itself, because the SDK exposes no
+> deployment identity — only the *vector width* is genuinely observed. A deployment repointed at another model
+> would not be detected. `embedded_by` on each chunk records what was reported, which for this provider is
+> configuration echoed back; that is why it is worth less here than for TEI.
+
+#### 1. Before you start
+
+**Check the TPM quota in your region.** Step 00 now checks this too, but a refusal here is cheaper than one at
+step 05, after steps 01–04 have created resources:
+
+```powershell
+az cognitiveservices usage list -l westus `
+  --query "[?contains(name.value,'text-embedding-3-small')].{name:name.value, used:currentValue, limit:limit}" -o table
+```
+
+`EmbeddingModelCapacity` is in **thousands of TPM** (120 = 120,000). That number is also your ingestion ceiling:
+a back-fill of a large corpus will sit against it, and the adapter now retries throttles with backoff rather than
+failing the document.
+
+**Know that the re-ingest is mandatory.** `provider`, `model`, `dimensions`, the prefixes and `max_input_tokens`
+are all part of the profile fingerprint, and the index is named `kb-<domain>-<fingerprint>`. A different profile
+is therefore a **different, empty index**. You cannot re-embed in place.
+
+**Plan for two copies of the index** if you use the blue/green path below: the binding limit is the **vector quota
+of 35 GB per S1 partition**. Estimate each copy as `chunks x dimensions x 1 byte` — and note 1536 dimensions is
+50% wider than the 1024 of the default profile.
+
+#### 2. Change the settings
+
+In `infra/env/dev.psd1`:
+
+```powershell
+EmbeddingProfile    = 'aoai-3-small-1536'   # selects the model — this is the one that matters
+DeployAoaiEmbedding = $true                 # creates the deployment; step 05 refuses without it
+```
+
+`EmbedderModelId`, `EmbedderModelRevision` and `EmbeddingDimensions` describe the TEI image and become inert.
+Leave them — `EmbedderModelRevision` may now be blank for a remote profile, but a *self-hosted* profile still
+requires a full 40-character commit SHA.
+
+#### 3. Re-run the steps, in this order
+
+```powershell
+./infra/scripts/00-prereqs.ps1 -Env dev    # re-validates the profile/deployment pairing and the TPM quota
+./infra/scripts/05-foundry.ps1 -Env dev    # creates the deployment, records `embeddingDeployment` in outputs
+./infra/scripts/06-registry-build.ps1 -Env dev   # skips both embedder images — nothing calls them now
+./infra/scripts/07-container-apps.ps1 -Env dev   # skips the TEI pools, injects AOAI_EMBED_DEPLOYMENT
+./infra/scripts/08-bootstrap.ps1 -Env dev        # creates and stamps the NEW index
+```
+
+Step 07 refuses to deploy if step 05 recorded no deployment, because the apps would otherwise come up healthy and
+fail on their first embedding call.
+
+#### 4. Choose a cutover, then re-ingest
+
+**Straight cutover** — simplest, and fine when nobody depends on answers yet. The commands above leave you with a
+new, empty index; back-fill it and the assistant is blind until that finishes:
+
+```powershell
+uv run rag-os discover --source <id>      # a profile change marks every document stale, so this queues everything
+```
+
+**Blue/green** — when the assistant is in use. Give the *ingestion side only* the new profile, back-fill, verify
+the count, then cut `rag-api` over. `rag-api` keeps serving the old index throughout. The sequence is the one in
+[Migrating to a different embedding model](#migrating-to-a-different-embedding-model) below — follow it from
+"Give the ingest side the new profile", skipping its step 2, since no embedder images are being rebuilt.
+
+#### 5. Verify
+
+```powershell
+./infra/scripts/Test-EmbeddingAlignment.ps1 -Env dev   # for a remote profile this checks the deployment, not the image
+curl -sS https://<chat-ui-fqdn>/api/readyz | ConvertFrom-Json | ConvertTo-Json -Depth 6
+./infra/scripts/09-smoke.ps1 -Env dev
+```
+
+From `rag-api`'s console, `rag-os doctor` prints the deployment, both pools and the stored index profile with the
+real errors ([reference](#rag-os-doctor---the-read-only-diagnostic)). Confirm the new index actually holds
+documents before you trust a green `/readyz` — that is the green-but-empty trap.
+
+> **The green-but-empty trap.** Re-run the bootstrap job *before* re-ingesting and you get a new empty index:
+> `/readyz` goes **green** and every question returns "I could not find that" with **HTTP 200**. Every health
+> signal says healthy while the assistant answers nothing.
+
+#### 6. Stop paying for what you no longer use
+
+Step 07 prints these as one block when it detects them; nothing is deleted for you, because a provisioning script
+should not remove a running app on its own.
+
+```powershell
+az containerapp delete -g rg-ragos-dev -n rag-embed-query --yes
+az containerapp delete -g rg-ragos-dev -n rag-embed-ingest --yes
+az containerapp env workload-profile delete -g rg-ragos-dev -n <env> --workload-profile-name gpu-t4
+az acr repository delete -n <registry> --repository rag-embedder-cpu        # and rag-embedder-turing
+```
+
+Then in the psd1 — these are the changes that actually move the bill:
+
+```powershell
+EnableGpu     = $false   # nothing uses the T4 profile once the pools are gone
+QueryMinNodes = 1        # the profile was sized for api(2) + chat-ui(1) + embed-query(2) = 5 vCPU; now 3
+```
+
+#### 7. What changes afterwards
+
+* **Billing** is per token, for every query and every ingested chunk.
+* **A 429 is normal** during a back-fill. The adapter retries with jittered backoff; a throttle that outlasts it
+  surfaces as `embedder unavailable (DependencyUnavailable)` and the document is redelivered.
+* **`AOAI_API_VERSION` is hardcoded** in `settings.py` (`2024-10-21`). There is no psd1 key; it is pinned because
+  the `dimensions` parameter depends on it.
+* **`/api/readyz` costs a billed embedding call** when it re-checks — `info()` has no free equivalent on Azure.
+  It is cached for the guard's recheck window, and both pools share one client, so it is one call and not two.
+
+#### Rolling back to TEI
+
+Not free, and it is a second re-ingest — worth knowing before you need it:
+
+1. `EmbeddingProfile = 'qwen3-0.6b-1024'`, `DeployAoaiEmbedding = $false`.
+2. `./infra/scripts/06-registry-build.ps1 -Env dev` — rebuilds both embedder images (up to two hours each).
+3. `./infra/scripts/07-container-apps.ps1 -Env dev` — redeploys both pools, and re-attaches `gpu-t4` if
+   `EnableGpu = $true`.
+4. `./infra/scripts/08-bootstrap.ps1 -Env dev`, then re-ingest the corpus into the old fingerprint's index.
 
 ### Migrating to a different embedding model
 

@@ -10,7 +10,7 @@ from typing import Any
 
 from rag_os.application.ports import EmbeddingProvider, SearchIndex
 from rag_os.domain.embedding import EmbedderInfo, EmbeddingProfile
-from rag_os.domain.errors import ProfileMismatch
+from rag_os.domain.errors import DependencyUnavailable, ProfileMismatch
 
 log = logging.getLogger(__name__)
 
@@ -131,17 +131,27 @@ class ProfileGuard:
         reasons: list[str] = []
         notes: list[str] = []
         emb_info: dict[str, dict[str, Any]] = {}
+        # One provider can appear under several pool names - it does whenever both pools address the same
+        # server or deployment. Asking it twice tells us nothing new, and for Azure OpenAI info() is a billed
+        # embedding call, so the duplicate was money for a repeated answer.
+        seen: dict[int, EmbedderInfo] = {}
         for pool, emb in embedders.items():
             try:
-                info = await emb.info()
+                info = seen.get(id(emb))
+                if info is None:
+                    info = await emb.info()
+                    seen[id(emb)] = info
                 emb_info[pool] = info.model_dump()
                 reasons += self._compare_embedder(info, pool)
             except Exception as e:
-                # Type, not message. These strings reach /api/readyz, which is served unauthenticated through
-                # the chat UI, and an adapter's error text carries endpoints. The full exception goes to the
-                # log and to `rag-os doctor`, neither of which is public.
+                # These strings reach /api/readyz, which is served unauthenticated through the chat UI, so a
+                # third-party exception's text is withheld - it carries endpoints and identity detail. Our OWN
+                # DependencyUnavailable messages are different: we author them, they name configuration keys
+                # rather than credentials, and without them a missing AOAI_EMBED_DEPLOYMENT reads as nothing but
+                # "DependencyUnavailable", which tells the operator to look in entirely the wrong place.
                 log.warning("embedding pool unreachable", exc_info=True, extra={"pool": pool})
-                unavailable = f"{pool}: embedder unavailable ({type(e).__name__})"
+                detail = str(e) if isinstance(e, DependencyUnavailable) else type(e).__name__
+                unavailable = f"{pool}: embedder unavailable ({detail})"
                 if pool in advisory_pools:
                     notes.append(f"{unavailable} - expected when it has scaled to zero")
                 else:

@@ -112,11 +112,13 @@ def test_usage_normalisation() -> None:
 
 def _container(**overrides: object) -> Container:
     """A Container whose settings are valid enough to resolve LLM roles (nothing is called)."""
-    return Container(Settings(
-        app_env="test", queue="in_memory", search_backend="in_memory", embedding_profile="test-fake-256",
-        aoai_endpoint="https://example.openai.azure.com", otel_enabled=False,
-        _env_file=None,  # type: ignore[call-arg]
-        **overrides))  # type: ignore[arg-type]
+    defaults: dict[str, object] = {
+        "app_env": "test", "queue": "in_memory", "search_backend": "in_memory",
+        "embedding_profile": "test-fake-256", "aoai_endpoint": "https://example.openai.azure.com",
+        "otel_enabled": False,
+    }
+    defaults.update(overrides)
+    return Container(Settings(_env_file=None, **defaults))  # type: ignore[arg-type, call-arg]
 
 
 def test_roles_share_one_client_when_they_resolve_to_the_same_model() -> None:
@@ -182,3 +184,20 @@ def test_every_shipped_profile_loads_and_the_default_fingerprint_is_stable() -> 
     assert profiles["qwen3-0.6b-512"].native_dimensions == 1024
     assert profiles["qwen3-0.6b-512"].model == profiles["qwen3-0.6b-1024"].model
     assert profiles["qwen3-0.6b-1024"].fingerprint() != profiles["qwen3-0.6b-512"].fingerprint()
+
+
+def test_the_two_pools_share_one_client_for_azure_openai() -> None:
+    """There is no second endpoint for Azure OpenAI to point at: the deployment is whatever
+    AOAI_EMBED_DEPLOYMENT names. Two clients meant two credential chains, two token caches, and - because
+    /api/readyz asks each pool to describe itself and that description is a billed embeddings call - twice the
+    cost for the same answer."""
+    c = _container(embedding_profile="aoai-3-small-1536", aoai_embed_deployment="text-embedding-3-small",
+                   tei_ingest_url="http://a-different-host-entirely")
+    assert c.embed_ingest is c.embed_query, "one deployment should mean one client"
+
+
+def test_the_two_pools_stay_separate_for_a_distinct_tei_ingest_url() -> None:
+    """The self-hosted topology genuinely has two servers - a CPU query pool and a GPU ingestion pool."""
+    c = _container(embedding_profile="qwen3-0.6b-1024", tei_query_url="http://rag-embed-query",
+                   tei_ingest_url="http://rag-embed-ingest")
+    assert c.embed_ingest is not c.embed_query, "two servers must not be collapsed into one client"

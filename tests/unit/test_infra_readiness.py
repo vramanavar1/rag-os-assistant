@@ -593,3 +593,125 @@ def test_08_records_the_index_it_confirmed() -> None:
     profile changed and the new index is empty' apart from 'the content is missing'."""
     boot = (SCRIPTS / "08-bootstrap.ps1").read_text(encoding="utf-8")
     assert "embeddingIndex" in boot and "Save-Outputs" in boot, "the confirmed index should be persisted"
+
+
+# ------------------------------------------------------- the alignment gate under each embedding provider
+# The self-hosted keys (EmbedderModelId, EmbedderModelRevision) describe the TEI image. For a remote profile no
+# such image is built or deployed, so comparing the profile against them reports a mismatch that means nothing -
+# and because 09 hard-throws on this gate, it failed every correct Azure OpenAI configuration.
+ENV_DIR = REPO / "infra" / "env"
+
+
+def write_env(name: str, replacements: dict[str, str], outputs: dict | None = None) -> list[Path]:
+    """Derive infra/env/<name>.psd1 from dev.psd1. Returns the files to delete.
+
+    The script resolves its own env directory when it dot-sources common.ps1, so the fixture has to live where
+    it looks - overriding the variable from outside does not survive that re-sourcing.
+    """
+    src = (ENV_DIR / "dev.psd1").read_text(encoding="utf-8")
+    for old, new in replacements.items():
+        assert old in src, f"dev.psd1 no longer contains {old!r} - the fixture needs updating"
+        src = src.replace(old, new, 1)
+    written = [ENV_DIR / f"{name}.psd1"]
+    written[0].write_text(src, encoding="utf-8")
+    if outputs is not None:
+        written.append(ENV_DIR / f"{name}.outputs.json")
+        written[-1].write_text(json.dumps(outputs), encoding="utf-8")
+    return written
+
+
+def run_alignment(name: str) -> tuple[int, str]:
+    done = subprocess.run(
+        [str(PWSH), "-NoProfile", "-NonInteractive", "-File",
+         str(SCRIPTS / "Test-EmbeddingAlignment.ps1"), "-Env", name, "-SkipLive"],
+        capture_output=True, text=True, cwd=REPO, timeout=180)
+    return done.returncode, done.stdout + done.stderr
+
+
+@needs_pwsh
+def test_a_remote_profile_is_not_judged_against_the_self_hosted_keys() -> None:
+    files = write_env("zzaoai", {
+        "Env                 = 'dev'": "Env                 = 'zzaoai'",
+        "EmbeddingProfile          = 'qwen3-0.6b-1024'": "EmbeddingProfile          = 'aoai-3-small-1536'",
+        "DeployAoaiEmbedding     = $false": "DeployAoaiEmbedding     = $true",
+    }, outputs={"embeddingDeployment": "text-embedding-3-small", "aoaiEndpoint": "https://x.openai.azure.com"})
+    try:
+        code, out = run_alignment("zzaoai")
+        assert "provider azure_openai" in out, out
+        assert code == 0, f"a correct remote configuration must pass the gate:\n{out}"
+        # The profile says text-embedding-3-small while the psd1's TEI keys still say Qwen. That is not a fault.
+        assert "Qwen" not in out, f"the TEI model id must not be compared for a remote profile:\n{out}"
+        assert "model_revision" not in out, "a remote profile pins no revision, so there is nothing to compare"
+        assert "do not apply" in out, "say why those keys are being skipped, rather than silently skipping them"
+    finally:
+        for f in files:
+            f.unlink(missing_ok=True)
+
+
+@needs_pwsh
+def test_a_remote_profile_without_a_deployment_fails_the_gate() -> None:
+    """Selecting the model and deploying it are two settings. Only one of them is in the profile."""
+    files = write_env("zzaoai2", {
+        "Env                 = 'dev'": "Env                 = 'zzaoai2'",
+        "EmbeddingProfile          = 'qwen3-0.6b-1024'": "EmbeddingProfile          = 'aoai-3-small-1536'",
+    }, outputs={"aoaiEndpoint": "https://x.openai.azure.com"})
+    try:
+        code, out = run_alignment("zzaoai2")
+        assert code == 1, f"DeployAoaiEmbedding is false and no deployment was recorded:\n{out}"
+        assert "DeployAoaiEmbedding" in out
+        assert "05-foundry" in out or "re-run 05" in out, "name the step that fixes it"
+    finally:
+        for f in files:
+            f.unlink(missing_ok=True)
+
+
+@needs_pwsh
+def test_a_self_hosted_profile_is_still_judged_against_the_self_hosted_keys() -> None:
+    """The branch must not become a way to skip the check that catches a half-rebuilt embedder image."""
+    files = write_env("zztei", {
+        "Env                 = 'dev'": "Env                 = 'zztei'",
+        "EmbedderModelId           = 'Qwen/Qwen3-Embedding-0.6B'":
+            "EmbedderModelId           = 'BAAI/bge-small-en-v1.5'",
+    }, outputs={})
+    try:
+        code, out = run_alignment("zztei")
+        assert code == 1, f"a psd1 that disagrees with the profile must still fail:\n{out}"
+        assert "bge-small" in out and "profiles.yaml" in out, out
+    finally:
+        for f in files:
+            f.unlink(missing_ok=True)
+
+
+@needs_pwsh
+def test_a_remote_profile_may_leave_the_model_revision_blank() -> None:
+    """Azure OpenAI has no commit to pin, so Import-RagOsConfig must not demand a 40-character SHA."""
+    files = write_env("zzblank", {
+        "Env                 = 'dev'": "Env                 = 'zzblank'",
+        "EmbeddingProfile          = 'qwen3-0.6b-1024'": "EmbeddingProfile          = 'aoai-3-small-1536'",
+        "DeployAoaiEmbedding     = $false": "DeployAoaiEmbedding     = $true",
+        "EmbedderModelRevision     = '97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3'":
+            "EmbedderModelRevision     = ''",
+    }, outputs={"embeddingDeployment": "text-embedding-3-small"})
+    try:
+        code, out = run_alignment("zzblank")
+        assert "40-character commit SHA" not in out, f"the pin is a self-hosted concern only:\n{out}"
+        assert code == 0, out
+    finally:
+        for f in files:
+            f.unlink(missing_ok=True)
+
+
+@needs_pwsh
+def test_a_self_hosted_profile_still_requires_a_pinned_revision() -> None:
+    files = write_env("zzunpin", {
+        "Env                 = 'dev'": "Env                 = 'zzunpin'",
+        "EmbedderModelRevision     = '97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3'":
+            "EmbedderModelRevision     = 'main'",
+    }, outputs={})
+    try:
+        code, out = run_alignment("zzunpin")
+        assert code != 0 and "40-character commit SHA" in out, (
+            f"an unpinned self-hosted model must still be refused:\n{out}")
+    finally:
+        for f in files:
+            f.unlink(missing_ok=True)

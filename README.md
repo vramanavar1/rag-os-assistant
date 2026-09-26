@@ -184,6 +184,7 @@ Copy-Item infra/env/dev.sample.psd1 infra/env/dev.psd1   # fill in subscription,
 ./infra/scripts/provision-all.ps1 -Env dev               # 00 prereqs … 08 bootstrap (idempotent, re-runnable)
 ./infra/scripts/09-smoke.ps1 -Env dev                    # end-to-end checks through the public URL
 ./infra/scripts/Test-Connectivity.ps1 -Env dev           # every network hop, if something cannot reach something
+./infra/scripts/Test-EmbeddingAlignment.ps1 -Env dev     # do documents and queries use the same embedding model?
 ```
 
 When it finishes, the script prints the chat URL (`https://rag-chat-ui.<env-domain>`), the admin console and the
@@ -797,14 +798,28 @@ match rule contributes one clause, and the combined filter is what Azure AI Sear
 
 ## 15. Troubleshooting / FAQ
 
+**Start here when the knowledge base will not answer.** From the container app's *Monitoring → Console*
+(`rag-api`, container `api`):
+
+```sh
+rag-os doctor
+```
+
+Read-only, changes nothing, exits non-zero when the system cannot serve a query. It prints the index, the
+expected vs stored embedding fingerprint, the database result and both embedder pools — with the **real** error
+messages, which `/api/readyz` deliberately omits because it is reachable without authentication. Full reference,
+including how to read each field: [Deployment.md](Deployment.md#rag-os-doctor---the-read-only-diagnostic).
+
 | Symptom | Cause and fix |
 |---|---|
-| `/api/readyz` returns 503 `embedding_profile` | The TEI model id, revision or dimensions don't match the profile, or the index has no recorded profile. Run `rag-os bootstrap` and check the TEI image tag and revision. The service will not fall back to another embedder. |
+| `/api/readyz` returns 503 `embedding_profile` | The body names the cause; `rag-os doctor` gives the full error. Either a pool serves a different model/revision/dimensions than the profile, or the index has no recorded profile (`rag-os bootstrap`). There is deliberately no fallback embedder. |
 | Worker logs "worker idle: embedding profile guard failing" | Same as above. The worker refuses to index vectors from an unexpected model. |
+| Answers are plausible but wrong, citing unrelated passages | Documents and queries may have been embedded by different models — searching one vector space with another's vector returns arbitrary passages with full confidence, and nothing errors. Run `./infra/scripts/Test-EmbeddingAlignment.ps1 -Env dev`, and find affected chunks with the index filter `embedded_by ne '<model>@<revision>'`. |
 | 403 from Search, Storage, Service Bus or Key Vault right after provisioning | Role assignments take 5–10 minutes to apply. Re-run the step; scripts retry. |
 | 401 `untrusted issuer` / `token lifetime exceeds the allowed maximum` | The token must come from a trusted issuer `iss`, `aud=rag-os` and a lifetime of ≤ 15 minutes. |
 | Answers always "could not find…" | The caller has no matching attributes (see `/admin` → Explain access), or the documents aren't INDEXED yet. |
 | GPU workload profile fails to create | Quota or region. The scripts fall back to the CPU ingestion pool (same model and profile). |
+| An embedder pool never becomes ready, log ends at "Warming up model" | An OOM kill (exit 137), not a hang — and the ONNX 404s above it are normal. `MAX_INPUT_LENGTH` bounds the warm-up; more memory does not help. See [Deployment.md](Deployment.md#when-a-tei-pool-never-becomes-ready). |
 | `uv` TLS errors | Set `UV_NATIVE_TLS=1` (tasks.ps1 does). |
 | Local folder source cannot sync from the admin page | Local folders must be discovered where they are mounted: `rag-os discover --source <id>`. |
 

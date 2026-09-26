@@ -33,6 +33,10 @@ properties:
         env:
           - name: MAX_BATCH_TOKENS
             value: "{{EMBED_INGEST_MAX_BATCH_TOKENS}}"
+          # Bounds the warm-up, and with it the start-up memory. Unset, TEI uses the model's own maximum (32768
+          # for Qwen3) and is OOM-killed on a 4Gi replica: attention memory is quadratic in sequence length.
+          - name: MAX_INPUT_LENGTH
+            value: "{{EMBEDDER_MAX_INPUT_TOKENS}}"
           - name: MAX_CLIENT_BATCH_SIZE
             value: "64"
           - name: RAYON_NUM_THREADS
@@ -41,15 +45,19 @@ properties:
             value: "{{EMBED_INGEST_THREADS}}"
         probes:
           - type: Startup
-            # GPU replicas start cold (scale from zero): allow up to ~4 minutes to load the model.
+            # This pool starts from zero on every idle period, so it pays a cold start on its first batch.
             httpGet:
               path: /health
               port: 80
             initialDelaySeconds: 30
             periodSeconds: 20
-            # Explicit: the default is 1s, which a cold GPU replica loading a model will not answer within.
+            # Explicit: the default is 1s, which a cold replica loading a model will not answer within.
             timeoutSeconds: 10
-            failureThreshold: 10
+            # 30 + 20 x 30 = 630s. The old ~4 minute budget was sized for the T4 image; with EnableGpu = $false
+            # this same app runs the CPU image, where warming up a 0.6B model takes minutes on a few vCPU and the
+            # replica was simply restarted forever. Sized for the slower of the two, because which one runs here
+            # is a psd1 flag and a GPU quota decision, not something this file can see.
+            failureThreshold: 30
           - type: Liveness
             httpGet:
               path: /health

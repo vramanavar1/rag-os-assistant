@@ -247,6 +247,15 @@ foreach ($key in $Config.ExtraAppSettings.Keys) {
     }
     $appEnv[$name] = $Config.ExtraAppSettings[$key]
 }
+# The embedding equivalent of the Claude check below, and stricter: without AOAI_EMBED_DEPLOYMENT the apps come
+# up healthy and then fail on their FIRST embedding call, which is a query or an ingested document rather than
+# anything this script would notice. The Claude path can warn because a missing chat deployment surfaces on the
+# next question; this one has to stop, because the alternative is a deployment that looks finished and is not.
+if (-not $useTei -and -not (Get-Value $o 'embeddingDeployment')) {
+    throw ("EmbeddingProfile '$($Config.EmbeddingProfile)' uses provider '$embedProvider', but step 05 recorded " +
+        "no embedding deployment, so AOAI_EMBED_DEPLOYMENT cannot be set and every embedding call would fail. " +
+        "Set DeployAoaiEmbedding = `$true and re-run: ./infra/scripts/05-foundry.ps1 -Env $($Config.EnvName)")
+}
 if (($Config.AnswerModelProvider -eq 'claude' -or $Config.UtilityModelProvider -eq 'claude') -and -not (Get-Value $o 'claudeDeployed')) {
     Write-Warn "A model role uses Claude, but step 05 did not deploy it. Check the deployment exists in the Foundry portal."
     Write-Info "Expected deployment name(s): $(@($Config.AnswerModelProvider -eq 'claude' ? $Config.ClaudeAnswerModelName : $null, $Config.UtilityModelProvider -eq 'claude' ? $Config.ClaudeUtilityModelName : $null | Where-Object { $_ }) -join ', ')"
@@ -275,6 +284,7 @@ $tokens = @{
     EMBED_INGEST_MAX_REPLICAS     = ($useGpu ? $Config.GpuMaxReplicas : $Config.EmbedIngestCpuMaxReplicas)
     EMBED_INGEST_CONCURRENCY      = $Config.EmbedIngestConcurrency
     EMBEDDER_MAX_BATCH_TOKENS_CPU = $Config.EmbedderMaxBatchTokensCpu
+    EMBEDDER_MAX_INPUT_TOKENS     = $Config.EmbedderMaxInputTokens
     EMBED_QUERY_MIN_REPLICAS      = $Config.EmbedQueryMinReplicas
     EMBED_QUERY_MAX_REPLICAS      = $Config.EmbedQueryMaxReplicas
     EMBED_QUERY_CONCURRENCY       = $Config.EmbedQueryConcurrency
@@ -310,14 +320,33 @@ $workloads = @(
 if ($useTei) { $workloads = @(@{ Name = 'rag-embed-query'; Job = $false }, @{ Name = 'rag-embed-ingest'; Job = $false }) + $workloads }
 else {
     Write-Warn "EmbeddingProfile '$($Config.EmbeddingProfile)' uses provider '$embedProvider': the TEI pools are not deployed."
+    # Collected into one block rather than announced as it goes. Switching to a remote embedder leaves several
+    # things behind, each cheap to miss and all of them still billing; scattered across two sections of output
+    # they read as commentary rather than as a list of things to do.
+    # Nothing here deletes anything: a provisioning script must not remove a running app on its own.
+    $leftovers = [System.Collections.Generic.List[string]]::new()
     foreach ($app in @('rag-embed-query', 'rag-embed-ingest')) {
-        # Never delete a running app from a provisioning script - say what to run and let the operator decide.
         if (Test-AzResource @('containerapp', 'show', '-g', $rg, '-n', $app, '--query', 'id', '-o', 'tsv')) {
-            Write-Info "Still deployed from an earlier run: az containerapp delete -g $rg -n $app --yes"
+            $leftovers.Add("az containerapp delete -g $rg -n $app --yes")
         }
     }
-    Write-Info "Then lower QueryMinNodes to 1 in the psd1: without rag-embed-query the query profile needs 3 vCPU,"
-    Write-Info '  not 5, so one D4 node is enough. That is where the saving actually is.'
+    # Keyed off EnableGpu, not the provider, so the branch above reports an attached gpu-t4 profile as a success
+    # when the profile is remote - the one case where nothing will ever use it again.
+    if ($Config.EnableGpu -and $profiles.ContainsKey('gpu-t4')) {
+        $leftovers.Add("az containerapp env workload-profile delete -g $rg -n $($n.ContainerEnv) --workload-profile-name gpu-t4")
+    }
+    if ($leftovers.Count -gt 0) {
+        Write-Warn "$($leftovers.Count) resource(s) from the self-hosted embedder are still deployed and still billing:"
+        foreach ($cmd in $leftovers) { Write-Host "      $cmd" -ForegroundColor Yellow }
+    }
+    Write-Info 'Then, in the psd1 - these are the ones that actually change the bill:'
+    if ($Config.EnableGpu) { Write-Info '  EnableGpu     = $false   # nothing uses the T4 profile once the pools are gone' }
+    if ([int]$Config.QueryMinNodes -gt 1) {
+        Write-Info "  QueryMinNodes = 1        # currently $($Config.QueryMinNodes). The query profile was sized for"
+        Write-Info '                           # api(2) + chat-ui(1) + embed-query(2) = 5 vCPU; without the embedder'
+        Write-Info '                           # it is 3 vCPU, so one node is enough.'
+    }
+    Write-Info "The embedder images stay in ACR and count against its size: az acr repository delete -n $($n.Registry) --repository rag-embedder-cpu"
 }
 foreach ($w in $workloads) {
     if ($Only -and $w.Name -notin $Only) { continue }
