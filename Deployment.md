@@ -53,6 +53,7 @@ References to **section** N mean a numbered section of this guide.
     * [How dimensions affect answer quality](#how-dimensions-affect-answer-quality)
     * [Levers that matter more than dimensions](#levers-that-matter-more-than-dimensions)
     * [Switching to Azure OpenAI embeddings](#switching-to-azure-openai-embeddings)
+        * [What you end up running](#what-you-end-up-running-and-what-you-no-longer-need)
     * [Migrating to a different embedding model](#migrating-to-a-different-embedding-model)
 8. [Claude on Foundry](#8-claude-on-foundry)
     * [Which model for which role](#which-model-for-which-role)
@@ -608,8 +609,16 @@ turns a decommissioning into a broken restart. Delete the apps, then re-run 06 a
 ```powershell
 ./infra/scripts/07-container-apps.ps1 -Env dev
 ```
-Creates the environment with workload profiles `query` (D4), `ingest` (D8) and `gpu-t4`, then renders and applies the
-seven workloads. If the GPU profile cannot be added, `rag-embed-ingest` runs the CPU image on `ingest` and a warning
+Creates the environment with workload profiles `query` (D4), `ingest` (D8) and — on a self-hosted embedding
+profile — `gpu-t4`, then renders and applies the workloads. **How many depends on the embedding profile:**
+
+| Workload | Applies to |
+|---|---|
+| `rag-api`, `rag-chat-ui`, `rag-ingest-worker`, and the `rag-scheduler` / `rag-bootstrap` jobs | **both** |
+| `rag-embed-query`, `rag-embed-ingest` | **tei only** |
+
+Five workloads on a remote profile, seven on a self-hosted one — markers as defined under
+[What you end up running](#what-you-end-up-running-and-what-you-no-longer-need). If the GPU profile cannot be added, `rag-embed-ingest` runs the CPU image on `ingest` and a warning
 says so. The rendered YAML is written to a temp folder (path is printed) for troubleshooting.
 
 ```powershell
@@ -618,8 +627,11 @@ az containerapp job list -g rg-ragos-dev --query "[].{name:name, trigger:propert
 az containerapp env workload-profile list -g rg-ragos-dev -n cae-ragos-dev -o table
 az containerapp show -g rg-ragos-dev -n rag-api --query "properties.configuration.secrets"   # keyVaultUrl only, no values
 ```
-Expected: `rag-chat-ui` has an external FQDN; `rag-api`, `rag-embed-query`, `rag-embed-ingest` have internal ones;
-`rag-ingest-worker` has none; both jobs exist.
+Expected, on **any** profile: `rag-chat-ui` has an external FQDN, `rag-api` an internal one,
+`rag-ingest-worker` none, and both jobs exist. **Additionally on a self-hosted (`provider: tei`) profile:**
+`rag-embed-query` and `rag-embed-ingest` exist with internal FQDNs — on a remote profile they are deliberately not
+deployed, so their absence is correct rather than a failure. See
+[What you end up running](#what-you-end-up-running-and-what-you-no-longer-need).
 
 | Problem | Fix |
 |---|---|
@@ -1375,6 +1387,72 @@ requires a full 40-character commit SHA.
 Step 07 refuses to deploy if step 05 recorded no deployment, because the apps would otherwise come up healthy and
 fail on their first embedding call.
 
+#### What you end up running, and what you no longer need
+
+Which apps and services exist is decided by the **`provider:` field of the selected profile** in
+`config/embedding/profiles.yaml` — not by the profile's name. The scripts read it with
+`Get-EmbeddingProfileProvider`, so a profile added later behaves according to its provider and these tables stay
+correct. Throughout this document:
+
+| Marker | Meaning |
+|---|---|
+| **both** | Deployed whatever `EmbeddingProfile` selects |
+| **tei only** | Only when the selected profile has `provider: tei` — self-hosted, e.g. `qwen3-0.6b-1024` |
+| **aoai only** | Only when it has `provider: azure_openai` — e.g. `aoai-3-small-1536` |
+
+**Container apps and jobs.** Five of the seven are deployed on a remote profile; step 07 skips the other two:
+
+| Workload | Kind | Workload profile | Size | Replicas | Applies to |
+|---|---|---|---|---|---|
+| `rag-chat-ui` | app | `query` | 0.5 vCPU / 1Gi, **external** ingress | 1-3 | **both** |
+| `rag-api` | app | `query` | 1.0 / 2Gi, internal | 2-10 | **both** |
+| `rag-ingest-worker` | app | `ingest` | 2.0 / 4Gi, no ingress | 0-10 (KEDA) | **both** |
+| `rag-scheduler` | job | `ingest` | 1.0 / 2Gi | cron | **both** |
+| `rag-bootstrap` | job | `ingest` | 1.0 / 2Gi | manual | **both** |
+| `rag-embed-query` | app | `query` | 2.0 / 4Gi, internal | 1-4 | **tei only** |
+| `rag-embed-ingest` | app | `gpu-t4` or `ingest` | 8.0 / 56Gi on GPU, else 4.0 / 8Gi | 0-4 | **tei only** |
+
+> **`rag-ingest-worker` is still required.** "No embedding pools" reads as "no ingestion", but the worker is what
+> parses, chunks and embeds — on a remote profile it calls Azure OpenAI directly instead of a local pool. Only the
+> two *serving* pools go away.
+
+**Azure services and resources.** Almost everything is common; the embedding provider changes exactly one
+resource on each side:
+
+| Resource | Created by | Applies to |
+|---|---|---|
+| Resource group, Log Analytics, App Insights, budget | 01 | **both** |
+| Managed identity, Key Vault | 02 | **both** |
+| Storage + containers, PostgreSQL, Service Bus + queues | 03 | **both** |
+| Azure AI Search | 04 | **both** |
+| Foundry account + project, chat / utility model deployments | 05 | **both** |
+| **`text-embedding-3-small` deployment** and its TPM quota | 05, gated on `DeployAoaiEmbedding` | **aoai only** |
+| ACR, with the `rag-api` and `rag-chat-ui` repositories | 06 | **both** |
+| **`rag-embedder-cpu` / `rag-embedder-turing` repositories** (~4.25 GB) | 06 | **tei only** |
+| Container Apps environment, `query` and `ingest` workload profiles | 07 | **both** |
+| **`gpu-t4` workload profile** and serverless GPU quota | 07, gated on `EnableGpu` | **tei only** |
+
+> **No new role is needed.** `Cognitive Services OpenAI User` is granted to the managed identity unconditionally
+> by step 05, so embeddings authenticate through the same grant the chat model uses — even when the answer model
+> is Claude.
+
+**Settings that follow the provider.** These are listed in [section 5](#5-application-settings) without this
+distinction:
+
+| Setting | Applies to |
+|---|---|
+| `AOAI_EMBED_DEPLOYMENT` | **aoai only** — step 07 sets it only when 05 recorded a deployment |
+| `TEI_QUERY_URL`, `TEI_INGEST_URL` | **tei only** — 07 omits them entirely otherwise |
+| `EmbedderModelId`, `EmbedderModelRevision`, `EmbedderMaxInputTokens`, `EmbedderMaxBatchTokensCpu/Gpu`, `TeiVersion`, `TeiCpuImage`, `TeiTuringImage` | **tei only** — inert on a remote profile, but must stay syntactically valid |
+
+**Two knock-ons that cost money** until you change them — both in
+[step 6](#6-stop-paying-for-what-you-no-longer-use) below:
+
+* `EnableGpu = $false`. The `gpu-t4` profile exists only for `rag-embed-ingest`, and 07's "profile gpu-t4
+  (exists)" line keys off `EnableGpu` rather than the provider — so it reports an orphaned profile as a success.
+* `QueryMinNodes = 1`. Without `rag-embed-query` the query profile hosts `rag-chat-ui` (0.5) + `rag-api` 2×1.0 =
+  **2.5 vCPU**, which one D4 covers. The default `2` is sized for the 4.5-5 vCPU the self-hosted case needs.
+
 #### 4. Choose a cutover, then re-ingest
 
 **Straight cutover** — simplest, and fine when nobody depends on answers yet. The commands above leave you with a
@@ -1881,15 +1959,18 @@ automatically. Log Analytics and App Insights are recoverable for 14 days under 
 
 ## Appendix — what runs where
 
-| Workload | Kind | Profile | Ingress | Replicas | Command |
-|---|---|---|---|---|---|
-| `rag-chat-ui` | app | `query` | **external** | 1-3 | nginx |
-| `rag-api` | app | `query` | internal | 2-10 (HTTP 50/replica) | `uvicorn rag_os.api.main:app --port 8000 --proxy-headers` |
-| `rag-embed-query` | app | `query` | internal | 1-4 | TEI (CPU image) |
-| `rag-embed-ingest` | app | `gpu-t4` (or `ingest`) | internal | 0-N | TEI (turing image, or CPU fallback) |
-| `rag-ingest-worker` | app | `ingest` | none | 0-N (KEDA azure-servicebus) | `rag-os worker` |
-| `rag-scheduler` | job | `ingest` | – | cron `*/5 * * * *` | `rag-os schedule-tick` |
-| `rag-bootstrap` | job | `ingest` | – | manual | `rag-os bootstrap` |
+Whether a workload is deployed depends on the embedding profile's provider — markers as defined under
+[What you end up running](#what-you-end-up-running-and-what-you-no-longer-need).
+
+| Workload | Kind | Profile | Ingress | Replicas | Command | Applies to |
+|---|---|---|---|---|---|---|
+| `rag-chat-ui` | app | `query` | **external** | 1-3 | nginx | **both** |
+| `rag-api` | app | `query` | internal | 2-10 (HTTP 50/replica) | `uvicorn rag_os.api.main:app --port 8000 --proxy-headers` | **both** |
+| `rag-ingest-worker` | app | `ingest` | none | 0-N (KEDA azure-servicebus) | `rag-os worker` | **both** |
+| `rag-scheduler` | job | `ingest` | – | cron `*/5 * * * *` | `rag-os schedule-tick` | **both** |
+| `rag-bootstrap` | job | `ingest` | – | manual | `rag-os bootstrap` | **both** |
+| `rag-embed-query` | app | `query` | internal | 1-4 | TEI (CPU image) | **tei only** |
+| `rag-embed-ingest` | app | `gpu-t4` (or `ingest`) | internal | 0-N | TEI (turing image, or CPU fallback) | **tei only** |
 
 Generated files (do not commit): `infra/env/<env>.psd1`, `infra/env/<env>.outputs.json` (ids and endpoints discovered by
 the scripts), `infra/env/<env>.images.json` (image digests + the embedding image record).

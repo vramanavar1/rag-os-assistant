@@ -80,6 +80,12 @@ cases) ← `infrastructure` (adapters chosen by **factory registries**) and `api
 *Figure 2 — Azure deployment topology.*
 
 * Only **`rag-chat-ui`** is public. It serves the widget and admin pages and reverse-proxies `/api/*` to the internal API.
+* **Two of the seven workloads are conditional.** `rag-embed-query` and `rag-embed-ingest` serve
+  the self-hosted embedding model and exist only when `EmbeddingProfile` selects a `provider: tei`
+  profile — they are tagged **tei only** in the figures. An `azure_openai` profile deploys
+  `text-embedding-3-small` on Foundry instead and neither pool is created; `rag-ingest-worker` still
+  does the embedding, by calling that deployment. Full breakdown in
+  [Deployment.md](Deployment.md#what-you-end-up-running-and-what-you-no-longer-need).
 * All services use the **managed identity** — Storage shared keys, Service Bus local auth, Search API keys,
   the ACR admin user and PostgreSQL password auth are all disabled, so it is the only way in. (One
   exception: Application Insights ingestion is key-authenticated.) The two secrets live in **Key Vault** and

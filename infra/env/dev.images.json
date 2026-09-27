@@ -9,16 +9,16 @@
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     },
     "rag-api": {
-      "tag": "8baaf66",
-      "digest": "sha256:7b94d5c25ce743f08dfe9d90ccb7189189abad110dd5cd428e2e1903a1d4f5c7",
-      "ref": "acrragosdevragos.azurecr.io/rag-api@sha256:7b94d5c25ce743f08dfe9d90ccb7189189abad110dd5cd428e2e1903a1d4f5c7",
-      "recordedAt": "2026-09-27T01:08:24.3395307Z"
+      "tag": "9eba458",
+      "digest": "sha256:0e4710d154bde88de7f4aef14ac74d21bb7912615e6cbf372d5b2381c4f018c6",
+      "ref": "acrragosdevragos.azurecr.io/rag-api@sha256:0e4710d154bde88de7f4aef14ac74d21bb7912615e6cbf372d5b2381c4f018c6",
+      "recordedAt": "2026-09-27T02:21:45.1286138Z"
     },
     "rag-chat-ui": {
-      "tag": "8baaf66",
-      "digest": "sha256:b5d7b12807ac2d3466ec740f43caba810830c70df405d60cc90763e7caad58de",
-      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:b5d7b12807ac2d3466ec740f43caba810830c70df405d60cc90763e7caad58de",
-      "recordedAt": "2026-09-27T01:08:31.9101038Z"
+      "tag": "9eba458",
+      "digest": "sha256:7cb6cb892d6ee7cbddf2097f9fbdfaedaba0af04563434c44bb109f5a95d5fac",
+      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:7cb6cb892d6ee7cbddf2097f9fbdfaedaba0af04563434c44bb109f5a95d5fac",
+      "recordedAt": "2026-09-27T02:21:51.6351741Z"
     },
     "rag-embedder-cpu": {
       "tag": "8baaf66",
@@ -29,22 +29,12 @@
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     }
   },
-  "tag": "8baaf66",
+  "tag": "9eba458",
   "embedding": {
-    "profile": "qwen3-0.6b-1024",
-    "provider": "tei",
-    "model": "Qwen/Qwen3-Embedding-0.6B",
-    "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3",
-    "dimensions": 1024,
-    "teiVersion": "1.9",
-    "teiBaseImages": {
-      "cpu": "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9",
-      "turing": "ghcr.io/huggingface/text-embeddings-inference:turing-1.9"
-    },
-    "serverImages": {
-      "rag-embedder-turing": "acrragosdevragos.azurecr.io/rag-embedder-turing@sha256:9d86400ab79802113dd99348e0369967e0d2b83899329759b84e8fb76a9e58af",
-      "rag-embedder-cpu": "acrragosdevragos.azurecr.io/rag-embedder-cpu@sha256:f94ac57279bd4ef887efba42cdfe537a6c58f844ca23fa80aa3774468b8e497c"
-    }
+    "profile": "aoai-3-small-1536",
+    "provider": "azure_openai",
+    "model": "text-embedding-3-small",
+    "deployment": "text-embedding-3-small"
   },
   "registry": "acrragosdevragos.azurecr.io"
 }

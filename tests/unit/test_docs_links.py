@@ -169,3 +169,66 @@ def test_every_cross_document_anchor_resolves() -> None:
                 if anchor not in known:
                     broken.append(f"{source_name}:{n} -> {target_name}#{anchor}")
     assert not broken, "links to headings in the other document that do not exist:\n  " + "\n  ".join(broken)
+
+
+# ----------------------------------------------------- the documented workloads must match the ones 07 deploys
+# Which container apps exist depends on the embedding profile's provider, and that fact is now written down in two
+# tables. Documentation that contradicts the script is worse than none: it is what sent a reader looking for
+# `rag-embed-query` on a deployment that deliberately does not have it. The list lives in exactly one place in
+# code, so the tables can be checked against it.
+SEVEN = ("rag-api", "rag-chat-ui", "rag-ingest-worker", "rag-scheduler", "rag-bootstrap",
+         "rag-embed-query", "rag-embed-ingest")
+LEGEND_MARKERS = ("both", "tei only", "aoai only")
+
+
+def workloads_from_step_07() -> tuple[set[str], set[str]]:
+    """(every workload 07 can deploy, the ones it gates behind $useTei) - read from the script, not a constant."""
+    src = (REPO / "infra" / "scripts" / "07-container-apps.ps1").read_text(encoding="utf-8")
+    start = src.index("$workloads = @(")
+    unconditional = set(re.findall(r"Name = '([a-z-]+)'", src[start:src.index(")", start)]))
+    gated_line = next(ln for ln in src.splitlines() if ln.startswith("if ($useTei) { $workloads ="))
+    gated = set(re.findall(r"Name = '([a-z-]+)'", gated_line))
+    assert unconditional and gated, "could not read the workload list out of 07"
+    return unconditional | gated, gated
+
+
+def test_the_script_still_deploys_the_seven_workloads_the_docs_describe() -> None:
+    """A new workload has to be documented, not silently absent from both tables."""
+    everything, gated = workloads_from_step_07()
+    assert everything == set(SEVEN), (
+        f"07 deploys a different set than the docs describe: only in 07 {everything - set(SEVEN)}, "
+        f"only in the docs {set(SEVEN) - everything}")
+    assert gated == {"rag-embed-query", "rag-embed-ingest"}, (
+        f"the embedding-profile gate covers {gated}; the docs mark exactly the two embedder pools as 'tei only'")
+
+
+def test_every_workload_appears_in_the_appendix_with_a_legend_marker() -> None:
+    md = DEPLOYMENT.read_text(encoding="utf-8")
+    appendix = md[md.index("## Appendix — what runs where"):]
+    table = appendix[:appendix.index("\n\n", appendix.index("| Workload |"))]
+    everything, gated = workloads_from_step_07()
+    for name in everything:
+        row = next((ln for ln in table.splitlines() if f"`{name}`" in ln), None)
+        assert row, f"{name} is deployed by 07 but has no row in the appendix table"
+        marker = "tei only" if name in gated else "both"
+        assert f"**{marker}**" in row, f"{name} should be marked **{marker}** in the appendix, got: {row.strip()}"
+
+
+def test_the_legend_defines_every_marker_the_tables_use() -> None:
+    """A marker nobody defined is just a word in a column."""
+    md = DEPLOYMENT.read_text(encoding="utf-8")
+    legend = md[md.index("#### What you end up running"):]
+    legend = legend[:legend.index("####", 10)]
+    for marker in LEGEND_MARKERS:
+        assert f"| **{marker}** |" in legend, f"the legend does not define '{marker}'"
+    used = set(re.findall(r"\*\*(both|tei only|aoai only)\*\*", md))
+    assert used <= set(LEGEND_MARKERS), f"undefined markers in use: {used - set(LEGEND_MARKERS)}"
+
+
+def test_step_07s_expected_output_does_not_claim_the_embedder_pools_always_exist() -> None:
+    """It used to, which made a correct remote-profile deployment look broken during verification."""
+    md = DEPLOYMENT.read_text(encoding="utf-8")
+    expectation = md[md.index("Expected, on **any** profile:"):][:600]
+    assert "rag-embed-query" in expectation, "the self-hosted case still has to be stated"
+    assert "not\ndeployed" in expectation or "not deployed" in expectation, (
+        "it must say the pools are deliberately absent on a remote profile")
