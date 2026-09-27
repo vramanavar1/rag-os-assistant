@@ -34,6 +34,7 @@ References to **section** N mean a numbered section of this guide.
     * [Step 04 — `04-search.ps1`](#step-04--04-searchps1)
     * [Step 05 — `05-foundry.ps1`](#step-05--05-foundryps1)
     * [Step 06 — `06-registry-build.ps1`](#step-06--06-registry-buildps1)
+    * [Registry size and retention](#registry-size-and-retention)
     * [Step 07 — `07-container-apps.ps1`](#step-07--07-container-appsps1)
     * [When a TEI pool never becomes ready](#when-a-tei-pool-never-becomes-ready)
     * [Step 08 — `08-bootstrap.ps1`](#step-08--08-bootstrapps1)
@@ -374,7 +375,7 @@ Every message below comes from `Import-RagOsConfig` in `infra/scripts/common.ps1
 | `ClaudeSku` / `ClaudeCapacity` | `GlobalStandard` / `1` | Claude deployment sizing (both roles). |
 | `ClaudeEffort` | `''` | Optional `CLAUDE_EFFORT` (`low`…`max`), applied to **both** Claude roles. |
 | **Registry / images** | | |
-| `AcrSku` | `Basic` | ACR tier (Basic = 10 GB; the two embedder images are ~2-8 GB each). |
+| `AcrSku` | `Basic` | ACR tier. Basic's 10 GB is ample — see [Registry size and retention](#registry-size-and-retention). |
 | `ImageTag` | git SHA | Fixed tag instead of the git short SHA. |
 | **Embedder** | | |
 | `TeiVersion` | `1.9` | TEI release used for both base images. |
@@ -383,7 +384,8 @@ Every message below comes from `Import-RagOsConfig` in `infra/scripts/common.ps1
 | `EmbedderModelRevision` | `97b0c614…` | **Pinned 40-char commit SHA** (also TEI `/info.model_sha`). |
 | `EmbeddingDimensions` | `1024` | **Informational only — nothing reads it back.** Recorded in `<env>.images.json`; `config/embedding/profiles.yaml` is what actually sets the vector size. |
 | `EmbeddingProfile` | `qwen3-0.6b-1024` | -> `EMBEDDING_PROFILE`; a profile name in `config/embedding/profiles.yaml`. |
-| `EmbedderMaxBatchTokensCpu/Gpu` | `16384` / `32768` | TEI `MAX_BATCH_TOKENS` per pool. |
+| `EmbedderMaxInputTokens` | `2048` | TEI `MAX_INPUT_LENGTH`. Must exceed the profile's `max_chunk_tokens`; unset, TEI warms up for the model's 32768 and runs out of memory. |
+| `EmbedderMaxBatchTokensCpu/Gpu` | `2048` / `32768` | TEI `MAX_BATCH_TOKENS` per pool. The GPU value is **not validated against a T4's 16 GB of VRAM** — see [When a TEI pool never becomes ready](#when-a-tei-pool-never-becomes-ready). |
 | **Workload profiles** | | |
 | `QueryProfileType` / `QueryMinNodes` / `QueryMaxNodes` | `D4` / `2` / `6` | Query-path nodes (chat-ui, api, embed-query). |
 | `IngestProfileType` / `IngestMinNodes` / `IngestMaxNodes` | `D8` / `1` / `10` | Worker and job nodes. |
@@ -543,7 +545,64 @@ Get-Content infra/env/dev.images.json
 | Upload is huge / slow | Add `.dockerignore` (`.venv`, `node_modules`, `.git`, `.data`) — the script warns when it is missing. |
 | `MODEL_REVISION must be a full 40-character commit SHA` | Put the commit SHA, not a branch, in `EmbedderModelRevision`. |
 | Build timeout | Raise ACR task timeout by re-running; embedder builds are given 2 hours. |
-| ACR storage full (Basic = 10 GB) | Set `AcrSku = 'Standard'`, or delete old tags: `az acr repository delete -n <acr> --image rag-api:<oldtag>`. |
+| ACR storage full (Basic = 10 GB) | Step 06 now prunes old generations before it builds — see [Registry size and retention](#registry-size-and-retention). If it is still tight, set `AcrSku = 'Standard'` (100 GB). |
+
+### Registry size and retention
+
+**Basic's 10 GB is comfortably enough.** ACR bills *compressed* layers and stores identical layers once per
+registry, so the figures that matter are smaller than uncompressed image sizes suggest. Measured from the image
+manifests:
+
+| Repository | Compressed | What dominates it |
+|---|---|---|
+| `rag-api` | **~0.13 GB** | `python:3.13-slim` 0.04 + the uv venv 0.08. Shared by four workloads. |
+| `rag-chat-ui` | **~0.03 GB** | `nginx-unprivileged:alpine` 0.02 + static assets |
+| `rag-embedder-cpu` | **~1.4 GB** | TEI cpu 0.22 + the baked Qwen3 model ~1.2 |
+| `rag-embedder-turing` | **~2.85 GB** | TEI turing is a CUDA runtime; its model layer dedupes with the cpu image |
+
+One generation of all four is **~4.3 GB**; one of just the app images is **~0.16 GB**. A repeat build adds only
+the layers that changed — usually just the source layer, since the venv layer changes only when `uv.lock` does.
+
+**What fills a registry is tag churn.** `Get-ImageTag` returns the git short SHA on a clean tree, but
+`<sha>-dirty-<timestamp>` on a dirty one — unique every run — so each run against uncommitted changes pushes a
+fresh generation of every image. The cheapest fix is to **commit before deploying**: with a stable tag, step 06
+skips images the registry already holds and creates no new generation at all.
+
+#### What step 06 prunes
+
+Before building, 06 removes stored manifests that **nothing references** and that fall outside a retention window
+of **two generations per repository**. Two, because the documented rollback is redeploying the previous tag, so
+one step back must always be available.
+
+Nothing in use is ever removed, whatever its age. That matters more than it sounds: every workload is deployed by
+**digest** with `activeRevisionsMode: Single`, and a live revision re-pulls on every scale-out, node move and
+restart — so deleting its image does not tidy anything up, it arms a failure for the next time the platform moves
+a replica, and for the two *jobs* that stays invisible until the next cron fire. Deletes here are permanent: ACR
+soft-delete is a preview policy and is not enabled.
+
+The protected set is therefore built from three overlapping sources, and **any failure to read one aborts the
+prune** rather than narrowing it:
+
+* the live platform — every active revision of the five apps and the template of both jobs
+* `deployedImages` in `<env>.outputs.json`, what step 07 last deployed
+* `images.*.ref` and `embedding.serverImages.*` in `<env>.images.json`, what step 06 last recorded
+
+Two traps this handles that a "keep the newest N tags" rule would not: `rag-api`'s image is shared by **four**
+workloads, so checking only the app of the same name misses three of them; and one digest can carry several tags,
+so deleting "the old tag" can remove the manifest a current revision is running.
+
+```powershell
+./infra/scripts/06-registry-build.ps1 -Env dev -WhatIfPrune   # report what would go, delete nothing
+./infra/scripts/06-registry-build.ps1 -Env dev -NoPrune       # keep everything
+az acr show-usage -n <registry> -o table                      # what the registry says it holds
+```
+
+#### The embedder repositories, after switching to Azure OpenAI
+
+They are ~4.25 GB of the two together and nothing pulls them once the profile is remote, so 06 offers to delete
+them outright. It will **not** do so while `rag-embed-query` or `rag-embed-ingest` still exists — step 07 stops
+*deploying* those pools without removing them, so they outlive their purpose, and taking their images away first
+turns a decommissioning into a broken restart. Delete the apps, then re-run 06 and the repositories go with them.
 
 ### Step 07 — `07-container-apps.ps1`
 ```powershell
@@ -607,6 +666,46 @@ sent. Measured on the real `cpu-1.9` image at the limits the templates request:
 Both values come from the psd1 (`EmbedderMaxInputTokens`, `EmbedderMaxBatchTokensCpu`). If you raise
 `max_chunk_tokens` in a profile, raise `EmbedderMaxInputTokens` above it — a bound below the largest chunk would
 reject real documents at query time instead of failing here.
+
+#### The GPU pool fails differently, and the obvious lever is the wrong one
+
+`rag-embed-ingest` on the serverless T4 reports the failure itself rather than dying silently:
+
+```
+Starting Qwen3 model on Cuda(CudaDevice(DeviceId(1)))
+Warming up model
+Error: Model backend is not healthy
+Caused by: DriverError(CUDA_ERROR_OUT_OF_MEMORY, "out of memory")
+```
+
+| | CPU pool | GPU pool |
+|---|---|---|
+| Log ends with | `Warming up model`, then nothing | `Warming up model`, then `CUDA_ERROR_OUT_OF_MEMORY` |
+| Killed by | the kernel — SIGKILL, exit 137, no message | TEI, which reports and exits |
+| The limit that binds | the container's `memory:` | **the T4's 16 GB of VRAM** |
+| Raising `memory:` helps | no (it was never the constraint) | **no — `memory:` is host RAM, not VRAM** |
+| The lever | `EmbedderMaxInputTokens` | `EmbedderMaxBatchTokensGpu` **and** `EmbedderMaxInputTokens` |
+
+**A T4 has 16 GB of VRAM**, and the `56Gi` the GPU template requests is host memory that CUDA never sees. The
+Turing image also has **Flash Attention disabled** for precision reasons (see
+[Migrating to a different embedding model](#migrating-to-a-different-embedding-model)), so attention buffers are
+materialised and memory is quadratic in sequence length. At `MAX_BATCH_TOKENS = 32768` a single warm-up sequence
+needs roughly `16 heads x 32768² x 2 bytes` ≈ **34 GB** for one layer — refused in milliseconds. Bounded to 2048
+tokens per sequence the same batch needs about 2 GB.
+
+`EmbedderMaxBatchTokensGpu` ships at `32768`, which predates this understanding and is **not** covered by the
+guard that checks the CPU pair. If you run the self-hosted ingestion pool on a T4, lower it — 8192 bounds the
+warm-up whether or not `MAX_INPUT_LENGTH` is in effect on the running revision, which is worth having because
+TEI does not log that setting. Read back what is actually deployed with:
+
+```powershell
+az containerapp show -g rg-ragos-dev -n rag-embed-ingest `
+  --query "properties.template.containers[0].env[?name=='MAX_INPUT_LENGTH' || name=='MAX_BATCH_TOKENS']" -o table
+```
+
+**This pool is invisible to `/api/readyz`.** It is treated as advisory precisely because it scales to zero, so a
+crash-looping replica and a healthy idle one look identical there. `./infra/scripts/Test-Connectivity.ps1 -Env dev`
+prints replica counts, which is what shows it.
 
 **Expect a cold start of a few minutes** even when correct. The Startup probe allows ~10 minutes for this reason;
 Liveness and Readiness stay tight, so a *warm* replica that stops answering is still restarted quickly.
@@ -1761,6 +1860,7 @@ Configuration-only changes (psd1 app settings): run step 07 alone. Domain config
 # preferred: redeploy the previous tag (deterministic, same scripts)
 az acr repository show-tags -n acrragosdevxxxxx --repository rag-api --orderby time_desc -o table
 ./infra/scripts/07-container-apps.ps1 -Env dev -Tag <previous-tag>
+# step 06 keeps two generations, so one step back is always available; older tags may have been pruned
 
 # revision-level alternative
 az containerapp revision list -g rg-ragos-dev -n rag-api --query "[].{name:name, created:properties.createdTime, active:properties.active, image:properties.template.containers[0].image}" -o table

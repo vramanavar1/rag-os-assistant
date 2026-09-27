@@ -602,16 +602,21 @@ def test_08_records_the_index_it_confirmed() -> None:
 ENV_DIR = REPO / "infra" / "env"
 
 
-def write_env(name: str, replacements: dict[str, str], outputs: dict | None = None) -> list[Path]:
-    """Derive infra/env/<name>.psd1 from dev.psd1. Returns the files to delete.
+def write_env(name: str, settings: dict[str, str], outputs: dict | None = None) -> list[Path]:
+    """Derive infra/env/<name>.psd1 from dev.psd1, overriding `settings` by KEY. Returns files to delete.
 
-    The script resolves its own env directory when it dot-sources common.ps1, so the fixture has to live where
-    it looks - overriding the variable from outside does not survive that re-sourcing.
+    The fixture has to live in infra/env because the script resolves its own env directory when it dot-sources
+    common.ps1 - overriding that variable from outside does not survive the re-sourcing.
+
+    Keys are matched by name, not by their current value. dev.psd1 is a user-editable environment file, so an
+    earlier version of this helper - which replaced exact `Key = 'value'` strings - broke every test here the
+    first time somebody changed the embedding profile, for reasons unrelated to what the tests assert.
     """
     src = (ENV_DIR / "dev.psd1").read_text(encoding="utf-8")
-    for old, new in replacements.items():
-        assert old in src, f"dev.psd1 no longer contains {old!r} - the fixture needs updating"
-        src = src.replace(old, new, 1)
+    for key, value in settings.items():
+        pattern = rf"(?m)^(\s*){re.escape(key)}(\s*)=\s*[^\r\n#]*"
+        src, count = re.subn(pattern, lambda m: f"{m.group(1)}{key}{m.group(2)}= {value} ", src, count=1)
+        assert count == 1, f"dev.psd1 has no setting named {key!r} - the fixture needs updating"
     written = [ENV_DIR / f"{name}.psd1"]
     written[0].write_text(src, encoding="utf-8")
     if outputs is not None:
@@ -631,9 +636,12 @@ def run_alignment(name: str) -> tuple[int, str]:
 @needs_pwsh
 def test_a_remote_profile_is_not_judged_against_the_self_hosted_keys() -> None:
     files = write_env("zzaoai", {
-        "Env                 = 'dev'": "Env                 = 'zzaoai'",
-        "EmbeddingProfile          = 'qwen3-0.6b-1024'": "EmbeddingProfile          = 'aoai-3-small-1536'",
-        "DeployAoaiEmbedding     = $false": "DeployAoaiEmbedding     = $true",
+        "Env": "'zzaoai'",
+        "EmbeddingProfile": "'aoai-3-small-1536'",
+        "DeployAoaiEmbedding": "$true",
+        # Set explicitly so the assertion below has a known value to prove is NOT compared, rather than
+        # relying on whatever dev.psd1 happens to hold.
+        "EmbedderModelId": "'Qwen/Qwen3-Embedding-0.6B'",
     }, outputs={"embeddingDeployment": "text-embedding-3-small", "aoaiEndpoint": "https://x.openai.azure.com"})
     try:
         code, out = run_alignment("zzaoai")
@@ -652,8 +660,9 @@ def test_a_remote_profile_is_not_judged_against_the_self_hosted_keys() -> None:
 def test_a_remote_profile_without_a_deployment_fails_the_gate() -> None:
     """Selecting the model and deploying it are two settings. Only one of them is in the profile."""
     files = write_env("zzaoai2", {
-        "Env                 = 'dev'": "Env                 = 'zzaoai2'",
-        "EmbeddingProfile          = 'qwen3-0.6b-1024'": "EmbeddingProfile          = 'aoai-3-small-1536'",
+        "Env": "'zzaoai2'",
+        "EmbeddingProfile": "'aoai-3-small-1536'",
+        "DeployAoaiEmbedding": "$false",
     }, outputs={"aoaiEndpoint": "https://x.openai.azure.com"})
     try:
         code, out = run_alignment("zzaoai2")
@@ -669,9 +678,9 @@ def test_a_remote_profile_without_a_deployment_fails_the_gate() -> None:
 def test_a_self_hosted_profile_is_still_judged_against_the_self_hosted_keys() -> None:
     """The branch must not become a way to skip the check that catches a half-rebuilt embedder image."""
     files = write_env("zztei", {
-        "Env                 = 'dev'": "Env                 = 'zztei'",
-        "EmbedderModelId           = 'Qwen/Qwen3-Embedding-0.6B'":
-            "EmbedderModelId           = 'BAAI/bge-small-en-v1.5'",
+        "Env": "'zztei'",
+        "EmbeddingProfile": "'qwen3-0.6b-1024'",
+        "EmbedderModelId": "'BAAI/bge-small-en-v1.5'",
     }, outputs={})
     try:
         code, out = run_alignment("zztei")
@@ -686,11 +695,10 @@ def test_a_self_hosted_profile_is_still_judged_against_the_self_hosted_keys() ->
 def test_a_remote_profile_may_leave_the_model_revision_blank() -> None:
     """Azure OpenAI has no commit to pin, so Import-RagOsConfig must not demand a 40-character SHA."""
     files = write_env("zzblank", {
-        "Env                 = 'dev'": "Env                 = 'zzblank'",
-        "EmbeddingProfile          = 'qwen3-0.6b-1024'": "EmbeddingProfile          = 'aoai-3-small-1536'",
-        "DeployAoaiEmbedding     = $false": "DeployAoaiEmbedding     = $true",
-        "EmbedderModelRevision     = '97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3'":
-            "EmbedderModelRevision     = ''",
+        "Env": "'zzblank'",
+        "EmbeddingProfile": "'aoai-3-small-1536'",
+        "DeployAoaiEmbedding": "$true",
+        "EmbedderModelRevision": "''",
     }, outputs={"embeddingDeployment": "text-embedding-3-small"})
     try:
         code, out = run_alignment("zzblank")
@@ -704,9 +712,9 @@ def test_a_remote_profile_may_leave_the_model_revision_blank() -> None:
 @needs_pwsh
 def test_a_self_hosted_profile_still_requires_a_pinned_revision() -> None:
     files = write_env("zzunpin", {
-        "Env                 = 'dev'": "Env                 = 'zzunpin'",
-        "EmbedderModelRevision     = '97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3'":
-            "EmbedderModelRevision     = 'main'",
+        "Env": "'zzunpin'",
+        "EmbeddingProfile": "'qwen3-0.6b-1024'",
+        "EmbedderModelRevision": "'main'",
     }, outputs={})
     try:
         code, out = run_alignment("zzunpin")

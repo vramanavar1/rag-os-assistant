@@ -22,16 +22,24 @@ param(
     [ValidateSet('api', 'chat-ui', 'embedder-cpu', 'embedder-turing')][string[]]$Images,
     [switch]$SkipBuild,
     # Rebuild even when the tag is already in the registry (source changed without the tag changing).
-    [switch]$Rebuild
+    [switch]$Rebuild,
+    # Keep every stored image. The prune only removes generations nothing references, but a delete here is
+    # permanent - ACR soft-delete is a preview policy and is not enabled - so it has to be refusable.
+    [switch]$NoPrune,
+    # Report what the prune would remove and remove nothing.
+    [switch]$WhatIfPrune
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 $Config = Initialize-RagOsScript -Env $Env -Title '06 registry + image builds'
 
 # The embedder images exist to serve a self-hosted profile. A remote profile never calls them, so building two
 # multi-GB images (up to 2h each, into a 10GB Basic ACR) would be pure waste. An explicit -Images still wins.
+# Resolved unconditionally: the retention block and the manifest block below both read it, and under StrictMode
+# reading a variable that was only assigned inside an `if` is a terminating error - which an explicit -Images run
+# would have hit.
+$embedProvider = Get-EmbeddingProfileProvider -Config $Config
 if (-not $Images) {
     $Images = @('api', 'chat-ui', 'embedder-cpu', 'embedder-turing')
-    $embedProvider = Get-EmbeddingProfileProvider -Config $Config
     if ($embedProvider -and $embedProvider -ne 'tei') {
         $Images = @('api', 'chat-ui')
         Write-Info "EmbeddingProfile '$($Config.EmbeddingProfile)' uses provider '$embedProvider': skipping the embedder images."
@@ -60,19 +68,56 @@ $loginServer = $acr.loginServer
 # A full registry is a slow way to fail: the push happens at the end, after the build time is already spent.
 # One read up front turns that into a warning before the wait. Limits are per SKU, from the ACR service tiers.
 $acrLimitGb = @{ Basic = 10; Standard = 100; Premium = 500 }[$Config.AcrSku]
+function Get-AcrUsedGb {
+    $bytes = Get-AzTsvValues @('acr', 'show-usage', '-n', $n.Registry, '--query', "value[?name=='Size'].currentValue | [0]")
+    if (-not $bytes) { return $null }
+    return [math]::Round(([double]($bytes | Select-Object -First 1)) / 1GB, 1)
+}
 if ($acrLimitGb) {
-    $usedBytes = Get-AzTsvValues @('acr', 'show-usage', '-n', $n.Registry, '--query', "value[?name=='Size'].currentValue | [0]")
-    if ($usedBytes) {
-        $usedGb = [math]::Round(([double]($usedBytes | Select-Object -First 1)) / 1GB, 1)
+    $usedGb = Get-AcrUsedGb
+    if ($null -ne $usedGb) {
         Write-Info "Registry usage: $usedGb GB of $acrLimitGb GB ($($Config.AcrSku))"
-        # The embedder images are the large ones - a CUDA base plus a baked-in model - so they are what actually
-        # decides whether this fits.
-        $needGb = if ($Images -match 'embedder') { 12 } else { 2 }
+        # Measured from the image manifests rather than guessed, because ACR bills COMPRESSED layers and stores
+        # identical layers once: rag-api ~0.13 GB (python-slim 0.04 + the uv venv 0.08), rag-chat-ui ~0.03,
+        # rag-embedder-cpu ~1.4 (TEI cpu 0.22 + the baked model ~1.2) and rag-embedder-turing ~2.85 (a CUDA
+        # runtime; its model layer dedupes with the cpu image). So one generation of all four is ~4.3 GB and one
+        # of just the app images is ~0.16 GB. The previous estimate here was a flat 12 GB for any embedder build.
+        $needGb = if ($Images -match 'embedder') { 4.5 } else { 0.3 }
         if (($usedGb + $needGb) -gt $acrLimitGb) {
             Write-Warn "This build needs roughly ${needGb} GB more and the $($Config.AcrSku) registry holds $acrLimitGb GB - it will probably run out."
             Write-Info '  The push happens after the build, so you would find out at the end of a long wait. Either:'
-            Write-Info "    az acr repository list -n $($n.Registry) -o tsv    then delete what you no longer need"
-            Write-Info "    or set AcrSku = 'Standard' (100 GB) in the psd1 and re-run step 06"
+            Write-Info "    set AcrSku = 'Standard' (100 GB) in the psd1 and re-run step 06, or"
+            Write-Info '    drop -NoPrune so old generations are removed before the build'
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------------------------- retention
+# Before the builds, so space is reclaimed ahead of the push rather than after it fails. Two generations are
+# kept per repository, which is what the documented rollback needs (07-container-apps.ps1 -Tag <previous-tag>),
+# and an image anything still references is kept however old it is - see Remove-StaleAcrImages.
+if ($NoPrune) { Write-Info 'Skipping registry retention (-NoPrune).' }
+else {
+    $stored = @(Get-AzTsvValues @('acr', 'repository', 'list', '-n', $n.Registry, '--query', '[]') -AllowNotFound)
+    if ($stored.Count -gt 0) {
+        $null = Remove-StaleAcrImages -Config $Config -Registry $n.Registry -Repositories $stored -Keep 2 -DryRun:$WhatIfPrune
+
+        # A remote embedding profile never pulls the embedder images again, and they are ~4.25 GB of the two
+        # repositories together. Deleting them is only safe once the apps that reference them are gone: 07 stops
+        # deploying those pools without removing them, so they outlive their purpose by design.
+        if ($embedProvider -and $embedProvider -ne 'tei') {
+            foreach ($pair in @(
+                    @{ Repo = 'rag-embedder-cpu'; Apps = @('rag-embed-query', 'rag-embed-ingest') }
+                    @{ Repo = 'rag-embedder-turing'; Apps = @('rag-embed-ingest') }
+                )) {
+                if ($stored -notcontains $pair.Repo) { continue }
+                $null = Remove-UnusedAcrRepository -Config $Config -Registry $n.Registry -Repository $pair.Repo `
+                    -ReferencedBy $pair.Apps -DryRun:$WhatIfPrune
+            }
+        }
+        if ($acrLimitGb -and -not $WhatIfPrune) {
+            $afterGb = Get-AcrUsedGb
+            if ($null -ne $afterGb) { Write-Info "Registry usage now: $afterGb GB of $acrLimitGb GB" }
         }
     }
 }

@@ -205,8 +205,15 @@ if ($failed.Count -gt 0) {
     Write-Info '  Documents and queries may be embedded by different models. Searching an index with vectors'
     Write-Info '  from another model does not error - it returns arbitrary passages, confidently. Fix this'
     Write-Info '  before trusting any answer, and re-ingest anything indexed while it was wrong:'
-    Write-Info "    ./infra/scripts/06-registry-build.ps1 -Env $Env    # rebuild BOTH embedder images together"
-    Write-Info "    ./infra/scripts/07-container-apps.ps1 -Env $Env    # redeploy both pools"
+    if ($provider -eq 'azure_openai') {
+        # No images to rebuild and no pools to redeploy: the model is a deployment on the Foundry account.
+        Write-Info "    ./infra/scripts/05-foundry.ps1 -Env $Env        # creates the deployment and records it"
+        Write-Info "    ./infra/scripts/07-container-apps.ps1 -Env $Env  # injects AOAI_EMBED_DEPLOYMENT into the apps"
+    }
+    else {
+        Write-Info "    ./infra/scripts/06-registry-build.ps1 -Env $Env    # rebuild BOTH embedder images together"
+        Write-Info "    ./infra/scripts/07-container-apps.ps1 -Env $Env    # redeploy both pools"
+    }
     Write-Info '    rag-os doctor                                       # from the rag-api console, for detail'
     exit 1
 }

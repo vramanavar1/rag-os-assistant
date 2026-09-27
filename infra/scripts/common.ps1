@@ -1266,6 +1266,232 @@ function Get-ImageTag {
     return $sha.Trim()
 }
 
+function Format-Bytes {
+    <# .SYNOPSIS  Bytes as '2.85 GB' / '412 MB' - short enough to sit inside a status line. #>
+    param([Parameter(Mandatory)][AllowNull()][Nullable[long]]$Bytes)
+    if (-not $Bytes) { return 'unknown size' }
+    if ($Bytes -ge 1GB) { return "$([math]::Round($Bytes / 1GB, 2)) GB" }
+    if ($Bytes -ge 1MB) { return "$([math]::Round($Bytes / 1MB, 0)) MB" }
+    return "$Bytes B"
+}
+
+# ------------------------------------------------------------------------------------- ACR image retention
+# Images only ever accumulated. Nothing in these scripts deleted one, and Get-ImageTag hands out a unique
+# '-dirty-<timestamp>' tag on every run against a dirty tree, so a Basic registry (10 GB) fills quietly.
+#
+# The hazard is not the deleting, it is deleting the WRONG thing. Every workload is deployed by digest with
+# activeRevisionsMode Single, and a live revision re-pulls on each scale-out, node move and restart - so removing
+# a digest it points at breaks it, and for the two jobs that breakage stays invisible until the next cron fire.
+# One digest can also carry several tags, `az acr repository delete --image repo:tag` removes the manifest rather
+# than the tag pointer, and nothing here is recoverable: soft-delete is a preview policy and is not enabled.
+#
+# So the protected set is computed first and from the live platform, and any failure to compute it aborts the
+# prune. Retaining a few gigabytes too many costs money; deleting a running image costs an outage.
+
+# The workloads that pull from this registry. rag-api's image is shared by four of them, which is exactly the
+# case a naive "the app is called rag-api" check would miss.
+$script:RagOsImageApps = @('rag-api', 'rag-chat-ui', 'rag-ingest-worker', 'rag-embed-query', 'rag-embed-ingest')
+$script:RagOsImageJobs = @('rag-scheduler', 'rag-bootstrap')
+
+function Get-DigestFromImageRef {
+    <#
+    .SYNOPSIS  The sha256 digest an image reference pins, or $null when it names a tag instead.
+    .DESCRIPTION
+        A deployed reference is normally '<registry>/<repo>@sha256:...' because 07 resolves tags to digests. A
+        tag-pinned reference can still appear if someone deployed by hand, and it has to be resolved rather than
+        ignored - an unresolved reference is an unprotected digest.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Reference)
+    if ($Reference -match '@(sha256:[0-9a-f]{64})') { return $Matches[1] }
+    return $null
+}
+
+function Get-AcrProtectedDigests {
+    <#
+    .SYNOPSIS  Every digest something still references, as a hashtable of digest -> why it is protected.
+    .DESCRIPTION
+        Three sources, deliberately overlapping. The live platform is authoritative - it is the only one that
+        knows about an app deployed from a tag the manifest no longer records - and the two files are belt and
+        braces for a workload that exists but cannot be read right now.
+    .OUTPUTS
+        @{ Digests = @{ '<digest>' = '<reason>' }; Complete = $true|$false; Problems = @(...) }
+        Complete is $false when any lookup failed. A caller that deletes on an incomplete set is wrong.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Config, [Parameter(Mandatory)][string]$Registry)
+    $rg = $Config.Names.ResourceGroup
+    $digests = @{}
+    $problems = [System.Collections.Generic.List[string]]::new()
+
+    $record = {
+        param([string]$Reference, [string]$Reason)
+        $digest = Get-DigestFromImageRef -Reference $Reference
+        if (-not $digest) {
+            # A tag-pinned deployment. Resolve it, and treat a failure as a hole in the protected set rather
+            # than shrugging: the whole point of this function is that it is not allowed to guess.
+            if ($Reference -match '/([^/:@]+):([^/:@]+)$') {
+                $resolved = Invoke-Az @('acr', 'repository', 'show', '-n', $Registry, '--image',
+                    "$($Matches[1]):$($Matches[2])", '--query', 'digest', '-o', 'tsv') -AllowNotFound
+                if ($resolved) { $digest = "$resolved".Trim() }
+            }
+        }
+        if ($digest) { $digests[$digest] = $Reason }
+        elseif ($Reference) { $problems.Add("could not resolve '$Reference' ($Reason)") }
+    }
+
+    # 1. The live platform.
+    foreach ($app in $script:RagOsImageApps) {
+        try {
+            $images = @(Get-AzTsvValues @('containerapp', 'revision', 'list', '-g', $rg, '-n', $app, '--query',
+                    '[?properties.active].properties.template.containers[].image') -AllowNotFound)
+            foreach ($image in $images) { & $record "$image" "active revision of $app" }
+        }
+        catch { $problems.Add("could not read revisions of ${app}: $($_.Exception.Message.Split("`n")[0])") }
+    }
+    foreach ($job in $script:RagOsImageJobs) {
+        try {
+            $images = @(Get-AzTsvValues @('containerapp', 'job', 'show', '-g', $rg, '-n', $job, '--query',
+                    'properties.template.containers[].image') -AllowNotFound)
+            foreach ($image in $images) { & $record "$image" "job $job" }
+        }
+        catch { $problems.Add("could not read job ${job}: $($_.Exception.Message.Split("`n")[0])") }
+    }
+
+    # 2. What 07 last deployed, and 3. what 06 last recorded - including the embedder refs, which a partial
+    #    -Images run leaves pointing at an older generation that is still live.
+    # Guarded: Get-Value hands back $null for a missing key, and .Values on $null is a terminating error under
+    # StrictMode - which would abort the prune for the ordinary reason that 07 has not run yet.
+    $deployed = Get-Value (Get-Outputs -Config $Config) 'deployedImages'
+    if ($deployed) {
+        foreach ($ref in @($deployed.Values)) { & $record "$ref" 'recorded in outputs.json (last deployed)' }
+    }
+    if (Test-Path -LiteralPath $Config.ImagesPath) {
+        try {
+            $manifest = Get-Content -LiteralPath $Config.ImagesPath -Raw | ConvertFrom-Json -AsHashtable
+            $recorded = Get-Value $manifest 'images'
+            if ($recorded) {
+                foreach ($repo in @($recorded.Keys)) { & $record "$(Get-Value $manifest "images.$repo.ref")" "images.json ($repo)" }
+            }
+            $serverImages = Get-Value $manifest 'embedding.serverImages'
+            if ($serverImages) {
+                foreach ($ref in @($serverImages.Values)) { & $record "$ref" 'images.json (embedding profile)' }
+            }
+        }
+        catch { $problems.Add("could not read $(Split-Path -Leaf $Config.ImagesPath): $($_.Exception.Message.Split("`n")[0])") }
+    }
+
+    return @{ Digests = $digests; Complete = ($problems.Count -eq 0); Problems = @($problems) }
+}
+
+function Remove-StaleAcrImages {
+    <#
+    .SYNOPSIS  Deletes manifests that nothing references and that fall outside the retention window.
+    .DESCRIPTION
+        Keeps -Keep generations per repository so the documented rollback (07-container-apps.ps1 -Tag <previous>)
+        stays available, and never touches a digest in the protected set however old it is.
+
+        Aborts without deleting anything when the protected set could not be computed in full. That is the whole
+        safety property: a permanent delete on incomplete information is the one outcome worth avoiding.
+    .OUTPUTS
+        @{ Deleted = <count>; FreedBytes = <long>; Skipped = @(...); Aborted = $true|$false }
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Config,
+        [Parameter(Mandatory)][string]$Registry,
+        [Parameter(Mandatory)][string[]]$Repositories,
+        [int]$Keep = 2,
+        # Report what would go, delete nothing.
+        [switch]$DryRun
+    )
+    Write-Step "Registry retention (keep $Keep generation(s) per repository)"
+    $protected = Get-AcrProtectedDigests -Config $Config -Registry $Registry
+    if (-not $protected.Complete) {
+        Write-Warn 'Not pruning: the set of images still in use could not be established in full.'
+        foreach ($problem in $protected.Problems) { Write-Info "  $problem" }
+        Write-Info '  Deleting on a partial answer could remove an image a running revision needs, which breaks'
+        Write-Info '  its next restart or scale-out. Fix the reads above, or pass -NoPrune to skip this step.'
+        return @{ Deleted = 0; FreedBytes = 0; Skipped = @(); Aborted = $true }
+    }
+    Write-Info "$($protected.Digests.Count) digest(s) are in use and will be kept regardless of age."
+
+    $deleted = 0
+    $freed = 0L
+    $skipped = [System.Collections.Generic.List[string]]::new()
+    foreach ($repo in $Repositories) {
+        $manifests = @(Invoke-Az @('acr', 'manifest', 'list-metadata', '-r', $Registry, '-n', $repo, '--orderby',
+                'time_desc', '--query', '[].{digest:digest, tags:tags, size:imageSize, created:createdTime}') -AllowNotFound)
+        if (-not $manifests) { continue }
+        $kept = 0
+        foreach ($m in $manifests) {
+            $digest = "$($m.digest)"
+            $tags = if ($m.tags) { @($m.tags) -join ',' } else { '<untagged>' }
+            $size = if ($m.size) { [long]$m.size } else { 0L }
+            if ($protected.Digests.ContainsKey($digest)) {
+                Write-Host ("    keep   $repo  $tags  - in use ($($protected.Digests[$digest]))") -ForegroundColor DarkGray
+                $kept++
+                continue
+            }
+            if ($kept -lt $Keep) {
+                Write-Host ("    keep   $repo  $tags  - retention $($kept + 1)/$Keep") -ForegroundColor DarkGray
+                $kept++
+                continue
+            }
+            if ($DryRun) { Write-Host ("    would delete $repo  $tags  ($(Format-Bytes $size))") -ForegroundColor Yellow; continue }
+            try {
+                $null = Invoke-Az @('acr', 'manifest', 'delete', '-r', $Registry, '-n', "${repo}@$digest", '-y', '-o', 'none')
+                Write-Host ("    delete $repo  $tags  ($(Format-Bytes $size))") -ForegroundColor Yellow
+                $deleted++
+                $freed += $size
+            }
+            catch {
+                $skipped.Add("$repo $tags")
+                Write-Warn "Could not delete $repo@$digest : $($_.Exception.Message.Split("`n")[0])"
+            }
+        }
+    }
+    if ($deleted -gt 0) { Write-Ok "Removed $deleted manifest(s), reclaiming $(Format-Bytes $freed)." }
+    elseif (-not $DryRun) { Write-Ok 'Nothing to remove - every stored image is either in use or within retention.' }
+    return @{ Deleted = $deleted; FreedBytes = $freed; Skipped = @($skipped); Aborted = $false }
+}
+
+function Remove-UnusedAcrRepository {
+    <#
+    .SYNOPSIS  Deletes a whole repository, but only when no container app or job references it.
+    .DESCRIPTION
+        For the embedder repositories after a switch to a remote embedding profile: several gigabytes that
+        nothing will pull again. The guard matters because 07 stops *deploying* those pools without deleting
+        them, so the apps outlive their purpose - and removing the images from under a still-existing app turns
+        a decommissioning into a broken restart.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Config,
+        [Parameter(Mandatory)][string]$Registry,
+        [Parameter(Mandatory)][string]$Repository,
+        [Parameter(Mandatory)][string[]]$ReferencedBy,
+        [switch]$DryRun
+    )
+    $rg = $Config.Names.ResourceGroup
+    $blockers = @($ReferencedBy | Where-Object {
+            Test-AzResource @('containerapp', 'show', '-g', $rg, '-n', $_, '--query', 'id', '-o', 'tsv')
+        })
+    if ($blockers.Count -gt 0) {
+        Write-Warn "$Repository is unused by the current profile but $($blockers -join ' and ') still exist(s)."
+        Write-Info '  Delete the app first - removing its image would break the next restart rather than tidy up:'
+        foreach ($app in $blockers) { Write-Host "      az containerapp delete -g $rg -n $app --yes" -ForegroundColor Yellow }
+        Write-Info "  Then re-run this step and $Repository will be removed."
+        return $false
+    }
+    if (-not (Test-AzResource @('acr', 'repository', 'show', '-n', $Registry, '--repository', $Repository, '--query', 'imageName', '-o', 'tsv'))) {
+        return $false
+    }
+    if ($DryRun) { Write-Host "    would delete repository $Repository" -ForegroundColor Yellow; return $false }
+    $null = Invoke-Az @('acr', 'repository', 'delete', '-n', $Registry, '--repository', $Repository, '--yes', '-o', 'none')
+    Write-Ok "Deleted repository $Repository - nothing references it under the current embedding profile."
+    return $true
+}
+
 function Get-ChatUiUrl {
     <# .SYNOPSIS  https://<fqdn> of rag-chat-ui (from outputs, else queried). #>
     param([Parameter(Mandatory)][hashtable]$Config)
