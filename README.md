@@ -325,9 +325,15 @@ the document in place, without re-embedding.
   appear in URLs. Add the host origin to `EMBED_ORIGINS`. Details are in [Deployment.md](Deployment.md).
 * **Upload.** Contributors and admins can upload from the chat or admin UI (`POST /api/uploads`). An upload gets a
   `tracking_id`, is processed on the **priority lane** and is visible to the uploader's own scope by default.
+* **Did my upload work?** The upload panel shows a live status badge per file, and below it **Recent documents** —
+  every document you uploaded, newest first, ten at a time, under **All / Failed / In progress**. That list is what
+  survives closing the tab: it is served by `GET /api/uploads`, which scopes to your own documents, or to
+  everyone's if you hold `admin`. A failed row carries the reason. Administrators also get an **Admin** link beside
+  their name, which opens the console below, where a document's full event timeline and a retry button live.
 * **Admin console (`/admin`):**
   * dashboard (totals, queue depth, per source and per department/region)
   * runs (progress, throughput, ETA, errors)
+  * uploads (every document newest first, tabbed by state — the same list as the chat page, unscoped)
   * documents (filter, timeline, retry, CSV export)
   * dead letters
   * sources (sync now)

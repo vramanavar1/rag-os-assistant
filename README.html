@@ -636,10 +636,18 @@ README.html          this document (self-contained; regenerate nothing, just ope
     <li><strong>Upload.</strong> Contributors and admins can upload from the chat or admin UI
       (<code>POST /api/uploads</code>). An upload gets a <code>tracking_id</code>, is processed on the
       <strong>priority lane</strong> and is visible to the uploader's own scope by default.</li>
+    <li><strong>Did my upload work?</strong> The upload panel shows a live status badge per file, and below it
+      <strong>Recent documents</strong> &mdash; every document you uploaded, newest first, ten at a time, under
+      <strong>All / Failed / In progress</strong>. That list is what survives closing the tab: it is served by
+      <code>GET /api/uploads</code>, which scopes to your own documents, or to everyone's if you hold
+      <code>admin</code>. A failed row carries the reason. Administrators also get an <strong>Admin</strong> link
+      beside their name, which opens the console below, where a document's full event timeline and a retry button
+      live.</li>
     <li><strong>Admin console (<code>/admin</code>):</strong>
       <ul>
         <li>dashboard (totals, queue depth, per source and per department/region)</li>
         <li>runs (progress, throughput, ETA, errors)</li>
+        <li>uploads (every document newest first, tabbed by state &mdash; the same list as the chat page, unscoped)</li>
         <li>documents (filter, timeline, retry, CSV export)</li>
         <li>dead letters</li>
         <li>sources (sync now)</li>

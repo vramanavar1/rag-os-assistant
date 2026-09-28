@@ -6,6 +6,8 @@ queries, and a separate (facet, value) table so "group by department/region" nev
 
 from __future__ import annotations
 
+import base64
+import binascii
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -26,6 +28,8 @@ from sqlalchemy import (
     delete,
     func,
     insert,
+    nulls_last,
+    or_,
     select,
     update,
 )
@@ -41,7 +45,7 @@ from rag_os.domain.documents import (
     can_transition,
     tags_hash,
 )
-from rag_os.domain.errors import Conflict, NotFound
+from rag_os.domain.errors import Conflict, NotFound, ValidationFailed
 from rag_os.domain.ingestion import IngestionControls, IngestionRun, RunStatus
 from rag_os.infrastructure.state.db import make_engine
 
@@ -80,6 +84,10 @@ documents = Table(
     Column("indexed_at", DateTime(timezone=True)),
     Index("ix_documents_source_status", "source_id", "status"),
     Index("ix_documents_status_updated", "status", "updated_at"),
+    # Newest-first paging. The composite carries the doc_id tie-breaker so the keyset condition is covered
+    # end to end; ix_documents_status_updated cannot serve a discovered_at sort.
+    Index("ix_documents_discovered", "discovered_at", "doc_id"),
+    Index("ix_documents_status_discovered", "status", "discovered_at"),
     Index("ix_documents_run_status", "run_id", "status"),
     Index("ix_documents_review", "review_status"),
 )
@@ -184,6 +192,17 @@ def _to_record(r: RowMapping) -> DocumentRecord:
         updated_at=_aware(r["updated_at"]),
         indexed_at=_aware(r["indexed_at"]),
     )
+
+
+def _encode_cursor(rec: DocumentRecord) -> str:
+    """An opaque, URL-safe page cursor over (discovered_at, doc_id).
+
+    base64url rather than the readable "<iso>|<doc_id>": an ISO timestamp carries a '+', which a query string
+    decodes as a space, so the readable form silently breaks for any caller that concatenates it into a URL
+    without escaping - and a cursor is exactly the kind of value people concatenate.
+    """
+    ts = rec.discovered_at.isoformat() if rec.discovered_at else ""
+    return base64.urlsafe_b64encode(f"{ts}|{rec.doc_id}".encode()).decode().rstrip("=")
 
 
 class SqlStateStore(IngestionStateStore):
@@ -374,10 +393,10 @@ class SqlStateStore(IngestionStateStore):
                 self._event(c, d, DocumentStatus.DELETED, stage="discovery", message="not found at source")
         return ids
 
-    def query(self, q: DocumentQuery) -> tuple[list[DocumentRecord], str | None]:
-        stmt = select(documents)
-        conds = []
-        if q.status:
+    @staticmethod
+    def _filters(q: DocumentQuery, *, with_status: bool = True) -> list[Any]:
+        conds: list[Any] = []
+        if q.status and with_status:
             conds.append(documents.c.status.in_([s.value for s in q.status]))
         if q.source_id:
             conds.append(documents.c.source_id == q.source_id)
@@ -385,20 +404,69 @@ class SqlStateStore(IngestionStateStore):
             conds.append(documents.c.path.ilike(f"%{q.text}%"))
         if q.review_pending:
             conds.append(documents.c.review_status == ReviewStatus.PENDING.value)
+        if q.path_prefix:
+            # autoescape, because this is an ownership boundary: a subject containing % or _ would otherwise
+            # widen its own prefix into a wildcard and match other people's documents.
+            conds.append(documents.c.path.startswith(q.path_prefix, autoescape=True))
         if q.facet:
             sub = select(document_facets.c.doc_id).where(
                 document_facets.c.facet == q.facet[0], document_facets.c.value == q.facet[1])
             conds.append(documents.c.doc_id.in_(sub))
+        return conds
+
+    @staticmethod
+    def _after(q: DocumentQuery) -> Any:
+        """The keyset condition. Its shape follows the sort, so the two can never drift apart."""
+        if not q.newest_first:
+            return documents.c.doc_id > q.after
+        try:
+            raw = base64.urlsafe_b64decode((q.after or "") + "=" * (-len(q.after or "") % 4)).decode()
+        except (binascii.Error, UnicodeDecodeError, ValueError) as e:
+            raise ValidationFailed("malformed page cursor") from e
+        ts_raw, sep, doc_id = raw.partition("|")
+        if not sep or not doc_id:
+            raise ValidationFailed("malformed page cursor")
+        try:
+            ts = datetime.fromisoformat(ts_raw)
+        except ValueError as e:
+            raise ValidationFailed("malformed page cursor") from e
+        # Written out rather than as a row-value comparison ((a, b) < (x, y)): SQLite only supports those from
+        # 3.15, and this runs on whatever SQLite ships with the image.
+        return or_(documents.c.discovered_at < ts,
+                   and_(documents.c.discovered_at == ts, documents.c.doc_id < doc_id))
+
+    def query(self, q: DocumentQuery) -> tuple[list[DocumentRecord], str | None]:
+        conds = self._filters(q)
         if q.after:
-            conds.append(documents.c.doc_id > q.after)
+            conds.append(self._after(q))
+        stmt = select(documents)
         if conds:
             stmt = stmt.where(and_(*conds))
         limit = max(1, min(q.limit, 500))
-        stmt = stmt.order_by(documents.c.doc_id).limit(limit + 1)
+        # NULLS LAST only matters in theory - upsert_discovered sets discovered_at on the one INSERT path and
+        # nothing else writes the column - but an undefined position for a NULL would corrupt paging silently
+        # rather than loudly, so it is pinned.
+        stmt = stmt.order_by(
+            *((nulls_last(documents.c.discovered_at.desc()), documents.c.doc_id.desc())
+              if q.newest_first else (documents.c.doc_id,))
+        ).limit(limit + 1)
         with self.engine.connect() as c:
             rows = [_to_record(r) for r in c.execute(stmt).mappings()]
-        nxt = rows[limit - 1].doc_id if len(rows) > limit else None
-        return rows[:limit], nxt
+        page = rows[:limit]
+        if len(rows) <= limit or not page:
+            return page, None
+        last = page[-1]
+        if not q.newest_first:
+            return page, last.doc_id
+        return page, _encode_cursor(last)
+
+    def count_by_status(self, q: DocumentQuery) -> dict[str, int]:
+        conds = self._filters(q, with_status=False)
+        stmt = select(documents.c.status, func.count()).group_by(documents.c.status)
+        if conds:
+            stmt = stmt.where(and_(*conds))
+        with self.engine.connect() as c:
+            return {str(row[0]): int(row[1]) for row in c.execute(stmt)}
 
     def stale_in_flight(self, older_than: datetime, limit: int) -> list[DocumentRecord]:
         with self.engine.connect() as c:

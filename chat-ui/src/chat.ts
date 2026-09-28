@@ -5,8 +5,9 @@ import { byId, fmtDuration, fmtNum, h, mount, show } from './dom';
 import { combineProviders, setUpEntra, type EntraTokenProvider } from './entra';
 import { setMarkdown } from './markdown';
 import { renderSignIn } from './signin';
-import { correlationTag, identityChip, problemBox, toast, toastError } from './ui';
+import { correlationTag, identityChip, isAdmin, problemBox, toast, toastError } from './ui';
 import { createUploadWidget } from './upload';
+import { createUploadsList, type UploadsList } from './uploads-list';
 import type { ChatResponse, ChatTurn, Citation, FacetsResponse, Me, PublicConfig, Usage } from './types';
 
 const MODE: 'embed' | 'standalone' = document.body.dataset.mode === 'embed' ? 'embed' : 'standalone';
@@ -147,11 +148,19 @@ async function standaloneSignIn(config: PublicConfig, store: SessionTokenStore, 
 
 // ------------------------------------------------------------------ identity & facets
 
+// Who is signed in, kept at module scope because the upload panel is built later and needs the roles to
+// decide whether its rows can link into the admin console.
+let signedInAs: Me | null = null;
+
 async function loadIdentity(onSignOut?: () => void): Promise<void> {
   try {
     const me = await api.get<Me>('/api/me');
-    mount(identitySlot, identityChip(me, onSignOut));
+    signedInAs = me;
+    // The chat page links to the console; the console does not link to itself. Passing the href explicitly
+    // keeps that readable at each call site instead of hiding it behind a location check inside the chip.
+    mount(identitySlot, identityChip(me, onSignOut, { adminHref: '/admin' }));
   } catch (err) {
+    signedInAs = null;
     mount(identitySlot);
     toastError(err, 'Could not load your profile');
   }
@@ -525,18 +534,30 @@ btnNew.addEventListener('click', () => {
   renderWelcome();
   input.focus();
 });
+let recent: UploadsList | null = null;
+
 btnUpload?.addEventListener('click', () => {
   const open = uploadPanel.hidden !== false;
   if (open && !uploadPanel.childElementCount) {
+    // The live badges from the widget only exist while this panel is open. The list below is what survives a
+    // reload - and for anyone without the admin role it is the only way back to a document they uploaded.
+    recent = createUploadsList(api, {
+      documentHref: isAdmin(signedInAs) ? (docId) => `/admin#/documents/${encodeURIComponent(docId)}` : undefined,
+    });
     mount(
       uploadPanel,
       h('div', { class: 'panel-head' }, h('h2', null, 'Upload documents'), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-label': 'Close upload', onclick: () => btnUpload.click() }, '×')),
       createUploadWidget(api, {
         onFinished: (rec) => {
           if (rec.status === 'INDEXED') toast(`“${rec.title || rec.path}” is indexed and searchable.`, { kind: 'success' });
+          recent?.reload();
         },
       }),
+      h('h3', { class: 'small muted' }, 'Recent documents'),
+      recent.el,
     );
+  } else if (open) {
+    recent?.reload();
   }
   show(uploadPanel, open);
   btnUpload.setAttribute('aria-expanded', String(open));

@@ -214,7 +214,10 @@ export const documentsView: View = async (ctx: ViewContext) => {
   uploadBtn.addEventListener('click', () => {
     const open = uploadPanel.hidden !== false;
     if (open && !uploadPanel.childElementCount) {
-      mount(uploadPanel, h('h2', null, 'Upload documents'), createUploadWidget(ctx.api, { linkDocuments: true, onFinished: () => void reload() }));
+      mount(uploadPanel, h('h2', null, 'Upload documents'), createUploadWidget(ctx.api, {
+        documentHref: (docId) => `#/documents/${encodeURIComponent(docId)}`,
+        onFinished: () => void reload(),
+      }));
     }
     show(uploadPanel, open);
     uploadBtn.setAttribute('aria-expanded', String(open));

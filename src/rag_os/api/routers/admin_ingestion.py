@@ -109,8 +109,10 @@ async def documents(
         if not value:
             raise ValidationFailed("facet must be name:value")
         fv = (name, value)
+    # newest_first: doc_id is a content hash, so the default ordering is effectively random - never what
+    # anyone scanning a document list wants.
     items, nxt = c.state.query(DocumentQuery(status=status, source_id=source_id, facet=fv, text=q, after=after,
-                                             limit=limit))
+                                             limit=limit, newest_first=True))
     return {"items": [i.model_dump(mode="json") for i in items], "next": nxt}
 
 

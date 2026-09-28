@@ -449,3 +449,64 @@ def test_doctor_tolerates_a_sleeping_ingestion_pool(container: Container, monkey
     out = capsys.readouterr().out
     assert code == 0, f"scaled to zero is not a fault:\n{out}"
     assert "ConnectionError" in out, "it should still be visible in the report"
+
+
+async def test_recent_uploads_list_is_paged_scoped_and_tabbed(client: TestClient, container: Container) -> None:
+    """GET /api/uploads - the list behind the chat page's panel and the admin console's Uploads view.
+
+    Before this existed the tracking id returned by POST /api/uploads was the only handle a document ever had,
+    and nothing persisted it: closing the tab lost the document for good, because no endpoint could list it
+    back. That is the gap being closed here, so the scope rule is the part worth pinning down hardest.
+    """
+    c = container
+    sme = dev_token(client, "sme-reviewer")
+    admin = dev_token(client, "admin")
+    for i in range(12):
+        up = client.post("/api/uploads", headers=sme,
+                         files={"file": (f"note{i}.txt", f"Offsite number {i} is in Lisbon.".encode(), "text/plain")})
+        assert up.status_code == 202, up.text
+    await _drain(c)
+
+    # ---- paging: ten at a time, and the second page continues rather than repeating
+    page1 = client.get("/api/uploads?limit=10", headers=sme).json()
+    assert len(page1["items"]) == 10 and page1["next"]
+    page2 = client.get(f"/api/uploads?limit=10&after={page1['next']}", headers=sme).json()
+    ids1 = [r["doc_id"] for r in page1["items"]]
+    ids2 = [r["doc_id"] for r in page2["items"]]
+    assert len(ids2) == 2 and not page2["next"]
+    assert not set(ids1) & set(ids2), "the second page repeated rows from the first"
+
+    # ---- newest first. Each upload is its own submit, so these have distinct arrival times.
+    assert page1["items"][0]["path"].endswith("note11.txt"), "the most recent upload must lead"
+    assert page2["items"][-1]["path"].endswith("note0.txt"), "and the oldest must be last"
+
+    # ---- the tabs. All sends no status; Failed and In progress send theirs.
+    indexed = client.get("/api/uploads?limit=50&status=INDEXED", headers=sme).json()
+    assert len(indexed["items"]) == 12
+    failed = client.get("/api/uploads?limit=50&status=FAILED", headers=sme).json()
+    assert failed["items"] == []
+    # counts label every tab from one call, so they must NOT narrow to the status being filtered
+    assert failed["counts"]["INDEXED"] == 12 and "FAILED" not in failed["counts"]
+
+    # ---- scope, in both directions. Somebody else uploads:
+    assert client.post("/api/uploads", headers=admin,
+                       files={"file": ("private.txt", b"Board pack, not for sharing.", "text/plain")}
+                       ).status_code == 202
+    await _drain(c)
+    mine = client.get("/api/uploads?limit=50", headers=sme).json()
+    assert len(mine["items"]) == 12, "a contributor must not see another principal's uploads"
+    assert not any(r["path"].endswith("private.txt") for r in mine["items"])
+    # ...while an admin sees everyone's, which is what makes the console's Uploads view work
+    everyone = client.get("/api/uploads?limit=50", headers=admin).json()
+    assert len(everyone["items"]) == 13
+    assert everyone["items"][0]["path"].endswith("private.txt"), "still newest first across principals"
+    # a principal with no uploads at all gets an empty list, not somebody else's
+    assert client.get("/api/uploads?limit=50", headers=dev_token(client, "hr-emea")).json()["items"] == []
+
+    # ---- the row model is deliberately narrower than DocumentRecord
+    row = page1["items"][0]
+    assert "blob_uri" not in row and "tags" not in row, "a list must not publish storage URIs or access tags"
+    assert {"doc_id", "status", "path", "source_id", "error_type", "chunk_count"} <= set(row)
+
+    # ---- a cursor that did not come from us is refused, not silently treated as page one
+    assert client.get("/api/uploads?after=rubbish", headers=sme).status_code == 422

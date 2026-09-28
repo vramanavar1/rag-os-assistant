@@ -149,6 +149,11 @@ export interface Page<T> {
   next: string | null;
 }
 
+/** GET /api/uploads. `counts` is per status for the same filters MINUS the status filter, so it labels every tab. */
+export interface UploadPage extends Page<DocumentRecord> {
+  counts: Record<string, number>;
+}
+
 export interface UploadAccepted {
   tracking_id: string;
   doc_id: string;

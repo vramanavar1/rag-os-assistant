@@ -144,7 +144,19 @@ export function attributeSummary(attrs: Record<string, unknown> | null | undefin
     .join(', ');
 }
 
-export function identityChip(me: Me, onSignOut?: () => void): HTMLElement {
+/** Does this principal hold the admin role? The one spelling of the test, so the UI cannot disagree with itself. */
+export function isAdmin(me: Me | null | undefined): boolean {
+  return (me?.roles ?? []).some((r) => r.toLowerCase() === 'admin');
+}
+
+export interface IdentityChipOptions {
+  /** Where the admin console lives. Passed by the chat page; omitted by the console, which must not link to
+   *  itself. Rendered only for an admin - /admin already refuses everyone else, so this is about not
+   *  advertising a door that will not open, not about access control. */
+  adminHref?: string;
+}
+
+export function identityChip(me: Me, onSignOut?: () => void, opts: IdentityChipOptions = {}): HTMLElement {
   const name = me.display_name || me.subject;
   const attrs = attributeSummary(me.attributes);
   const roles = me.roles?.length ? me.roles.join(', ') : 'none';
@@ -159,6 +171,13 @@ export function identityChip(me: Me, onSignOut?: () => void): HTMLElement {
       h('strong', null, name),
       attrs ? h('span', { class: 'identity-attrs' }, ` (${attrs})`) : null,
     ),
+    opts.adminHref && isAdmin(me)
+      ? h('a', {
+          class: 'btn btn-ghost btn-sm',
+          href: opts.adminHref,
+          title: 'Ingestion status, sources and configuration',
+        }, 'Admin')
+      : null,
     onSignOut ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: onSignOut }, 'Sign out') : null,
   );
 }

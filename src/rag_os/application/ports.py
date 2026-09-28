@@ -274,8 +274,13 @@ class DocumentQuery:
     facet: tuple[str, str] | None = None  # (facet name, value)
     text: str | None = None  # path contains
     review_pending: bool | None = None
-    after: str | None = None  # keyset cursor (doc_id)
+    path_prefix: str | None = None  # ownership scope, e.g. "<subject>/" - see uploads.list_uploads
+    after: str | None = None  # opaque keyset cursor; its shape follows `newest_first`
     limit: int = 100
+    # Newest first, by when the document was DISCOVERED. Not doc_id, which is a content hash and so orders
+    # arbitrarily, and not updated_at, which changes as the document progresses - a row that moved between
+    # pages mid-paging would be silently skipped or shown twice.
+    newest_first: bool = False
 
 
 @dataclass
@@ -332,6 +337,14 @@ class IngestionStateStore(ABC):
 
     @abstractmethod
     def query(self, q: DocumentQuery) -> tuple[list[DocumentRecord], str | None]: ...
+
+    @abstractmethod
+    def count_by_status(self, q: DocumentQuery) -> dict[str, int]:
+        """How many documents each status holds, for the same filters MINUS `status` itself.
+
+        Ignoring `q.status` is the point: it is what lets a tabbed view label every tab from one call. Counting
+        with the status filter applied would only ever report the tab you are already looking at.
+        """
 
     @abstractmethod
     def stale_in_flight(self, older_than: datetime, limit: int) -> list[DocumentRecord]: ...

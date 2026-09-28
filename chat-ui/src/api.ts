@@ -39,7 +39,8 @@ export interface TokenProvider {
 }
 
 export interface RequestOptions {
-  query?: Record<string, string | number | boolean | null | undefined>;
+  /** An array value repeats the key (`?status=A&status=B`), which is how FastAPI reads a list. */
+  query?: Record<string, string | number | boolean | null | undefined | readonly string[]>;
   json?: unknown;
   body?: BodyInit;
   headers?: Record<string, string>;
@@ -71,7 +72,9 @@ export function buildUrl(path: string, query?: RequestOptions['query']): string 
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
     if (v === undefined || v === null || v === '') continue;
-    params.set(k, String(v));
+    // append, not set: repeating a key is the wire form for a list, and set() would keep only the last one.
+    if (Array.isArray(v)) for (const one of v) params.append(k, String(one));
+    else params.set(k, String(v));
   }
   const qs = params.toString();
   return qs ? `${path}${path.includes('?') ? '&' : '?'}${qs}` : path;

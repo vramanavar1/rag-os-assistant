@@ -4,7 +4,7 @@ import { SessionTokenStore, fetchPublicConfig } from './auth';
 import { setUpEntra, type EntraTokenProvider } from './entra';
 import { byId, h, mount, show } from './dom';
 import { renderSignIn } from './signin';
-import { identityChip, problemBox, toast, toastError } from './ui';
+import { identityChip, isAdmin, problemBox, toast, toastError } from './ui';
 import type { Me, PublicConfig } from './types';
 import type { View, ViewContext } from './admin/common';
 import { configView } from './admin/config';
@@ -15,11 +15,13 @@ import { documentsView } from './admin/documents';
 import { reviewView } from './admin/review';
 import { runsView } from './admin/runs';
 import { sourcesView } from './admin/sources';
+import { uploadsView } from './admin/uploads';
 
 const ROUTES: { id: string; label: string; view: View }[] = [
   { id: 'dashboard', label: 'Dashboard', view: dashboardView },
   { id: 'runs', label: 'Runs', view: runsView },
   { id: 'documents', label: 'Documents', view: documentsView },
+  { id: 'uploads', label: 'Uploads', view: uploadsView },
   { id: 'dlq', label: 'Dead letters', view: dlqView },
   { id: 'sources', label: 'Sources', view: sourcesView },
   { id: 'review', label: 'Review queue', view: reviewView },
@@ -166,10 +168,11 @@ window.addEventListener('hashchange', () => void route());
 async function loadIdentity(): Promise<void> {
   try {
     me = await api.get<Me>('/api/me');
+    // The console deliberately passes no link to itself.
     mount(identitySlot, identityChip(me, signOut));
-    const isAdmin = (me.roles ?? []).some((r) => r.toLowerCase() === 'admin');
-    mount(banner, isAdmin ? null : h('p', null, h('strong', null, 'This principal has no admin role. '), 'Admin requests will be refused (403). Sign out and choose an administrator.'));
-    show(banner, !isAdmin);
+    const admin = isAdmin(me);
+    mount(banner, admin ? null : h('p', null, h('strong', null, 'This principal has no admin role. '), 'Admin requests will be refused (403). Sign out and choose an administrator.'));
+    show(banner, !admin);
   } catch (err) {
     toastError(err, 'Could not load your profile');
   }

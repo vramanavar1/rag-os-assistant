@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from rag_os.domain.answers import ChatTurn
-from rag_os.domain.documents import DocumentStatus
+from rag_os.domain.documents import DocumentRecord, DocumentStatus
 
 
 class ChatRequest(BaseModel):
@@ -40,6 +41,44 @@ class UploadResponse(BaseModel):
     tracking_id: str
     doc_id: str
     status: DocumentStatus
+
+
+class UploadSummary(BaseModel):
+    """One row of the recent-documents list.
+
+    Deliberately NOT the whole DocumentRecord. That model carries `blob_uri` and the resolved ACL, which are
+    tolerable in the single-record status call the uploader already owns, but would publish internal storage
+    URIs and everyone's access tags a page at a time once the same data is served as a list.
+    """
+
+    doc_id: str
+    tracking_id: str | None = None
+    title: str | None = None
+    path: str
+    source_id: str
+    status: DocumentStatus
+    stage: str | None = None
+    attempts: int = 0
+    error_type: str | None = None
+    error_message: str | None = None
+    chunk_count: int = 0
+    size: int = 0
+    discovered_at: datetime | None = None
+    updated_at: datetime | None = None
+    indexed_at: datetime | None = None
+
+    @classmethod
+    def of(cls, rec: DocumentRecord) -> UploadSummary:
+        return cls.model_validate(rec, from_attributes=True)
+
+
+class UploadListResponse(BaseModel):
+    items: list[UploadSummary]
+    next: str | None = Field(default=None, description="opaque cursor; pass as `after` for the following page")
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="documents per status for these filters, ignoring the status filter itself",
+    )
 
 
 class RetryRequest(BaseModel):

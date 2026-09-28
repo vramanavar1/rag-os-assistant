@@ -9,13 +9,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from rag_os.api.deps import get_container, get_principal
-from rag_os.api.schemas import UploadResponse
+from rag_os.api.schemas import UploadListResponse, UploadResponse, UploadSummary
+from rag_os.application.ports import DocumentQuery
 from rag_os.composition import Container
 from rag_os.domain.access import Principal
-from rag_os.domain.documents import DocumentRecord, SourceItem, TagSet
+from rag_os.domain.documents import DocumentRecord, DocumentStatus, SourceItem, TagSet
 from rag_os.domain.errors import AccessDenied, ConfigError, NotFound, ValidationFailed
 from rag_os.infrastructure.parsers import parser_for
 from rag_os.infrastructure.telemetry import correlation_id_var
@@ -89,6 +90,36 @@ async def upload(
     rec = c.state.by_tracking_id(tracking_id)
     assert rec is not None
     return UploadResponse(tracking_id=tracking_id, doc_id=rec.doc_id, status=rec.status)
+
+
+def _scope(principal: Principal) -> str | None:
+    """What this caller may list. None means everything.
+
+    The same ownership rule as the single-record read below: uploads are stored at "<subject>/<filename>"
+    (see the SourceItem built in `upload`), so a path prefix IS the ownership test - expressed here as a
+    query filter so the database applies it, rather than as a post-filter that would break paging.
+    """
+    return None if principal.is_admin else f"{principal.subject}/"
+
+
+@router.get("", response_model=UploadListResponse, summary="Recent documents, newest first")
+async def list_uploads(
+    status: list[DocumentStatus] | None = Query(default=None, description="repeat to match any of several"),
+    after: str | None = Query(default=None, description="cursor from the previous page's `next`"),
+    limit: int = Query(default=10, ge=1, le=100),
+    principal: Principal = Depends(get_principal),
+    c: Container = Depends(get_container),
+) -> UploadListResponse:
+    """The list behind the chat page's recent-uploads panel and the admin console's Uploads view.
+
+    One endpoint for both: the caller's role decides the scope, so there is a single paging implementation
+    and a single access rule rather than two that can drift.
+    """
+    q = DocumentQuery(status=status, path_prefix=_scope(principal), after=after, limit=limit, newest_first=True)
+    items, nxt = c.state.query(q)
+    return UploadListResponse(
+        items=[UploadSummary.of(r) for r in items], next=nxt, counts=c.state.count_by_status(q)
+    )
 
 
 @router.get("/{tracking_id}", response_model=DocumentRecord, summary="Status of an uploaded document")

@@ -13,7 +13,7 @@ from rag_os.application.services.tagging import TagResolver
 from rag_os.domain.classification import FacetDef, FacetSchema, FacetValue, PathRule, PathRules
 from rag_os.domain.documents import DocumentRecord, DocumentStatus, SourceItem, TagSet
 from rag_os.domain.embedding import EmbeddingProfile
-from rag_os.domain.errors import Conflict
+from rag_os.domain.errors import Conflict, ValidationFailed
 from rag_os.domain.ingestion import SourceConfig, SourceDefaults
 from rag_os.infrastructure.search.odata_eval import compile_filter
 from rag_os.infrastructure.state.sql_store import SqlStateStore
@@ -157,3 +157,81 @@ def test_odata_eval_subset() -> None:
     assert not compile_filter("a/any(v: v eq 'z') or (n gt 5)")(d)
     assert compile_filter("s eq 'q''z' and not (n eq 3)")(d)
     assert not compile_filter("missing le 5")(d)
+
+
+def test_newest_first_orders_by_arrival_not_by_doc_id(store: SqlStateStore) -> None:
+    """doc_id is a content hash, so the default ordering is arbitrary - it just looks sorted.
+
+    Three documents are discovered in three separate runs, deliberately with ids that sort the *opposite* way
+    to their arrival. If the sort key were the doc_id (or if newest_first were quietly ignored) this returns
+    a, b, c and the test fails.
+    """
+    for doc_id in ("a", "b", "c"):
+        store.upsert_discovered([rec(doc_id, "v1")], f"run-{doc_id}")
+    newest, _ = store.query(DocumentQuery(limit=10, newest_first=True))
+    assert [r.doc_id for r in newest] == ["c", "b", "a"]
+    oldest_first, _ = store.query(DocumentQuery(limit=10))
+    assert [r.doc_id for r in oldest_first] == ["a", "b", "c"], "the default ordering must be untouched"
+
+
+def test_newest_first_paging_survives_a_batch_that_shares_one_timestamp(store: SqlStateStore) -> None:
+    """The case the doc_id tie-breaker exists for, and it is the common one, not the exotic one.
+
+    upsert_discovered stamps every row in a batch with the same `now`, so a crawl that discovers 25 documents
+    gives all 25 an identical discovered_at. With only a timestamp in the cursor, the `<` comparison would
+    step straight past the rest of the batch and silently drop rows - the kind of bug that shows up as "some
+    of my documents are missing" long after anyone would connect it to paging.
+    """
+    store.upsert_discovered([rec(f"d{i:03d}", "v1") for i in range(25)], "r")
+    seen: list[str] = []
+    cursor: str | None = None
+    for _ in range(5):
+        page, cursor = store.query(DocumentQuery(limit=10, after=cursor, newest_first=True))
+        seen.extend(r.doc_id for r in page)
+        if cursor is None:
+            break
+    assert len(seen) == 25, "paging dropped rows that shared a discovered_at"
+    assert len(set(seen)) == 25, "paging returned the same row twice"
+    assert seen == sorted(seen, reverse=True), "within one timestamp the tie-breaker orders by doc_id DESC"
+    assert cursor is None, "the last page must not advertise another one"
+
+
+def test_path_prefix_is_an_ownership_boundary(store: SqlStateStore) -> None:
+    """Uploads live at "<subject>/<filename>", so the prefix IS the ownership test.
+
+    `alice` must not pick up `alice2`'s documents, and a subject containing a LIKE wildcard must not widen
+    its own scope - which is why the filter escapes rather than interpolating.
+    """
+    def owned(doc_id: str, path: str) -> DocumentRecord:
+        return DocumentRecord(doc_id=doc_id, source_id="uploads", item_id=doc_id, path=path, version_key="v1")
+
+    store.upsert_discovered([owned("1", "alice/report.pdf"), owned("2", "alice/notes.txt"),
+                             owned("3", "alice2/secret.pdf"), owned("4", "bob/plan.docx"),
+                             owned("5", "a%/wildcard.pdf")], "r")
+    mine, _ = store.query(DocumentQuery(path_prefix="alice/", limit=50))
+    assert {r.doc_id for r in mine} == {"1", "2"}
+    literal, _ = store.query(DocumentQuery(path_prefix="a%/", limit=50))
+    assert {r.doc_id for r in literal} == {"5"}, "% must be matched literally, not as a wildcard"
+
+
+def test_counts_ignore_the_status_filter_they_are_labelling(store: SqlStateStore) -> None:
+    """A tabbed view labels every tab from one call. Counting with the status filter applied would only ever
+    report the tab already on screen, which is the one number the reader does not need."""
+    store.upsert_discovered([rec(f"d{i}", "v1") for i in range(4)], "r")
+    store.transition("d0", DocumentStatus.QUEUED)
+    store.transition("d0", DocumentStatus.PARSING)
+    counts = store.count_by_status(DocumentQuery(status=[DocumentStatus.PARSING]))
+    assert counts == {"DISCOVERED": 3, "PARSING": 1}
+    scoped = store.count_by_status(DocumentQuery(source_id="nothing-here"))
+    assert scoped == {}, "other filters still apply"
+
+
+def test_a_malformed_cursor_is_refused_rather_than_silently_returning_page_one(store: SqlStateStore) -> None:
+    """Quietly restarting at page one on a bad cursor would look like an infinite list to anyone paging."""
+    store.upsert_discovered([rec("a", "v1")], "r")
+    for bad in ("not-a-cursor", "|", "|a", "2020-13-45T00:00:00+00:00|a"):
+        with pytest.raises(ValidationFailed, match="cursor"):
+            store.query(DocumentQuery(limit=5, after=bad, newest_first=True))
+    # An absent cursor is not a malformed one: the first page asks for no cursor at all.
+    page, _ = store.query(DocumentQuery(limit=5, after="", newest_first=True))
+    assert [r.doc_id for r in page] == ["a"]
