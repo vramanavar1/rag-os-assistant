@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 06 - Azure Container Registry (admin disabled) + AcrPull for the managed identity + cloud builds (az acr build).

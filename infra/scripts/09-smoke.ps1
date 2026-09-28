@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 09 - smoke test of the deployed environment: infrastructure assertions + scripts/smoke.py.

@@ -59,6 +59,7 @@ References to **section** N mean a numbered section of this guide.
     * [Which model for which role](#which-model-for-which-role)
 9. [Signing people in with Microsoft Entra ID](#9-signing-people-in-with-microsoft-entra-id)
     * [9.1 One app registration, both sides](#91-one-app-registration-both-sides)
+    * [Which `aud` the token carries](#which-aud-the-token-carries)
     * [9.2 Carry the attributes](#92-carry-the-attributes)
     * [9.3 Admin role](#93-admin-role)
     * [9.4 Point RAG-OS at the tenant](#94-point-rag-os-at-the-tenant)
@@ -81,6 +82,7 @@ References to **section** N mean a numbered section of this guide.
 
 | Step | Script | Creates | Needs | Typical time |
 |---|---|---|---|---|
+| 00-pre | `Set-EntraAppRegistration.ps1` | the sign-in scope, the four application roles, the token version | an app registration + a directory role | < 1 min |
 | 00 | `00-prereqs.ps1` | tools, login, providers, region/quota checklist | an Azure subscription | 2-5 min |
 | 01 | `01-foundation.ps1` | resource group, Log Analytics, App Insights, budget | 00 | 2 min |
 | 02 | `02-identity-keyvault.ps1` | managed identity, Key Vault, 2 secrets, roles | 01 (App Insights) | 2 min |
@@ -89,6 +91,7 @@ References to **section** N mean a numbered section of this guide.
 | 05 | `05-foundry.ps1` | Foundry account, project, model deployments | 01, 02 | 3-5 min |
 | 06 | `06-registry-build.ps1` | ACR + 4 images built in the cloud | 01, 02 | 15-30 min |
 | 07 | `07-container-apps.ps1` | environment, workload profiles, 5 apps + 2 jobs | **01-06** | 10-15 min |
+| 07-post | `Set-EntraAppRegistration.ps1` | the SPA redirect URI, now that the chat UI has a hostname | 07 | < 1 min |
 | 08 | `08-bootstrap.ps1` | connectivity pre-flight, config upload, migrations, index, first discovery, `output.txt` | 07 | 5-10 min |
 | 09 | `09-smoke.ps1` | verification (optional but recommended) | 08 | 2 min |
 | 10 | `10-loadtest.ps1` | latency under ingestion load (optional) | 08 | 20-60 min |
@@ -96,6 +99,12 @@ References to **section** N mean a numbered section of this guide.
 **Everything at once:** `./infra/scripts/provision-all.ps1 -Env dev` runs **00 → 08** in order, stops at the first
 error, and prints the time per step. Steps 09 and 10 are deliberately outside it, because they are verification
 rather than provisioning. Resume after a failure with `-From <step>`; the script prints the exact command to use.
+
+It also reconciles the Entra app registration, **twice**, because the two halves have opposite prerequisites: the
+scope, the application roles and the token version need nothing from Azure and must exist *before* step 00
+validates them, while the SPA redirect URI needs a chat UI hostname that does not exist until step 07 has
+recorded it. The script is idempotent, so the second pass writes only that URI. Both are skipped when the four
+`Entra*` settings are empty, which is the dev-token deployment.
 
 ```powershell
 ./infra/scripts/provision-all.ps1 -Env dev              # first run, steps 00-08
@@ -127,6 +136,8 @@ rather than half-deploying.
 | Script | What it is for |
 |---|---|
 | `provision-all.ps1` | The orchestrator above. |
+| `Set-EntraAppRoleAssignment.ps1` | Grant, list and revoke application roles for a person or a group. `-ListRoles` shows which roles exist on the app registration; `-List` shows who holds them; `-Help` explains every parameter. |
+| `Set-EntraAppRegistration.ps1` | The sign-in scope, the application roles, the token version and the SPA redirect URI. Run by `provision-all.ps1` at the two points above; run it by hand to grant somebody a role later ([section 9.3](#93-admin-role)). |
 | `Write-OutputSheet.ps1` | Regenerates `output.txt`, the wiring sheet ([section 4](#4-key-vault-secrets)). Step 08 runs it for you. |
 | `99-teardown.ps1` | Deletes the resource group and purges what it can. Asks first unless `-Force` ([section 11](#11-update-rollback-teardown)). |
 | `Test-Connectivity.ps1` | Every network hop the deployment depends on, plus copy-paste tests for the container-to-container hops that can only be reached from inside ([step 08](#step-08--08-bootstrapps1)). Step 08 runs it as a pre-flight. |
@@ -207,20 +218,35 @@ is no chicken-and-egg: create it now and three of the four `Entra*` values fall 
 
 ```powershell
 $app = az ad app create --display-name 'RAG-OS' | ConvertFrom-Json
-az ad app update --id $app.appId --identifier-uris "api://$($app.appId)"
-# then in the portal: Expose an API -> add the scope `access_as_user` -> pre-authorise the same client id
 ```
 
 | psd1 setting | Value |
 |---|---|
 | `EntraClientId` | `$app.appId` |
-| `EntraAudience` | `api://<app-id>` |
+| `EntraAudience` | `$app.appId` — see the note on the token version in [section 9](#9-signing-people-in-with-microsoft-entra-id) |
 | `EntraApiScope` | `api://<app-id>/access_as_user` |
 | `EntraTenantId` | your directory (tenant) id |
 
+Then, with those four values in the psd1, reconcile the registration:
+
+```powershell
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -DryRun   # shows the diff, writes nothing
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev
+```
+
+That exposes the scope, sets the app id URI, pre-authorises the client so nobody is asked to consent, and sets
+`api.requestedAccessTokenVersion`. It is idempotent — a second run prints `already correct`. **Do not skip it.**
+Exposing the scope used to be a portal instruction sitting beside a runnable command, which made it the one step
+that could be missed without any signal: provisioning succeeds, every health check passes, and then the first
+person to sign in gets `AADSTS65005`. `00-prereqs.ps1` now fails on this before anything is created.
+
+It needs a *directory* role — **Application Administrator** or **Cloud Application Administrator**, or ownership
+of that registration. Subscription Owner does not grant it.
+
 The **only** thing that needs a deployed URL is the SPA *redirect URI*
-(`https://<chat-ui-fqdn>/auth/callback`), and that lives on the Entra app rather than in the psd1 — add it once
-step 08 prints the chat URL, with no redeploy. Full detail, including the claims and the admin role, is in
+(`https://<chat-ui-fqdn>/auth/callback`), and that lives on the Entra app rather than in the psd1. Step 07 is what
+records the hostname, and `provision-all.ps1` registers the URI immediately afterwards; a redirect URI can be
+added to a live registration at any time, so nothing is redeployed. Full detail, including the claims and the admin role, is in
 [section 9](#9-signing-people-in-with-microsoft-entra-id).
 
 > This registration is how **people sign in**. It is a different thing from the user-assigned **managed
@@ -253,7 +279,7 @@ lines, not a 144-line copy. `dev.psd1` is git-ignored; the sample is committed.
 |---|---|---|
 | **Deployment fails without it** | `SubscriptionId`, `TenantId` — plus `Env` when the file is not `dev.psd1` | The sample ships all-zero placeholder GUIDs, which are explicitly rejected. `Env` must equal the file name. |
 | **Validated, sample default already passes** | `Location`, `Prefix`, `EmbedderModelRevision` | Change `Location`/`Prefix` if you want. Never loosen the pinned model SHA — it is what ties the index to the embedding model. |
-| **Not validated, but nobody can sign in without it** | `EntraTenantId`, `EntraAudience`, `EntraClientId`, `EntraApiScope` | Nothing checks these. A deployment with them empty succeeds and then no one can log in. Create the app registration first (above) — it needs no Azure resources. |
+| **Checked by step 00 against the directory** | `EntraTenantId`, `EntraAudience`, `EntraClientId`, `EntraApiScope` | `00-prereqs.ps1` verifies the registration exists, exposes the configured scope, and that `EntraAudience` agrees with the token version — and FAILs before anything is created. It used to check none of this, so an unexposed scope reached production. Left empty, the four are skipped and only a dev token can sign in. |
 | **Everything else** | the other ~80 keys | Tune later; re-run step 07 to apply. |
 
 ### You do not name resources — they are derived
@@ -1700,33 +1726,70 @@ The browser (SPA) and the API are the same registration: the SPA asks for a scop
 only exists after step 07. Only the *redirect URI* needs the chat UI FQDN, and that lives on the Entra app, not
 in the psd1, so it can be added afterwards. Registering first therefore saves a step-07 redeploy:
 
-1. create the registration and expose the scope (below),
-2. put the four values in `dev.psd1`,
-3. deploy,
-4. add the redirect URI once step 08 prints the chat URL.
+1. create the registration (one `az` command, below),
+2. put the four values in `dev.psd1` — plus `EntraGrantAdminTo` if you want a named administrator,
+3. deploy: `provision-all.ps1` exposes the scope and the roles before step 00, and registers the redirect URI
+   after step 07 has given the chat UI a hostname.
+
+Running `Set-EntraAppRegistration.ps1` by hand is still supported and is how you grant somebody a role later —
+it is the same script, and it is idempotent.
 
 ```powershell
 $app = az ad app create --display-name 'RAG-OS' | ConvertFrom-Json
-az ad app update --id $app.appId --identifier-uris "api://$($app.appId)"
 ```
 
-Then, in the portal (Expose an API), add the scope **`access_as_user`** and pre-authorise the same client id, so
-signing in does not ask every user for consent.
-
-Later, once you have the chat UI FQDN from step 08 — redirect URIs can be added to a live registration at any
-time, and this changes nothing in the psd1:
+Put the four values in the psd1 (below), then let the script do the rest — the app id URI, the
+**`access_as_user`** scope, the pre-authorisation that stops every user being asked to consent, and the access
+token version:
 
 ```powershell
-# add the localhost entry only if you also run the UI locally
-az ad app update --id $app.appId --set "spa={`"redirectUris`":[`"https://<chat-ui-fqdn>/auth/callback`",`"http://localhost:8080/auth/callback`"]}"
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -DryRun   # prints the diff, writes nothing
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev
 ```
+
+Later, once you have the chat UI FQDN from step 08, re-run it to add the SPA redirect URI. Redirect URIs can be
+added to a live registration at any time and this changes nothing in the psd1:
+
+```powershell
+# -IncludeLocalhostRedirect adds http://localhost:8080/auth/callback too, for running the UI locally
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -ChatUiFqdn <chat-ui-fqdn>
+```
+
+The script appends to `spa.redirectUris` rather than replacing it, which matters: a Microsoft Graph write replaces
+a whole complex property, so `az ad app update --set "spa={...}"` silently discards every redirect URI you do not
+restate — and the same is true of the exposed scopes and the pre-authorised clients under `api`.
+
+It also makes **two** writes on a first run, which is not redundancy. Graph validates
+`api.preAuthorizedApplications` against the permissions **already persisted** on the application, never against
+the `oauth2PermissionScopes` arriving in the same request — so pre-authorising a scope in the write that creates it
+is rejected with `InvalidValue … has a Permission Id that cannot be found in the AppPermissions sets`, and the
+rejection is atomic, taking the new scope down with it. The script therefore writes the scope, reads it back, and
+pre-authorises in a second call using the id Graph reported. That second call is best-effort: if it fails, sign-in
+still works and each person is asked to consent once, so the script warns and carries on rather than reporting a
+failure for a deployment that is usable.
+
+### Which `aud` the token carries
+
+`api.requestedAccessTokenVersion` on the registration decides the **format** of every access token Entra issues
+for this API, and its default of `null` means **1**:
+
+| version | `iss` | `aud` |
+|---|---|---|
+| `1` (what `null` means) | `https://sts.windows.net/<tenant-id>/` | the `api://<app-id>` URI that was requested |
+| `2` | `https://login.microsoftonline.com/<tenant-id>/v2.0` | the **bare** `<app-id>` |
+
+The client cannot choose this — it is a directory setting, and the endpoint MSAL uses has no bearing on it. So the
+API has to accept whichever pair the registration produces. `rag-api` accepts **both**: it trusts both issuer
+spellings for the configured tenant, and derives both audience spellings from `ENTRA_AUDIENCE`, so
+`api://<app-id>` and `<app-id>` are equally valid there. If you are running an image built before that change,
+set `EntraAudience` to the bare app id to match the version `2` the script sets, and re-run step 07.
 
 The values RAG-OS needs are now:
 
 | Value | Example |
 |---|---|
-| `EntraAudience` | `api://<app-id>` — what the API requires in `aud` |
-| `EntraApiScope` | `api://<app-id>/access_as_user` — what the browser requests |
+| `EntraAudience` | `<app-id>` — what the API requires in `aud`; `api://<app-id>` is equally valid (above) |
+| `EntraApiScope` | `api://<app-id>/access_as_user` — what the browser requests, verbatim |
 | `EntraClientId` | `<app-id>` |
 | `EntraTenantId` | `<tenant-guid>` |
 
@@ -1748,7 +1811,8 @@ az ad group show --group kb-dept-hr --query id -o tsv   # the id that goes in va
 
 Guests invited into your tenant need no special case — they validate through this same issuer and are granted
 attributes the same way. A *separate* tenant (Entra External ID / Azure AD B2C) is a different issuer URL and is
-not configurable today: `composition.py` builds one Entra issuer from the settings below.
+not configurable today: `composition.py` builds one Entra issuer (trusting both of that tenant's issuer
+spellings) from the settings below.
 
 The `clearance` claim (`extension_Clearance`) must arrive as an **integer** (`0` Public … `3` Restricted). If your
 directory can only emit a label,
@@ -1756,9 +1820,36 @@ map it with `value_map` — see [What `clearance: 0, 1, 2` signifies](README.md#
 
 ### 9.3 Admin role
 
-Add the app role **`rag.admin`** (member type `User`) and assign it to your platform admins. The accepted role
-values are listed under `roles:` in `config/access-policy/access-policy.yaml`; the `entra` issuer is already in
-`role_sources.trusted_for_roles`.
+Creating the roles and granting one are two separate things, and a deployment with neither signs people in and
+then refuses every upload. Both are scripted:
+
+```powershell
+# creates rag.admin, rag.contributor, rag.sme and rag.reviewer, then assigns rag.admin to you
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -GrantAdminTo me
+```
+
+`-GrantAdminTo` accepts a UPN or a user object id as well as `me`, and the assignment needs a directory role
+(Application Administrator or Cloud Application Administrator) — a subscription Owner does not have it. If the
+grant is refused the roles are still created and you can finish in the portal: *Enterprise applications -> RAG-OS
+-> Users and groups*.
+
+`00-prereqs.ps1` now fails when no role is exposed, and warns when nobody holds `rag.admin`.
+
+To grant a role to **somebody other than yourself**, or to see who holds what, use the companion script:
+
+```powershell
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev                              # both listings
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -Role contributor -To priya@contoso.com
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -Role admin -To priya@contoso.com -Remove
+```
+
+`-ListRoles` reads the **app registration** (which roles exist); `-List` reads the **enterprise application**
+(who holds them). They are two different objects with the same display name, which is why a role assignment never
+appears under *App registrations → App roles*. `-Help` prints every parameter with its purpose.
+
+**A role is not added to a token that has already been issued** — sign out and back in before testing. What each
+role unlocks, and how to tell "not assigned" from "assigned but misspelled", is in
+[Granting someone a role](README.md#granting-someone-a-role).
 
 ### 9.4 Point RAG-OS at the tenant
 
@@ -1766,10 +1857,13 @@ In `infra/env/dev.psd1`, then re-run step 07:
 
 ```powershell
 EntraTenantId = '<tenant-guid>'
-EntraAudience = 'api://<app-id>'
+EntraAudience = '<app-id>'
 EntraClientId = '<app-id>'
 EntraApiScope = 'api://<app-id>/access_as_user'
 ```
+
+`EntraApiScope` is handed to the browser verbatim by `/api/public-config` and passed straight to MSAL, so it must
+match the exposed scope character for character — Entra compares it exactly.
 
 `07-container-apps.ps1` sets each of these only when it is non-empty, and warns if neither Entra nor dev auth is
 configured — in which case nobody can sign in at all. Keep `DevAuthEnabled = $false`.
@@ -1779,18 +1873,32 @@ configured — in which case nobody can sign in at all. Keep `DevAuthEnabled = $
 Open `https://<chat-ui-fqdn>/`, choose **Sign in with Microsoft**, and confirm you land back on the chat. Then:
 
 ```powershell
+# One-off: the Azure CLI is not authorised for a custom scope, so ask for it to be pre-authorised first.
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -PreAuthorizeAzureCli
 $token = az account get-access-token --scope "api://<app-id>/access_as_user" --query accessToken -o tsv
 curl -H "Authorization: Bearer $token" https://<chat-ui-fqdn>/api/me
 ```
+
+Without that first line the token request is refused for want of consent, which is also why `09-smoke.ps1` has no
+token to use on a deployment with `DevAuthEnabled = $false`. Weigh it up before running it in a real tenant:
+pre-authorising the CLI lets anyone who can run `az` there obtain a token for this API. Their own attributes still
+decide what the API returns them.
 
 The response shows the mapped attributes and roles — the quickest way to confirm a `value_map` before anyone asks
 a question. `rag-os explain` prints the filter those attributes produce.
 
 | Symptom | Cause |
 |---|---|
-| Sign-in loops back to the sign-in panel | The token was issued for the wrong audience. Check `EntraApiScope` matches the exposed scope exactly. |
-| `AADSTS50011` redirect mismatch | The SPA redirect URI must be `https://<chat-ui-fqdn>/auth/callback`, exactly. |
-| 401 `untrusted issuer` | `EntraTenantId` does not match the tenant that issued the token. |
+| `AADSTS65005` … asked for scope … that doesn't exist | The scope is not exposed on the registration. The string in the error is `EntraApiScope` verbatim, so the psd1 is right and the directory is missing the object. Fix: `./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev`. |
+| `AADSTS500011` resource principal not found | The `api://<app-id>` part of `EntraApiScope` is not in `identifierUris`. Same fix — this is the earlier failure of the same omission. |
+| `AADSTS50011` redirect mismatch | The SPA redirect URI must be `https://<chat-ui-fqdn>/auth/callback`, exactly. Re-run the script with `-ChatUiFqdn`. |
+| `AADSTS65001` consent required | The client is not pre-authorised for the scope. The script adds the app itself; add the Azure CLI with `-PreAuthorizeAzureCli`. |
+| `InvalidValue … Permission Id that cannot be found in the AppPermissions sets` | A Graph write pre-authorised a client for a permission the app does not expose *yet*. Expected only if an existing pre-authorised client points at a permission the app no longer defines — remove that entry under **Expose an API → Authorized client applications**. The script never causes this itself: it writes the scope before pre-authorising anything against it. |
+| 401 `untrusted issuer` | Either `EntraTenantId` does not match the issuing tenant, **or** the image predates accepting both issuer spellings and the registration is emitting the other one — see [Which `aud` the token carries](#which-aud-the-token-carries). |
+| 401 `token audience not accepted` | `ENTRA_AUDIENCE` and `api.requestedAccessTokenVersion` disagree. The API logs the audience it saw and the ones it accepts. |
+| Sign-in loops back to the sign-in panel | The token was rejected, so the UI treats you as signed out. The reason is in the `rag-api` logs, not the browser — look for `token rejected`. |
+| A change to the registration seems to have no effect | A cached access token stays valid for up to an hour. Sign out, or use a private window. |
+| The sign-in panel answers every click with `interaction_in_progress` | MSAL is holding an interaction-in-progress flag in that tab's `sessionStorage` from a redirect that never came back — most often an earlier sign-in that Entra refused. **Close the tab** (the flag dies with it) or clear the site's storage; a private window works for the same reason. `createMsal` calls `handleRedirectPromise()` on every page load to clear it automatically, so a deployment built after that change recovers on reload. |
 | Signed in, but no documents | The attributes are missing or unmapped: `GET /api/me` shows what arrived. |
 
 ### 9.6 Embedding the assistant in another page

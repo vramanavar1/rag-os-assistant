@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 00 - tools, login, subscription, resource providers, region/quota checks. Prints a checklist.
@@ -77,6 +78,58 @@ if ($deployer) {
     $canCreate = ($roles -contains 'Owner') -or ($roles -contains 'Contributor')
     $status = ($canAssign -and $canCreate) ? 'PASS' : 'WARN'
     Add-Check 'Deployer RBAC (Owner, or Contributor + User Access Administrator)' $status (($roles | Sort-Object -Unique) -join ', ')
+}
+
+# ---------------------------------------------------------------------------------------------- Entra app registration
+# The one prerequisite that is a directory object rather than an Azure resource - and the one that used to fail
+# nowhere except at a user's sign-in. A deployment whose scope was never exposed provisions perfectly, passes every
+# health check, and then answers AADSTS65005 to the first person who tries to log in. Read-only; the verdicts come
+# from Get-EntraAppChecks and Set-EntraAppRegistration.ps1 is what fixes them.
+Write-Step 'Entra app registration'
+# @() wraps the pipeline, not the result: an empty pipeline reaches an if-expression as $null under StrictMode, and
+# .Count on $null throws rather than being 0.
+$entraSet = @(@($Config.EntraTenantId, $Config.EntraClientId, $Config.EntraAudience, $Config.EntraApiScope) |
+        Where-Object { $_ })
+if ($entraSet.Count -eq 0) {
+    Write-Info "Not configured. Sign-in will be $($Config.DevAuthEnabled ? 'dev tokens only (DevAuthEnabled)' : 'impossible')."
+}
+elseif ($entraSet.Count -lt 4) {
+    Add-Check 'Entra settings complete' 'FAIL' ("only $($entraSet.Count)/4 of EntraTenantId, EntraClientId, " +
+        'EntraAudience and EntraApiScope are set - auth_mode needs all four (Deployment.md section 9)')
+}
+else {
+    $entraApp = $null
+    $entraReadable = $true
+    try { $entraApp = Invoke-Az @('ad', 'app', 'show', '--id', $Config.EntraClientId) -AllowNotFound }
+    catch {
+        # A MISSING app makes az say "does not exist", which RagOsNotFoundPattern matches, so -AllowNotFound hands
+        # back $null and Get-EntraAppChecks reports the FAIL. Reaching this catch therefore means something else -
+        # in practice a 403, the deployer not being allowed to read app registrations. That is a directory
+        # permission an operator may legitimately lack, and it must not stop provisioning Azure resources.
+        $entraReadable = $false
+        Add-Check 'Entra app registration readable' 'WARN' ('cannot read it: ' +
+            (($_.Exception.Message -split "`n")[0]) + ' - needs directory read access. Unchecked until sign-in.')
+    }
+    if ($entraReadable) {
+        $entraFqdn = [string](Get-Value (Get-Outputs -Config $Config) 'chatUiFqdn')
+        # Who holds rag.admin lives on the service principal, not the application, so it needs its own lookup.
+        # -1 means "could not look it up" and the check is skipped rather than guessed at: an app with no service
+        # principal yet is the normal state before anyone has been granted anything.
+        $adminAssignments = -1
+        try {
+            # -NoCreate: a readiness CHECK must not have the side-effect of creating a directory object.
+            $entraSp = Get-EntraServicePrincipal -ClientId $Config.EntraClientId -NoCreate
+            if ($entraSp) {
+                $adminAssignments = @(Get-EntraRoleAssignment -ServicePrincipalId ([string](Get-Value $entraSp 'id')) `
+                        -Application $entraApp | Where-Object { $_.Role -eq 'rag.admin' }).Count
+            }
+        }
+        catch { Write-Info "  (could not list role assignments: $((($_.Exception.Message -split "`n")[0]))" }
+        foreach ($check in (Get-EntraAppChecks -Config $Config -App $entraApp -ChatUiFqdn $entraFqdn `
+                    -AdminAssignments $adminAssignments -Env $Env)) {
+            Add-Check $check.Item $check.Status $check.Detail
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------------------------- resource providers

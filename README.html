@@ -249,6 +249,7 @@
     <li><a href="#11-security-model"><span class="num">11</span>Security model</a>
       <ol class="sub">
         <li><a href="#where-attributes-come-from">Where attributes come from</a></li>
+        <li><a href="#granting-a-role">Granting someone a role</a></li>
         <li><a href="#why-principals-yaml">Why principals.yaml exists</a></li>
         <li><a href="#granting-a-department">Granting a department</a></li>
         <li><a href="#what-clearance-means">What clearance means</a></li>
@@ -751,6 +752,68 @@ README.html          this document (self-contained; regenerate nothing, just ope
       and a principal that exists for the length of a single request. The <code>value_map</code> step is what lets an
       Entra group object id stand for <code>HR</code>.</figcaption>
   </figure>
+</div>
+
+<div class="wrap">
+  <h3 id="granting-a-role">Granting someone a role<a class="anchor" href="#granting-a-role">#</a></h3>
+  <p>Signing in is not the same as being allowed to do anything. A new account gets a <strong>read-only
+    session</strong>, filtered by the attributes it carries — which is why the first thing most people try,
+    uploading a document, comes back with
+    <code>uploading requires the contributor or admin role</code>.</p>
+  <p>Capabilities come from <strong>Entra application roles</strong>. The policy names the roles it understands;
+    Entra decides who holds them. Nothing in RAG-OS can grant one, because there is no user store to grant it in:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th style="width:24%">Entra app role (the <code>roles</code> claim)</th><th style="width:28%">Application role it grants</th><th>What that unlocks</th></tr></thead>
+    <tbody>
+      <tr><td><code>rag.admin</code></td><td><code>admin</code> + <code>contributor</code></td><td>Everything — see <a href="#policy-roles">Defining access by role</a></td></tr>
+      <tr><td><code>rag.contributor</code></td><td><code>contributor</code></td><td>Uploading</td></tr>
+      <tr><td><code>rag.sme</code></td><td><code>taxonomy_editor</code> + <code>reviewer</code></td><td>Taxonomy and the review queue</td></tr>
+      <tr><td><code>rag.reviewer</code></td><td><code>reviewer</code></td><td>The review queue</td></tr>
+      <tr><td><em>(none)</em></td><td><em>(none)</em></td><td>Read-only chat, filtered by department, region and clearance</td></tr>
+    </tbody>
+  </table></div>
+  <p>The four roles are created for you: <code>provision-all.ps1</code> reconciles the app registration before
+    step 00, so a normal deployment ends with them in place. What it will not do unasked is hand anyone
+    administrator rights — set <code>EntraGrantAdminTo</code> in the psd1 to name the first one. To do it now, or
+    to grant somebody a role later:</p>
+  <div class="code"><span class="lang">powershell</span><button class="copy">Copy</button><pre><code># creates all four roles if missing, then assigns rag.admin to the signed-in account
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -GrantAdminTo me</code></pre></div>
+  <p><code>-GrantAdminTo</code> also takes a UPN or a user object id. In the portal the same two steps are
+    <em>App registrations &rarr; RAG-OS &rarr; App roles</em> and <em>Enterprise applications &rarr; RAG-OS &rarr;
+    Users and groups &rarr; Add user/group</em>. Assigning needs a directory role — Application Administrator or
+    Cloud Application Administrator — which a subscription Owner does not have by itself.</p>
+  <p><strong>For anybody other than the first administrator</strong>, use the companion script — it also answers
+    the two questions that follow a grant:</p>
+  <div class="code"><span class="lang">powershell</span><button class="copy">Copy</button><pre><code>./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev                 # who holds what
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -ListRoles      # which roles exist
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -Role contributor -To priya@contoso.com
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -Role admin -To priya@contoso.com -Remove</code></pre></div>
+  <p><code>-ListRoles</code> reads the app registration; <code>-List</code> reads the enterprise application. Two
+    objects, the same display name — which is why an assignment never shows up under
+    <em>App registrations &rarr; App roles</em>.</p>
+  <div class="callout warn">
+    <p><strong>A role is never added to a token that has already been issued.</strong> Sign out and back in, or
+      use a private window. Until you do, nothing changes and it looks as though the grant failed.</p>
+  </div>
+  <p><strong>Checking what you actually have.</strong> <code>GET /api/me</code> returns the roles as the policy
+    mapped them:</p>
+  <div class="code"><span class="lang">bash</span><button class="copy">Copy</button><pre><code>curl -H "Authorization: Bearer $TOKEN" https://&lt;chat-ui-fqdn&gt;/api/me</code></pre></div>
+  <p><code>"roles": ["admin", "contributor"]</code> means it worked. <code>"roles": []</code> has two quite
+    different causes that look identical here — no role assigned, or a role assigned whose value the policy does
+    not map (a typo such as <code>rag.contrbutor</code>). <code>/api/me</code> shows only mapped roles, so to tell
+    them apart decode the token and read its raw <code>roles</code> claim. To see what a given combination
+    <em>would</em> be allowed, without a token at all:</p>
+  <div class="code"><span class="lang">bash</span><button class="copy">Copy</button><pre><code>uv run rag-os explain --attr department=HR --attr region=UK --role admin</code></pre></div>
+  <div class="callout warn">
+    <p><strong><code>rag.admin</code> is not "may upload" — it is "sees everything".</strong> An admin bypasses
+      the document filter entirely, and the bypass is audit-logged. Grant it deliberately, and prefer
+      <code>rag.contributor</code> for people who only need to add documents.</p>
+  </div>
+  <p>Roles and attributes are two different systems, and fixing one does not fix the other: roles decide what you
+    may <strong>do</strong>, while <code>department</code>, <code>region</code> and <code>clearance</code> decide
+    what you may <strong>see</strong>. A non-admin whose token carries no <code>department</code> or
+    <code>region</code> sees <em>nothing</em>, because both are <code>required: true</code> — see
+    <a href="#where-attributes-come-from">Where a caller's attributes come from</a>.</p>
 </div>
 
 <div class="wrap">

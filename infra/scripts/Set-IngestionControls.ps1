@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Pause, resume or throttle ingestion through the admin API (PUT /api/admin/ingestion/controls).

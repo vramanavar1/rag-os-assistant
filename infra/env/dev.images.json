@@ -15,10 +15,10 @@
       "recordedAt": "2026-09-27T02:21:45.1286138Z"
     },
     "rag-chat-ui": {
-      "tag": "9eba458",
-      "digest": "sha256:7cb6cb892d6ee7cbddf2097f9fbdfaedaba0af04563434c44bb109f5a95d5fac",
-      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:7cb6cb892d6ee7cbddf2097f9fbdfaedaba0af04563434c44bb109f5a95d5fac",
-      "recordedAt": "2026-09-27T02:21:51.6351741Z"
+      "tag": "66eb09e-dirty-20260927072056",
+      "digest": "sha256:987f0618ea878449a949620dc22dd49423f3d7744744826057eccd7be3831093",
+      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:987f0618ea878449a949620dc22dd49423f3d7744744826057eccd7be3831093",
+      "recordedAt": "2026-09-27T07:21:59.0983495Z"
     },
     "rag-embedder-cpu": {
       "tag": "8baaf66",
@@ -29,7 +29,7 @@
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     }
   },
-  "tag": "9eba458",
+  "tag": "66eb09e-dirty-20260927072056",
   "embedding": {
     "profile": "aoai-3-small-1536",
     "provider": "azure_openai",

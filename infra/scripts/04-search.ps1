@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 04 - Azure AI Search (S1 by default): system-assigned identity, RBAC only (API keys disabled), semantic ranker.

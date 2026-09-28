@@ -7,11 +7,16 @@ Secrets: any value of the form ``kv://<secret-name>`` is resolved from Azure Key
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Used to tell an App ID URI whose last segment is an app id (api://<guid>, api://<tid>/<guid>) from one
+# that is not (https://contoso.com/api). Only the former has a bare-GUID spelling to derive.
+_GUID_RE = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}")
 
 
 class Settings(BaseSettings):
@@ -98,7 +103,7 @@ class Settings(BaseSettings):
     dev_max_token_lifetime_s: int = 3600
     dev_jwt_audience: str = "rag-os"  # audience of dev tokens (Entra tokens use entra_audience)
     entra_tenant_id: str | None = None
-    entra_audience: str | None = None  # api://<app-id> - what the API requires in `aud`
+    entra_audience: str | None = None  # api://<app-id> or the bare app id; both spellings are accepted
     entra_client_id: str | None = None  # the SPA's client id, handed to the browser for MSAL
     entra_api_scope: str | None = None  # api://<app-id>/access_as_user - what the browser asks for
     embed_origins: str = "http://localhost:8080"
@@ -155,6 +160,27 @@ class Settings(BaseSettings):
     @property
     def embed_origin_list(self) -> list[str]:
         return [o.strip() for o in self.embed_origins.split(",") if o.strip()]
+
+    @property
+    def entra_audiences(self) -> tuple[str, ...]:
+        """Every `aud` Entra may legitimately stamp for this API, derived from ENTRA_AUDIENCE alone.
+
+        Which one arrives is a directory setting, not ours: with ``api.requestedAccessTokenVersion = 2`` the
+        `aud` is the API's bare client-id GUID, and with 1 (what ``null`` means) it is the ``api://`` resource
+        URI the client requested. Both spell the same application, so this is one audience in two forms rather
+        than two audiences - which is why it is derived here instead of being a second setting to keep in step.
+
+        ENTRA_CLIENT_ID is deliberately NOT added: where the browser and the API are separate registrations that
+        is a different application, and accepting it would accept a token minted for something else.
+        """
+        aud = (self.entra_audience or "").strip()
+        if not aud:
+            return ()
+        forms = [aud]
+        bare = aud.removeprefix("api://").rsplit("/", 1)[-1]  # also covers api://<tenant-id>/<app-id>
+        if _GUID_RE.fullmatch(bare):
+            forms += [bare, f"api://{bare}"]
+        return tuple(dict.fromkeys(forms))  # order preserved, duplicates dropped
 
     @property
     def auth_mode(self) -> str:

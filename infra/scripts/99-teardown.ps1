@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Deletes the whole environment: resource group, then purges the soft-deleted Key Vault and Foundry account.

@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Checks that the vectors in the index and the vectors a query is embedded into come from the same model.

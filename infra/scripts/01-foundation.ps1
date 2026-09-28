@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 01 - resource group, Log Analytics workspace, workspace-based Application Insights, budget alert.

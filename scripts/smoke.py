@@ -74,6 +74,8 @@ def main() -> int:
     if not (a.token_a and a.token_b):
         # Entra-only deployment: two real access tokens are needed, for two people with different attributes.
         #   az account get-access-token --scope "api://<app-id>/access_as_user" --query accessToken -o tsv
+        # That command needs the Azure CLI pre-authorised for the scope first, or Entra refuses to consent:
+        #   ./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -PreAuthorizeAzureCli
         print("no tokens: pass --token-a/--token-b (Entra access tokens for the API scope), or enable dev auth")
         return 2
     A = {"Authorization": f"Bearer {a.token_a}"}

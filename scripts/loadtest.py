@@ -112,6 +112,8 @@ async def run(a: argparse.Namespace) -> int:
         if not user_tok or not admin_tok:
             # Entra-only deployment: pass access tokens acquired for the API scope, e.g.
             #   az account get-access-token --scope "api://<app-id>/access_as_user" --query accessToken -o tsv
+        # That command needs the Azure CLI pre-authorised for the scope first, or Entra refuses to consent:
+        #   ./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -PreAuthorizeAzureCli
             print("need a query token (--token) and an admin token (--admin-token) to start ingestion")
             return 2
         H = {"Authorization": f"Bearer {user_tok}"}

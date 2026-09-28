@@ -73,6 +73,23 @@ export function takeReturnTo(): string {
 export async function createMsal(cfg: EntraConfig): Promise<PublicClientApplication> {
   const app = new PublicClientApplication(msalConfig(cfg));
   await app.initialize();
+  // On EVERY page, not just /auth/callback. MSAL writes an "interaction in progress" flag before navigating to
+  // Entra, and handleRedirectPromise is the only thing that clears it: with no response to process it calls
+  // resetRequestCache, which sets the flag back to false. Skip this on the page that starts the sign-in and any
+  // redirect that does not come back cleanly — the user pressing Back, or Entra refusing the request outright —
+  // leaves the flag set, and from then on every loginRedirect in that tab throws `interaction_in_progress`.
+  // Nothing clears it short of closing the tab, which is why a private window appeared to be the only cure.
+  //
+  // Calling it here does not steal the result from the callback page: MSAL memoizes the promise per instance, so
+  // the call in authcallback.ts returns this very same result.
+  try {
+    await app.handleRedirectPromise();
+  } catch (e) {
+    // A previous redirect that failed must not disable the next attempt, so this is logged rather than thrown.
+    // The callback page awaits the same memoized promise, so it still reports the failure to whoever is signing
+    // in — this only stops one bad round trip from wedging the sign-in button.
+    console.warn('Could not complete the previous Microsoft sign-in redirect', e);
+  }
   return app;
 }
 
@@ -130,7 +147,20 @@ export class EntraTokenProvider implements TokenProvider {
   /** Start an interactive sign-in. The page is replaced, so this does not return. */
   async signIn(): Promise<void> {
     rememberReturnTo(window.location.pathname + window.location.search + window.location.hash);
-    await this.msal.loginRedirect({ scopes: [this.scope] });
+    try {
+      await this.msal.loginRedirect({ scopes: [this.scope] });
+    } catch (e) {
+      // createMsal clears a stale flag on load, so getting here means a sign-in genuinely is under way -
+      // in practice another tab of this app. MSAL's own text ("interaction_in_progress: See https://aka.ms/...")
+      // says none of that, and it is the last thing a person sees before giving up on the sign-in button.
+      if (e instanceof BrowserAuthError && e.errorCode === 'interaction_in_progress') {
+        throw new Error(
+          'A Microsoft sign-in is already under way, most likely in another tab of this app. Finish or close '
+          + 'that tab, then reload this page.',
+        );
+      }
+      throw e;
+    }
   }
 
   async signOut(): Promise<void> {

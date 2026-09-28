@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 08 - upload config/** to the config blob container, run the rag-bootstrap job, start the scheduler, print the URLs.

@@ -270,3 +270,56 @@ ConvertTo-Json -Depth 4 -InputObject @($bad) | Set-Content -LiteralPath '{out.as
         raw = [raw]
     listed = [f"{e['file']}:{e['line']} {e['message']}" for e in raw]
     assert not listed, "PowerShell syntax errors:\n  " + "\n  ".join(listed)
+
+
+def test_every_script_has_help_powershell_can_actually_find() -> None:
+    """`Get-Help <script>` must return the .SYNOPSIS, not fall back to printing the syntax line.
+
+    Every script in this directory failed this until recently, and silently: the help blocks were written,
+    formatted and maintained, and `Get-Help` ignored all of them. The cause was one missing blank line between
+    `#Requires` and the opening `<#`, because comment-based help that follows a non-help comment line needs a
+    blank line to separate them - and `#Requires` looks like a comment but is a parser directive.
+
+    Nothing about the file looks wrong, which is exactly why this needs a test rather than care.
+    """
+    assert PWSH, "pwsh is needed to ask Get-Help what it can see"
+    folder = str(SCRIPTS).replace("\\", "\\\\")
+    script = (
+        "$bad = @()\n"
+        f"foreach ($f in Get-ChildItem -LiteralPath '{folder}' -Filter *.ps1) {{\n"
+        "  $h = Get-Help $f.FullName -Full 2>$null\n"
+        '  if ("$($h.Synopsis)".Trim().StartsWith($f.BaseName)) { $bad += $f.Name }\n'
+        "}\n"
+        "$bad -join ','\n"
+    )
+    done = subprocess.run([PWSH, "-NoProfile", "-Command", script],
+                          capture_output=True, text=True, timeout=180, check=False)
+    assert done.returncode == 0, done.stderr
+    unrecognised = [name for name in done.stdout.strip().split(",") if name]
+    assert not unrecognised, (
+        "Get-Help cannot see the comment-based help in these scripts, so `-Help` and `Get-Help` both show only a "
+        "syntax line:\n  " + "\n  ".join(unrecognised) +
+        "\nUsually a missing blank line between #Requires and the opening <#.")
+
+
+def test_every_script_path_printed_to_an_operator_exists() -> None:
+    """Guidance that names a script is only useful if the script is there.
+
+    The az-realism sweep already checks that printed `az` commands are real. Nothing checked the far more common
+    `./infra/scripts/X.ps1` references, and those are exactly what gets stale when a script is renamed or when
+    remediation text is repointed at a new one - which is a silent failure, since the reader only finds out when
+    they paste it.
+    """
+    referenced: dict[str, list[str]] = {}
+    sources = [*sorted(SCRIPTS.glob("*.ps1")),
+               REPO / "Deployment.md", REPO / "README.md", REPO / "README.html"]
+    for source in sources:
+        if not source.exists():
+            continue
+        for n, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+            for name in re.findall(r"\./infra/scripts/([A-Za-z0-9_.-]+\.ps1)", line):
+                referenced.setdefault(name, []).append(f"{source.name}:{n}")
+    assert referenced, "no script references found at all - this test would pass vacuously"
+    missing = {name: where for name, where in referenced.items() if not (SCRIPTS / name).exists()}
+    assert not missing, "these referenced scripts do not exist:\n  " + "\n  ".join(
+        f"{name} (referenced at {', '.join(where[:3])})" for name, where in sorted(missing.items()))

@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 02 - user-assigned managed identity + Key Vault (RBAC, soft delete, purge protection) + generated secrets.

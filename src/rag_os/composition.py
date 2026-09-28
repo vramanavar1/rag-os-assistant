@@ -250,7 +250,12 @@ class Container:
         if s.entra_tenant_id and s.entra_audience:
             tid = s.entra_tenant_id
             issuers.append(IssuerConfig(
-                "entra", f"https://login.microsoftonline.com/{tid}/v2.0", s.entra_audience, ("RS256",),
+                "entra",
+                # One tenant, both spellings it may stamp - a v2 access token carries the first, a v1 token the
+                # second (trailing slash included: it is part of the claim). See IssuerConfig for why.
+                (f"https://login.microsoftonline.com/{tid}/v2.0", f"https://sts.windows.net/{tid}/"),
+                s.entra_audiences, ("RS256",),
+                # The v2.0 JWKS serves the signing keys for both token versions; PyJWKClient selects on `kid`.
                 jwks_url=f"https://login.microsoftonline.com/{tid}/discovery/v2.0/keys",
                 required=("exp", "iat", "iss", "aud")))
         return JwtValidator(issuers)

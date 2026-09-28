@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 07 - Container Apps environment (workload profiles query/ingest/gpu-t4) + every app and job from

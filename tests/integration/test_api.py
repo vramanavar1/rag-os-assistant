@@ -66,6 +66,33 @@ def test_public_config_advertises_the_auth_mode(client: TestClient) -> None:
     assert "embed_origins" in cfg and "portal_origins" not in cfg
 
 
+def test_public_config_hands_the_browser_the_scope_verbatim(client: TestClient, settings: Settings) -> None:
+    """This endpoint is the whole reason AADSTS65005 was a configuration problem rather than a code one.
+
+    The browser never knows the scope: it asks this endpoint, then passes the answer straight to MSAL. So the
+    value going out here has to be byte-for-byte what ENTRA_API_SCOPE was set to - no normalising, no appending a
+    default scope name, no lower-casing - because whatever comes back is what Entra is asked for, and Entra
+    matches it exactly. Only the dev branch was covered before.
+    """
+    scope = "api://72f70e5a-291a-4c27-a6c9-1a7d1fbe7f9e/access_as_user"
+    before = (settings.entra_tenant_id, settings.entra_client_id, settings.entra_api_scope)
+    settings.entra_tenant_id = "c2ff8ba6-8824-4dbb-85d6-b12c6fc80d0c"
+    settings.entra_client_id = "72f70e5a-291a-4c27-a6c9-1a7d1fbe7f9e"
+    settings.entra_api_scope = scope
+    try:
+        cfg = client.get("/api/public-config").json()
+        # Entra wins over dev auth whenever all three are present, even with DEV_AUTH_ENABLED still true.
+        assert cfg["auth_mode"] == "entra"
+        assert cfg["entra_api_scope"] == scope
+        assert cfg["entra_client_id"] == "72f70e5a-291a-4c27-a6c9-1a7d1fbe7f9e"
+        assert cfg["entra_tenant_id"] == "c2ff8ba6-8824-4dbb-85d6-b12c6fc80d0c"
+        # Identifiers only. ENTRA_AUDIENCE is not among them: the browser has no use for it and it is the API's
+        # own validation input, not something a client should be able to read back.
+        assert "entra_audience" not in cfg
+    finally:
+        settings.entra_tenant_id, settings.entra_client_id, settings.entra_api_scope = before
+
+
 async def test_chat_upload_and_admin_report(client: TestClient, container: Container) -> None:
     c = container
     cfg = c.domain.sources.get("sample-corpus")

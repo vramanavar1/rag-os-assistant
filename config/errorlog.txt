@@ -1,1 +1,12 @@
-AADSTS65005: The application 'api://72f70e5a-291a-4c27-a6c9-1a7d1fbe7f9e' asked for scope 'access_as_user' that doesn't exist.
+==> [11:46:58] Writing to Microsoft Graph
+Exception: C:\VSquareThoughts\rag-os-assistant\infra\scripts\common.ps1:331
+Line |
+ 331 |          throw $message
+     |          ~~~~~~~~~~~~~~
+     | az command failed (exit 1): az rest --method patch --url
+     | https://graph.microsoft.com/v1.0/applications/24b3044c-3d82-49a5-9902-01d91b871d73 --body
+     | @C:\Users\vrama\AppData\Local\Temp\tmpaw1hxa.tmp --headers Content-Type=application/json ERROR: Bad
+     | Request({"error":{"code":"InvalidValue","message":"Property api.preAuthorizedApplications.delegatedPermissionIds has a
+     | Permission Id that cannot be found in the AppPermissions sets.","details":[{"code":"InvalidValue","message":"Property
+     | api.preAuthorizedApplications.delegatedPermissionIds has a Permission Id that cannot be found in the AppPermissions
+     | sets.","target":"api.preAuthorizedApplications.delegatedPermissionIds","blockedWord":"","prefix":"","suffix":""}],"innerError":{"date":"2026-09-27T06:17:00","request-id":"ce43d043-dd74-4a62-936a-2062dea7b6cd","client-request-id":"ce43d043-dd74-4a62-936a-2062dea7b6cd"}}})

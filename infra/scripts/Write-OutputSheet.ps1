@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Writes output.txt - the deployment wiring sheet: which Key Vault secret feeds which environment variable in
@@ -297,11 +298,18 @@ if ($Config.DevAuthEnabled) {
 $authRows = @(
     @('ENTRA_TENANT_ID', "$($Config.EntraTenantId)", 'directory that issues tokens'),
     @('ENTRA_CLIENT_ID', "$($Config.EntraClientId)", 'app registration used by the chat UI (MSAL)'),
-    @('ENTRA_AUDIENCE', "$($Config.EntraAudience)", 'the API app id URI the token must be addressed to'),
-    @('ENTRA_API_SCOPE', "$($Config.EntraApiScope)", 'scope MSAL requests, e.g. api://<client-id>/user_impersonation'),
+    @('ENTRA_AUDIENCE', "$($Config.EntraAudience)", 'what the token must carry in `aud` - see the note below'),
+    @('ENTRA_API_SCOPE', "$($Config.EntraApiScope)", 'scope MSAL requests, e.g. api://<client-id>/access_as_user'),
     @('DEV_AUTH_ENABLED', "$([bool]$Config.DevAuthEnabled)", 'demo principals + dev token endpoint; false in production')
 )
 (Format-Table2 -Headers @('SETTING', 'VALUE', 'MEANING') -Rows $authRows) | ForEach-Object { & $add $_ }
+& $add
+& $add "  The app registration must expose the scope above, or sign-in fails with AADSTS65005. Reconcile it with:"
+& $add "    ./infra/scripts/Set-EntraAppRegistration.ps1 -Env $($Config.Env)"
+& $add
+& $add '  ENTRA_AUDIENCE depends on the registration, because api.requestedAccessTokenVersion decides the token'
+& $add '  format: version 2 stamps aud = the bare app id, version 1 (which is what null means) stamps the'
+& $add '  api://<app-id> URI that was requested. rag-api accepts both spellings.'
 & $add
 & $add "  The app registration's SPA redirect URI must be exactly:"
 & $add "    $chatUrl/auth/callback"

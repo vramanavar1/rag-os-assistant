@@ -24,6 +24,7 @@ no per-token embedding cost.
 10. [Using the product](#10-using-the-product)
 11. [Security model](#11-security-model)
     * [Where a caller's attributes come from](#where-a-callers-attributes-come-from)
+    * [Granting someone a role](#granting-someone-a-role)
     * [Why `config/dev/principals.yaml` exists](#why-configdevprincipalsyaml-exists)
     * [Giving HR or Sales access to hundreds of people](#giving-hr-or-sales-access-to-hundreds-of-people)
     * [What `clearance: 0, 1, 2` signifies](#what-clearance-0-1-2-signifies)
@@ -397,7 +398,9 @@ The browser is told which tenant and client to use by the API itself — `GET /a
 environment-specific identity configuration.
 
 > **One app registration covers both sides.** Add an **SPA** platform with redirect URI
-> `https://<chat-ui-host>/auth/callback`, expose an API (`api://<app-id>`) with the scope `access_as_user`, and add
+> `https://<chat-ui-host>/auth/callback`, expose an API (`api://<app-id>`) with the scope `access_as_user`
+> (`./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev` does this and the token-version setting that goes
+> with it — skipping it is what produces `AADSTS65005` at sign-in), and add
 > the `rag.admin` app role. Then `ENTRA_AUDIENCE = api://<app-id>` and
 > `ENTRA_API_SCOPE = api://<app-id>/access_as_user`. Step-by-step in [Deployment.md](Deployment.md).
 
@@ -433,6 +436,77 @@ edit here plus a tag on your documents; there is no code to change.
 
 *Figure 7 — Where a caller's attributes come from. Two issuers, one validator, one mapper, and a principal that
 exists for the length of a single request.*
+
+### Granting someone a role
+
+Signing in is not the same as being allowed to do anything. A new account gets a **read-only session**, filtered
+by the attributes it carries — which is why the first thing most people try, uploading a document, comes back
+with `uploading requires the contributor or admin role`.
+
+Capabilities come from **Entra application roles**. The policy names the roles it understands; Entra decides who
+holds them. Nothing in RAG-OS can grant one, because there is no user store to grant it in:
+
+| Entra app role (the `roles` claim) | Application role it grants | What that unlocks |
+|---|---|---|
+| `rag.admin` | `admin` + `contributor` | Everything — see [Defining access by role](#defining-access-by-role) |
+| `rag.contributor` | `contributor` | Uploading |
+| `rag.sme` | `taxonomy_editor` + `reviewer` | Taxonomy and the review queue |
+| `rag.reviewer` | `reviewer` | The review queue |
+| *(none)* | *(none)* | Read-only chat, filtered by department, region and clearance |
+
+The four roles are created for you: `provision-all.ps1` reconciles the app registration before step 00, so a
+normal deployment ends with them in place. What it will not do unasked is hand anyone administrator rights —
+set `EntraGrantAdminTo` in the psd1 to name the first one. To do it now, or to grant somebody a role later:
+
+```powershell
+# creates all four roles if missing, then assigns rag.admin to the signed-in account
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev -GrantAdminTo me
+```
+
+`-GrantAdminTo` also takes a UPN or a user object id. In the portal the same two steps are *App registrations →
+RAG-OS → App roles* and *Enterprise applications → RAG-OS → Users and groups → Add user/group*. Assigning needs a
+directory role — Application Administrator or Cloud Application Administrator — which a subscription Owner does
+not have by itself.
+
+**For anybody other than the first administrator**, use the companion script — it also answers the two questions
+that follow a grant:
+
+```powershell
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev                 # who holds what
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -ListRoles      # which roles exist
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -Role contributor -To priya@contoso.com
+./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env dev -Role admin -To priya@contoso.com -Remove
+```
+
+`-ListRoles` reads the app registration; `-List` reads the enterprise application. Two objects, the same display
+name — which is why an assignment never shows up under *App registrations → App roles*.
+
+> **A role is never added to a token that has already been issued.** Sign out and back in, or use a private
+> window. Until you do, nothing changes and it looks as though the grant failed.
+
+**Checking what you actually have.** `GET /api/me` returns the roles as the policy mapped them:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://<chat-ui-fqdn>/api/me
+```
+
+`"roles": ["admin", "contributor"]` means it worked. `"roles": []` has two quite different causes that look
+identical here — no role assigned, or a role assigned whose value the policy does not map (a typo such as
+`rag.contrbutor`). `/api/me` shows only mapped roles, so to tell them apart decode the token and read its raw
+`roles` claim. To see what a given combination *would* be allowed, without a token at all:
+
+```bash
+uv run rag-os explain --attr department=HR --attr region=UK --role admin
+```
+
+> **`rag.admin` is not "may upload" — it is "sees everything".** An admin bypasses the document filter entirely,
+> and the bypass is audit-logged. Grant it deliberately, and prefer `rag.contributor` for people who only need to
+> add documents.
+
+Roles and attributes are two different systems, and fixing one does not fix the other: roles decide what you may
+**do**, while `department`, `region` and `clearance` decide what you may **see**. A non-admin whose token carries
+no `department` or `region` sees *nothing*, because both are `required: true` — see
+[Where a caller's attributes come from](#where-a-callers-attributes-come-from).
 
 ### Why `config/dev/principals.yaml` exists
 

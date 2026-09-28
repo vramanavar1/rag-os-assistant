@@ -168,7 +168,7 @@ function pretty(v: unknown): string {
 
 function explainPanel(ctx: ViewContext): HTMLElement {
   const attrs = h('textarea', { id: 'explain-attrs', rows: 5, class: 'mono', spellcheck: 'false', placeholder: 'department=HR\nregion=EU\nclearance=2' });
-  const roles = h('input', { id: 'explain-roles', type: 'text', placeholder: 'reader, admin', autocomplete: 'off' });
+  const roles = h('input', { id: 'explain-roles', type: 'text', placeholder: 'contributor, admin', autocomplete: 'off' });
   const result = h('div', { 'aria-live': 'polite' });
   const presets = h('div', { class: 'row' });
   const submit = h('button', { type: 'submit', class: 'btn btn-primary' }, 'Explain');

@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Step 10 - load test: query latency with and without ingestion running (scripts/loadtest.py).

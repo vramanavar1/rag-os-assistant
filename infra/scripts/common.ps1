@@ -1,4 +1,5 @@
 #Requires -Version 7.3
+
 <#
 .SYNOPSIS
     Shared helpers for the RAG-OS provisioning scripts. Dot-source it:  . (Join-Path $PSScriptRoot 'common.ps1')
@@ -40,6 +41,12 @@ $script:RagOsEnvDir = Join-Path $script:RagOsInfraDir 'env'
 # accounts.") cannot be covered here safely. Give those an existence check that exits 0 instead - typically
 # `az <thing> list --query "[?name=='X']"` - so there is no error to classify. See Get-AzAccountOrNull.
 $script:RagOsNotFoundPattern = '(?i)(ResourceNotFound|ResourceGroupNotFound|NotFound|was not found|could not be found|does not exist|not found)'
+# Graph rejecting a preAuthorizedApplications entry whose permission id it cannot see yet. Named once because
+# two places must agree on it: the retry that waits for replication, and the catch that explains it. It
+# deliberately overlaps neither of the patterns below - see the two-layer note - and note that 'cannot be
+# found' is NOT matched by RagOsNotFoundPattern above ('could not be found' is), so this never reaches the
+# -AllowNotFound path and get silently swallowed.
+$script:RagOsGraphPermissionIdPattern = '(?i)(AppPermissions sets|Permission Id that cannot be found)'
 # Two retry layers, deliberately kept apart:
 #   Invoke-Az (here)  - transport, throttling and control-plane 5xx. 3 attempts, seconds apart.
 #   Invoke-WithRetry  - eventual consistency (Entra RBAC replication, resource state). Tailored -RetryOn,
@@ -106,6 +113,9 @@ $script:RagOsFailureHints = @(
     @{ Match = '(?i)(MissingSubscriptionRegistration|not registered to use namespace)'
         Cause = 'An Azure resource provider is not registered on this subscription.'
         Fix   = 'Run ./infra/scripts/00-prereqs.ps1 -Env <env>, which registers every provider RAG-OS needs.' }
+    @{ Match = '(?i)(AppPermissions sets|Permission Id that cannot be found)'
+        Cause = 'A Microsoft Graph write pre-authorised a client for a permission id the application does not (yet) expose. Graph validates api.preAuthorizedApplications against the permissions ALREADY PERSISTED on the app, never against the oauth2PermissionScopes in the same request, and it rejects the whole request rather than the one entry.'
+        Fix   = 'Write the scope first, then pre-authorise in a second call - ./infra/scripts/Set-EntraAppRegistration.ps1 does this in the right order. If it is already in that order, an existing pre-authorised client is pointing at a permission the app no longer defines; remove that entry in the Entra admin center (Expose an API -> Authorized client applications).' }
 )
 
 function Get-AzFailureHint {
@@ -350,6 +360,7 @@ function Invoke-AzRest {
     )
     $restArgs = @('rest', '--method', $Method, '--url', $Url)
     $bodyFile = $null
+    $json = $null          # declared here so the catch can read it under Set-StrictMode
     try {
         if ($null -ne $Body) {
             $bodyFile = [IO.Path]::GetTempFileName()
@@ -358,6 +369,14 @@ function Invoke-AzRest {
             $restArgs += @('--body', "@$bodyFile", '--headers', 'Content-Type=application/json')
         }
         return (Invoke-Az -Arguments $restArgs -AllowNotFound:$AllowNotFound -Sensitive:$Sensitive)
+    }
+    catch {
+        # az echoes the failing command, which names the temp file - and the finally below has already deleted it,
+        # so the reader is shown the path of something they cannot open. When Graph rejects a body, the body is the
+        # only thing worth seeing. It is a manifest fragment, not a credential; -Sensitive is how a caller says
+        # otherwise, and then nothing is added.
+        if ($Sensitive -or $null -eq $json) { throw }
+        throw ($_.Exception.Message + "`n`nRequest body sent:`n" + $json)
     }
     finally {
         if ($bodyFile) { Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue }
@@ -860,6 +879,653 @@ function Grant-Role {
         }
     }
     Write-Ok "'$Role' -> $PrincipalLabel on $scopeName"
+}
+
+# --------------------------------------------------------------------------------- Entra app registration (sign-in)
+# These shape the Microsoft Graph body for the app registration people sign in through. They are pure - no az call,
+# no state - because every interesting failure here is in the body, and a pure function is the only way to test one
+# without a directory to write to. Set-EntraAppRegistration.ps1 does the reading and the writing.
+#
+# Two spellings of the same manifest exist and mixing them fails SILENTLY. This code talks to
+# graph.microsoft.com/v1.0, so it must use the Graph names:
+#     api.oauth2PermissionScopes                             not  oauth2Permissions
+#     api.preAuthorizedApplications[].delegatedPermissionIds not  permissionIds
+# The right-hand spellings belong to the Azure AD Graph / portal Manifest blade. Graph accepts a body carrying them
+# and discards the value, which is indistinguishable from success.
+
+# The application roles RAG-OS understands. `Value` is what lands in the token's `roles` claim, and
+# config/access-policy/access-policy.yaml maps each one to an internal role (rag.admin -> admin + contributor,
+# rag.sme -> taxonomy_editor + reviewer, and so on). Without at least one of these assigned to somebody, a
+# deployment has no administrator and nobody can upload: that is a 403 at first use and nothing earlier.
+#
+# Held here rather than parsed out of the YAML because PowerShell has no built-in YAML reader, and a hand-rolled
+# parser for one list would be a worse liability than this list. tests/unit/test_infra_entra_app.py asserts the
+# two agree, so they cannot drift.
+$script:RagOsEntraAppRoles = @(
+    @{ Value = 'rag.admin'; DisplayName = 'RAG-OS administrator'
+        Description = 'Full administration: ingestion, configuration and the review queue. Also bypasses the ' +
+        'document access filter, so an administrator sees every document whatever its department, region or ' +
+        'clearance - grant it deliberately.'
+    }
+    @{ Value = 'rag.contributor'; DisplayName = 'RAG-OS contributor'
+        Description = 'May upload documents. What they can read stays filtered by the department, region and ' +
+        'clearance their account carries.'
+    }
+    @{ Value = 'rag.sme'; DisplayName = 'RAG-OS subject-matter expert'
+        Description = 'May edit the taxonomy - facets and path rules - and work the document review queue.'
+    }
+    @{ Value = 'rag.reviewer'; DisplayName = 'RAG-OS reviewer'
+        Description = 'May work the document review queue and approve tags.'
+    }
+)
+
+function Get-EntraScopeName {
+    <#
+    .SYNOPSIS  The scope name out of a scope identifier: api://<app-id>/access_as_user -> access_as_user.
+    .DESCRIPTION
+        The name is hardcoded nowhere in RAG-OS - it is whatever EntraApiScope says after the last '/', so renaming
+        the scope is a psd1 edit and nothing else. Returns $null when the identifier carries no name, which is the
+        case worth catching: 'api://<app-id>' on its own is a resource, not a scope, and would otherwise yield the
+        app id as a scope name and go on to create a scope called after a GUID.
+    #>
+    param([Parameter(Mandatory)][AllowNull()][AllowEmptyString()][string]$Scope)
+    if ([string]::IsNullOrWhiteSpace($Scope)) { return $null }
+    $sep = $Scope.IndexOf('://')
+    if ($sep -lt 0) { return $null }
+    $parts = @(($Scope.Substring($sep + 3).Trim('/')) -split '/' | Where-Object { $_ })
+    if ($parts.Count -lt 2) { return $null }   # resource only, no scope segment
+    return $parts[-1]
+}
+
+function Get-EntraScopeResource {
+    <# .SYNOPSIS  The resource half of a scope identifier: api://<app-id>/access_as_user -> api://<app-id>. #>
+    param([Parameter(Mandatory)][AllowNull()][AllowEmptyString()][string]$Scope)
+    if (-not (Get-EntraScopeName -Scope $Scope)) { return $null }
+    return $Scope.TrimEnd('/').Substring(0, $Scope.TrimEnd('/').LastIndexOf('/'))
+}
+
+function Add-UniqueValue {
+    <#
+    .SYNOPSIS  Case-insensitive union of one value into a list. Returns @{ Values; Added }.
+    .DESCRIPTION
+        Values is ALWAYS wrapped in @(), which is load-bearing rather than tidy: ConvertTo-Json renders a
+        one-element collection that came off the pipeline as a bare scalar, so a single redirect URI would reach
+        Graph as "https://..." instead of ["https://..."] and be rejected or silently mis-stored.
+    #>
+    param([AllowNull()][string[]]$Existing, [Parameter(Mandatory)][string]$Value)
+    $list = @($Existing | Where-Object { $_ })
+    if (@($list | Where-Object { $_ -eq $Value }).Count -gt 0) { return @{ Values = $list; Added = $false } }
+    return @{ Values = @($list + $Value); Added = $true }
+}
+
+function Get-EntraAppPatch {
+    <#
+    .SYNOPSIS
+        The Graph PATCH body that brings an app registration in line for sign-in, plus what it would change.
+    .DESCRIPTION
+        Read-modify-write, and that is the whole reason this is a function rather than one az call. A Graph PATCH
+        REPLACES a complex property outright: sending { api: { oauth2PermissionScopes: [...] } } deletes
+        knownClientApplications, acceptMappedClaims, every other exposed scope and every pre-authorised client on
+        that application. So the existing object is the starting value, and only top-level keys that actually
+        differ are emitted at all.
+
+        Returns @{ Body; Changes; ScopeId; ScopeExisted; PreAuthDeferred }. An EMPTY Changes list means the
+        registration is already correct and the caller must not PATCH: re-sending an identical body would report
+        success whether or not this function computed anything sensible, which is exactly the bug a dry run is
+        supposed to expose.
+
+        INVARIANT: the body never references a scope id in preAuthorizedApplications unless that scope already
+        exists in the directory - see the ordering note in the pre-auth block below. PreAuthDeferred says a second
+        call is wanted once the scope has been written, and the caller is expected to make it.
+    .PARAMETER App
+        The application object as `az ad app show` returns it - the Graph shape, parsed to hashtables.
+    .PARAMETER PreAuthorizeAppIds
+        Client app ids to pre-authorise IN ADDITION to the app itself, so their users are never asked to consent.
+    .PARAMETER AppRoles
+        Application role values to expose, from $script:RagOsEntraAppRoles. Roles carry no ordering constraint
+        against the scope, so they go in the same write.
+    #>
+    param(
+        [Parameter(Mandatory)][object]$App,
+        [Parameter(Mandatory)][string]$ClientId,
+        [Parameter(Mandatory)][string]$ScopeName,
+        [Parameter(Mandatory)][string]$AppIdUri,
+        [string[]]$RedirectUris,
+        [string[]]$PreAuthorizeAppIds,
+        [string[]]$AppRoles,
+        [int]$AccessTokenVersion = 2
+    )
+    $changes = [System.Collections.Generic.List[object]]::new()
+    $body = [ordered]@{}
+
+    # Graph omits anything unset, and Set-StrictMode -Version Latest turns a missing key into a terminating error,
+    # so every read goes through Get-Value. An app that has never exposed a scope has no 'api' key at all.
+    $origUris = @(Get-Value $App 'identifierUris')
+    $origApi = Get-Value $App 'api'
+    $origScopes = @(Get-Value $App 'api.oauth2PermissionScopes')
+    $origPreAuth = @(Get-Value $App 'api.preAuthorizedApplications')
+    $origVersion = Get-Value $App 'api.requestedAccessTokenVersion'
+    $origSpaUris = @(Get-Value $App 'spa.redirectUris')
+
+    # ---- identifierUris. Without the app id URI the scope identifier resolves to no resource at all and Entra
+    # answers AADSTS500011 (resource principal not found) rather than 65005 - a different hunt entirely.
+    $uris = Add-UniqueValue -Existing $origUris -Value $AppIdUri
+    if ($uris.Added) {
+        $body['identifierUris'] = $uris.Values
+        $changes.Add([pscustomobject]@{ What = 'identifierUris'
+                Before = (($origUris -join ', ') -replace '^$', '(none)'); After = ($uris.Values -join ', ') })
+    }
+
+    # ---- the scope. Its absence is precisely what AADSTS65005 reports.
+    $scope = @($origScopes | Where-Object { $_ -and ([string](Get-Value $_ 'value')) -eq $ScopeName }) |
+        Select-Object -First 1
+    $scopeId = if ($scope -and (Get-Value $scope 'id')) { [string](Get-Value $scope 'id') } else { [guid]::NewGuid().Guid }
+    $scopeChanged = $false
+    if ($scope) {
+        # Keep the operator's consent wording and everything else they set; force only the two fields that decide
+        # whether the scope can actually be requested. Rewriting the text would report a change on every run.
+        $desiredScope = [ordered]@{}
+        if ($scope -is [System.Collections.IDictionary]) {
+            foreach ($key in $scope.Keys) { $desiredScope[$key] = $scope[$key] }
+        }
+        else { foreach ($prop in $scope.PSObject.Properties) { $desiredScope[$prop.Name] = $prop.Value } }
+        $wasEnabled = [bool](Get-Value $scope 'isEnabled')
+        $wasType = [string](Get-Value $scope 'type')
+        $desiredScope['isEnabled'] = $true
+        $desiredScope['type'] = 'User'
+        if (-not $wasEnabled) {
+            $scopeChanged = $true
+            $changes.Add([pscustomobject]@{ What = "scope '$ScopeName' isEnabled"; Before = 'false'; After = 'true' })
+        }
+        if ($wasType -ne 'User') {
+            $scopeChanged = $true
+            $changes.Add([pscustomobject]@{ What = "scope '$ScopeName' type"
+                    Before = (($wasType) ? $wasType : '(unset)'); After = 'User' })
+        }
+    }
+    else {
+        $scopeChanged = $true
+        $desiredScope = [ordered]@{
+            id                      = $scopeId
+            value                   = $ScopeName
+            type                    = 'User'
+            isEnabled               = $true
+            adminConsentDisplayName = 'Access RAG-OS as the signed-in user'
+            adminConsentDescription = 'Allows the chat UI to call the RAG-OS API on behalf of the signed-in user. ' +
+            "The caller's own attributes decide what the search returns; this permission grants no extra access."
+            userConsentDisplayName  = 'Access RAG-OS on your behalf'
+            userConsentDescription  = 'Allows the assistant to search the knowledge base as you, returning only ' +
+            'documents your permissions already allow.'
+        }
+        $changes.Add([pscustomobject]@{ What = "scope '$ScopeName'"; Before = '(not exposed)'
+                After = "exposed, id $scopeId" })
+    }
+    $desiredScopes = @()
+    $replaced = $false
+    foreach ($existing in $origScopes) {
+        if (-not $existing) { continue }
+        if (([string](Get-Value $existing 'value')) -eq $ScopeName) { $desiredScopes += , $desiredScope; $replaced = $true }
+        else { $desiredScopes += , $existing }   # another API's scope on the same app - must survive
+    }
+    if (-not $replaced) { $desiredScopes += , $desiredScope }
+
+    # ---- pre-authorised clients, so nobody is shown a consent prompt for our own UI.
+    #
+    # ORDERING CONSTRAINT, and the reason this is the awkward part of the function. Graph validates
+    # preAuthorizedApplications against the permission set ALREADY PERSISTED on the application - NOT against the
+    # oauth2PermissionScopes in the same request body. Pre-authorising a scope this body is creating is answered
+    # with HTTP 400:
+    #     InvalidValue: Property api.preAuthorizedApplications.delegatedPermissionIds has a Permission Id
+    #                   that cannot be found in the AppPermissions sets.
+    # and that rejection is atomic, so it takes the new scope down with it - the one thing that had to land.
+    #
+    # So when the scope does not exist yet the pre-authorisation is DEFERRED. The existing entries are carried
+    # through untouched (dropping the key would delete them, since the whole `api` object is replaced), and the
+    # caller writes the scope, re-reads the application and calls this function again. That second call sees the
+    # scope and uses the id Graph actually persisted rather than one minted here.
+    $preAuthMap = [ordered]@{}
+    foreach ($entry in $origPreAuth) {
+        if (-not $entry) { continue }
+        $entryAppId = [string](Get-Value $entry 'appId')
+        if (-not $entryAppId) { continue }
+        $preAuthMap[$entryAppId] = @(@(Get-Value $entry 'delegatedPermissionIds') | Where-Object { $_ })
+    }
+    $preAuthChanged = $false
+    $preAuthDeferred = $false
+    $wantedClients = @(@($ClientId) + @($PreAuthorizeAppIds) | Where-Object { $_ } | Select-Object -Unique)
+    if (-not $scope) {
+        # $scopeId was minted moments ago, so by definition no existing entry can already carry it: every wanted
+        # client needs the second write. Listed in Changes anyway, so the operator is not left wondering why a
+        # change they asked for is absent from the diff.
+        $preAuthDeferred = $wantedClients.Count -gt 0
+        foreach ($wanted in $wantedClients) {
+            $changes.Add([pscustomobject]@{ What = "pre-authorise $wanted"
+                    Before = ($preAuthMap.Contains($wanted) ? (@($preAuthMap[$wanted]) -join ', ') : '(not listed)')
+                    After = 'deferred to a second write - Graph needs the scope to exist first' })
+        }
+    }
+    else {
+        foreach ($wanted in $wantedClients) {
+            $had = $preAuthMap.Contains($wanted)
+            $union = Add-UniqueValue -Existing ($had ? @($preAuthMap[$wanted]) : @()) -Value $scopeId
+            if (-not $had -or $union.Added) {
+                $preAuthChanged = $true
+                $changes.Add([pscustomobject]@{ What = "pre-authorise $wanted"
+                        Before = ($had ? (@($preAuthMap[$wanted]) -join ', ') : '(not listed)'); After = ($union.Values -join ', ') })
+            }
+            $preAuthMap[$wanted] = $union.Values
+        }
+    }
+    $desiredPreAuth = @(foreach ($appKey in $preAuthMap.Keys) {
+            @{ appId = $appKey; delegatedPermissionIds = @($preAuthMap[$appKey]) }
+        })
+
+    # ---- access token version. null means 1, and 1 means iss=https://sts.windows.net/<tid>/ with aud set to the
+    # requested resource URI. 2 means iss=.../v2.0 with aud set to the bare app id. The API has to expect whichever
+    # one this says, which is why it is set explicitly rather than left to the default.
+    $versionChanged = ([string]$origVersion -ne [string]$AccessTokenVersion)
+    if ($versionChanged) {
+        $changes.Add([pscustomobject]@{ What = 'api.requestedAccessTokenVersion'
+                Before = (($null -eq $origVersion -or "$origVersion" -eq '') ? 'null (means 1)' : "$origVersion")
+                After = "$AccessTokenVersion" })
+    }
+
+    if ($scopeChanged -or $preAuthChanged -or $versionChanged) {
+        # Start from the existing api object so knownClientApplications and acceptMappedClaims survive the replace.
+        $api = [ordered]@{}
+        if ($origApi -is [System.Collections.IDictionary]) {
+            foreach ($key in $origApi.Keys) { $api[$key] = $origApi[$key] }
+        }
+        $api['oauth2PermissionScopes'] = @($desiredScopes)
+        $api['preAuthorizedApplications'] = @($desiredPreAuth)
+        $api['requestedAccessTokenVersion'] = $AccessTokenVersion
+        $body['api'] = $api
+    }
+
+    # ---- application roles. These are what the `roles` claim carries; access-policy.yaml turns each value into
+    # an internal role. Nothing else in the deployment creates them, and without one nobody can upload or reach
+    # the admin console. Unlike the pre-authorisation there is no ordering constraint here, so they ride along.
+    $origAppRoles = @(Get-Value $App 'appRoles')
+    $existingRoleValues = @($origAppRoles | ForEach-Object { [string](Get-Value $_ 'value') })
+    $desiredAppRoles = @()
+    foreach ($existing in $origAppRoles) {
+        if (-not $existing) { continue }
+        # `origin` is READ-ONLY and Graph rejects any write that carries it back ("must not be included in any
+        # POST or PATCH requests"). Echoing what was read is the obvious implementation and it fails with a 400
+        # naming the whole collection rather than the offending key, so the copy drops it deliberately.
+        $copy = [ordered]@{}
+        if ($existing -is [System.Collections.IDictionary]) {
+            foreach ($key in $existing.Keys) { if ($key -ne 'origin') { $copy[$key] = $existing[$key] } }
+        }
+        else {
+            foreach ($prop in $existing.PSObject.Properties) {
+                if ($prop.Name -ne 'origin') { $copy[$prop.Name] = $prop.Value }
+            }
+        }
+        $desiredAppRoles += , $copy
+    }
+    $rolesAdded = @()
+    foreach ($wantedRole in @($AppRoles | Where-Object { $_ })) {
+        $spec = @($script:RagOsEntraAppRoles | Where-Object { $_.Value -eq $wantedRole }) | Select-Object -First 1
+        if (-not $spec) {
+            throw ("Unknown application role '$wantedRole'. RAG-OS understands only: " +
+                "$(($script:RagOsEntraAppRoles | ForEach-Object { $_.Value }) -join ', '). A role this policy " +
+                'does not map gates nothing - see access-policy.yaml.')
+        }
+        # Graph's rules for the value, which becomes the claim: no whitespace, and it may not begin with a dot.
+        if ($spec.Value -match '\s' -or $spec.Value.StartsWith('.')) {
+            throw "Application role value '$($spec.Value)' is not legal: no whitespace, and it may not start with '.'."
+        }
+        if ($existingRoleValues -contains $spec.Value) { continue }
+        $desiredAppRoles += , ([ordered]@{
+                id                 = [guid]::NewGuid().Guid
+                value              = $spec.Value
+                displayName        = $spec.DisplayName
+                description        = $spec.Description
+                allowedMemberTypes = @('User')
+                isEnabled          = $true
+            })
+        $rolesAdded += $spec.Value
+    }
+    if ($rolesAdded.Count -gt 0) {
+        $body['appRoles'] = @($desiredAppRoles)
+        $changes.Add([pscustomobject]@{ What = 'appRoles'
+                Before = ((($existingRoleValues -join ', ')) -replace '^$', '(none)')
+                After = (@($desiredAppRoles | ForEach-Object { [string]$_['value'] }) -join ', ') })
+    }
+
+    # ---- SPA redirect URIs. Replacing 'spa' wholesale is safe only because spaApplication has exactly one
+    # property; the URI list itself is still a union, so a localhost entry someone added by hand is kept.
+    $spaUris = @($origSpaUris)
+    $spaAdded = @()
+    foreach ($uri in @($RedirectUris | Where-Object { $_ })) {
+        $union = Add-UniqueValue -Existing $spaUris -Value $uri
+        $spaUris = $union.Values
+        if ($union.Added) { $spaAdded += $uri }
+    }
+    if ($spaAdded.Count -gt 0) {
+        $body['spa'] = @{ redirectUris = @($spaUris) }
+        $changes.Add([pscustomobject]@{ What = 'spa.redirectUris'
+                Before = (($origSpaUris -join ', ') -replace '^$', '(none)'); After = ($spaUris -join ', ') })
+    }
+
+    return @{ Body = $body; Changes = @($changes); ScopeId = $scopeId; ScopeExisted = [bool]$scope
+        PreAuthDeferred = $preAuthDeferred }
+}
+
+function Get-EntraAppChecks {
+    <#
+    .SYNOPSIS
+        Read-only verdicts on whether an app registration can actually sign anybody in. Pure - no az call.
+    .DESCRIPTION
+        Separated from 00-prereqs.ps1 so it can be tested against an app object without a directory, which is the
+        only reason any of this is covered: the failure it exists to catch (a scope that was never exposed) used
+        to surface nowhere but at a user's sign-in, long after provisioning had reported success.
+
+        Returns a list of @{ Item; Status; Detail } in the shape 00-prereqs.ps1's Add-Check takes. FAIL means no
+        one can sign in; WARN means something is imperfect but sign-in works, or will once a later step runs.
+    .PARAMETER App
+        The application object as `az ad app show` returns it, or $null when it does not exist.
+    .PARAMETER ChatUiFqdn
+        The deployed chat UI host, when one is known. Omit before step 07 - the redirect URI check is then skipped
+        rather than reported as missing.
+    .PARAMETER AdminAssignments
+        How many people hold rag.admin. -1 means "not looked up" and the check is skipped - listing assignments
+        needs a Graph call, which this function deliberately does not make.
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$Config,
+        [Parameter(Mandatory)][AllowNull()][object]$App,
+        [string]$ChatUiFqdn,
+        [int]$AdminAssignments = -1,
+        [string]$Env = 'dev'
+    )
+    $checks = [System.Collections.Generic.List[object]]::new()
+    function New-Check([string]$Item, [string]$Status, [string]$Detail) {
+        $checks.Add([pscustomobject]@{ Item = $Item; Status = $Status; Detail = $Detail })
+    }
+
+    if (-not $App) {
+        New-Check 'Entra app registration exists' 'FAIL' ("no app with app id $($Config.EntraClientId) in tenant " +
+            "$($Config.EntraTenantId) - create it (Deployment.md section 9.1) or correct EntraClientId")
+        return $checks
+    }
+
+    $appId = [string](Get-Value $App 'appId')
+    $uris = @(Get-Value $App 'identifierUris')
+    $scopes = @(Get-Value $App 'api.oauth2PermissionScopes')
+    $preAuth = @(Get-Value $App 'api.preAuthorizedApplications')
+    $tokenVersion = Get-Value $App 'api.requestedAccessTokenVersion'
+    $signIn = [string](Get-Value $App 'signInAudience')
+    New-Check 'Entra app registration exists' 'PASS' "$(Get-Value $App 'displayName') ($appId)"
+
+    # ---- the scope the browser asks for, and the resource it names.
+    $scopeName = Get-EntraScopeName -Scope $Config.EntraApiScope
+    $scopeResource = Get-EntraScopeResource -Scope $Config.EntraApiScope
+    if (-not $scopeName) {
+        New-Check 'EntraApiScope names a scope' 'FAIL' ("'$($Config.EntraApiScope)' is a resource with no scope " +
+            "on the end - it has to look like api://$appId/access_as_user")
+    }
+    else {
+        New-Check 'EntraApiScope names a scope' 'PASS' "$scopeName (resource $scopeResource)"
+        # Without the resource on identifierUris the scope resolves to nothing at all, and Entra answers
+        # AADSTS500011 instead of 65005 - a different symptom, same underlying omission.
+        $uriOk = @($uris | Where-Object { $_ -eq $scopeResource }).Count -gt 0
+        New-Check 'Scope resource is an identifierUri' ($uriOk ? 'PASS' : 'FAIL') $(
+            $uriOk ? $scopeResource
+            : "'$scopeResource' is not in identifierUris [$($uris -join ', ')] - AADSTS500011 at sign-in")
+
+        $exposed = @($scopes | Where-Object { $_ -and ([string](Get-Value $_ 'value')) -eq $scopeName })
+        if ($exposed.Count -eq 0) {
+            New-Check "Scope '$scopeName' exposed" 'FAIL' ('not exposed under Expose an API - this is exactly ' +
+                "AADSTS65005 at sign-in. Fix: ./infra/scripts/Set-EntraAppRegistration.ps1 -Env $Env")
+        }
+        elseif (-not (Get-Value $exposed[0] 'isEnabled')) {
+            New-Check "Scope '$scopeName' exposed" 'FAIL' ('exposed but DISABLED, which fails identically. Fix: ' +
+                "./infra/scripts/Set-EntraAppRegistration.ps1 -Env $Env")
+        }
+        else {
+            $scopeId = [string](Get-Value $exposed[0] 'id')
+            New-Check "Scope '$scopeName' exposed" 'PASS' "enabled, type $(Get-Value $exposed[0] 'type'), id $scopeId"
+            # A consent prompt rather than a broken sign-in, so advisory.
+            $ownPre = @($preAuth | Where-Object {
+                    $_ -and ([string](Get-Value $_ 'appId')) -eq $appId -and
+                    (@(Get-Value $_ 'delegatedPermissionIds') -contains $scopeId) })
+            New-Check 'Client pre-authorised for its own scope' (($ownPre.Count -gt 0) ? 'PASS' : 'WARN') $(
+                ($ownPre.Count -gt 0) ? 'no consent prompt'
+                : 'not listed - each user is asked to consent once. Set-EntraAppRegistration.ps1 adds it')
+        }
+    }
+
+    # ---- the pairing that 401s with a token that is otherwise perfectly valid.
+    # requestedAccessTokenVersion is a DIRECTORY setting deciding the token format, and null means 1:
+    #     1  ->  iss = https://sts.windows.net/<tid>/   aud = the api:// resource URI that was requested
+    #     2  ->  iss = .../<tid>/v2.0                   aud = the bare app id
+    # rag-api accepts both, deriving the second audience spelling from ENTRA_AUDIENCE - but only when
+    # ENTRA_AUDIENCE names THIS app, and only when a bare app id can be derived from it at all.
+    $versionLabel = (($null -eq $tokenVersion) -or ("$tokenVersion" -eq '')) ? 'null (means 1)' : "$tokenVersion"
+    $audience = "$($Config.EntraAudience)"
+    $audienceBare = ($audience -replace '^api://', '') -replace '^.*/', ''
+    $guidAudience = $audienceBare -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+    if ($guidAudience -and $audienceBare -ne $appId) {
+        New-Check 'ENTRA_AUDIENCE names this app' 'FAIL' ("EntraAudience is '$audience' but this registration " +
+            "is $appId - no token can carry both, so every authenticated request 401s")
+    }
+    elseif ((-not $guidAudience) -and "$tokenVersion" -eq '2') {
+        New-Check 'ENTRA_AUDIENCE matches the token version' 'FAIL' ("token version 2 stamps aud = $appId, but " +
+            "EntraAudience is '$audience', which carries no app id to match. Set EntraAudience = '$appId'")
+    }
+    else {
+        New-Check 'ENTRA_AUDIENCE matches the token version' 'PASS' ("requestedAccessTokenVersion $versionLabel, " +
+            "so aud will be $(("$tokenVersion" -eq '2') ? $appId : $audience) - accepted")
+    }
+    # The manifest reference states this as a requirement, not a preference.
+    if ($signIn -in @('AzureADandPersonalMicrosoftAccount', 'PersonalMicrosoftAccount') -and "$tokenVersion" -ne '2') {
+        New-Check 'signInAudience vs token version' 'FAIL' ("signInAudience is $signIn, which REQUIRES " +
+            "api.requestedAccessTokenVersion = 2; it is $versionLabel")
+    }
+
+    # ---- application roles. Without these the deployment has no administrator and nobody can upload: the
+    # first sign-in succeeds and then every upload is refused with "uploading requires the contributor or admin
+    # role". Nothing used to report it before that point.
+    $exposedRoles = @(@(Get-Value $App 'appRoles') |
+            Where-Object { $_ -and (Get-Value $_ 'isEnabled') } | ForEach-Object { [string](Get-Value $_ 'value') })
+    $wantedRoles = @($script:RagOsEntraAppRoles | ForEach-Object { $_.Value })
+    $missingRoles = @($wantedRoles | Where-Object { $exposedRoles -notcontains $_ })
+    if ($exposedRoles.Count -eq 0) {
+        New-Check 'Application roles exposed' 'FAIL' ('none - nobody can upload or open the admin console. ' +
+            "Fix: ./infra/scripts/Set-EntraAppRegistration.ps1 -Env $Env -GrantAdminTo me")
+    }
+    elseif ($missingRoles.Count -gt 0) {
+        New-Check 'Application roles exposed' 'WARN' ("$($exposedRoles -join ', ') - missing " +
+            "$($missingRoles -join ', '), so nobody can hold those. Re-run Set-EntraAppRegistration.ps1 to add them.")
+    }
+    else {
+        New-Check 'Application roles exposed' 'PASS' ($exposedRoles -join ', ')
+    }
+    # Creating a role grants nobody anything, and a deployment where no one holds rag.admin is administrable by
+    # nobody. WARN rather than FAIL: it is recoverable at any time and does not stop anything being provisioned.
+    if ($AdminAssignments -ge 0 -and $exposedRoles -contains 'rag.admin') {
+        New-Check 'Someone holds rag.admin' (($AdminAssignments -gt 0) ? 'PASS' : 'WARN') $(
+            ($AdminAssignments -gt 0) ? "$AdminAssignments assignment(s)"
+            : "nobody - the role exists but is unassigned. Grant it: ./infra/scripts/Set-EntraAppRoleAssignment.ps1 -Env $Env -Role admin -To me")
+    }
+
+    # ---- redirect URI. Unknowable until 07 has run, so silence before then is correct, not a gap.
+    if ($ChatUiFqdn) {
+        $want = "https://$ChatUiFqdn/auth/callback"
+        $spaOk = @(@(Get-Value $App 'spa.redirectUris') | Where-Object { $_ -eq $want }).Count -gt 0
+        New-Check 'SPA redirect URI' ($spaOk ? 'PASS' : 'WARN') $(
+            $spaOk ? $want
+            : "'$want' is not registered - sign-in fails with AADSTS50011. Run Set-EntraAppRegistration.ps1 -Env $Env")
+    }
+    return $checks
+}
+
+function Resolve-EntraPrincipal {
+    <#
+    .SYNOPSIS
+        'me', an object id, a UPN or a group name -> @{ Id; Type; Display }.
+    .DESCRIPTION
+        An app role can be assigned to a user OR a group, and the two are told apart by probing rather than by
+        guessing from the string: a bare GUID could be either, and getting it wrong produces a Graph error about
+        principal types that says nothing about which one was meant.
+    #>
+    param([Parameter(Mandatory)][string]$Reference)
+    if ($Reference -eq 'me') {
+        $me = Get-DeployerPrincipal
+        return @{ Id = $me.ObjectId; Type = $me.PrincipalType; Display = $me.Name }
+    }
+    if ($Reference -match '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$') {
+        $asUser = Invoke-Az @('ad', 'user', 'show', '--id', $Reference) -AllowNotFound
+        if ($asUser) { return @{ Id = $Reference; Type = 'User'; Display = [string](Get-Value $asUser 'userPrincipalName') } }
+        $asGroup = Invoke-Az @('ad', 'group', 'show', '--group', $Reference) -AllowNotFound
+        if ($asGroup) { return @{ Id = $Reference; Type = 'Group'; Display = [string](Get-Value $asGroup 'displayName') } }
+        # Neither readable - possibly a directory-read permission rather than a missing object, so take the id at
+        # face value rather than refusing. Graph will reject it if it is genuinely wrong.
+        return @{ Id = $Reference; Type = 'Unknown'; Display = $Reference }
+    }
+    if ($Reference.Contains('@')) {
+        $user = Invoke-Az @('ad', 'user', 'show', '--id', $Reference) -AllowNotFound
+        if (-not $user) { throw "No user '$Reference' in tenant - check the sign-in name, or pass an object id." }
+        return @{ Id = [string](Get-Value $user 'id'); Type = 'User'; Display = $Reference }
+    }
+    $group = Invoke-Az @('ad', 'group', 'show', '--group', $Reference) -AllowNotFound
+    if (-not $group) {
+        throw ("No user or group matches '$Reference'. Pass a sign-in name (someone@example.com), an object id, " +
+            "a group display name, or 'me'.")
+    }
+    return @{ Id = [string](Get-Value $group 'id'); Type = 'Group'; Display = [string](Get-Value $group 'displayName') }
+}
+
+function Get-EntraServicePrincipal {
+    <#
+    .SYNOPSIS
+        The enterprise application for an app id, created when absent. Returns $null with -NoCreate.
+    .DESCRIPTION
+        Role ASSIGNMENTS hang off the service principal; role DEFINITIONS hang off the app registration. They are
+        two objects, which is why looking under 'App registrations -> App roles' never shows who holds one.
+        `az ad app create` makes only the registration, so a first grant may have to create this.
+
+        The appId is asserted rather than assumed: a lookup that silently returned somebody else's enterprise
+        application would assign real privileges on the wrong app.
+    #>
+    param([Parameter(Mandatory)][string]$ClientId, [switch]$NoCreate)
+    $sp = Invoke-Az @('ad', 'sp', 'show', '--id', $ClientId) -AllowNotFound
+    if (-not $sp) {
+        if ($NoCreate) { return $null }
+        Write-Info 'No enterprise application for this registration yet - creating one (assignments hang off it).'
+        $sp = Invoke-Az @('ad', 'sp', 'create', '--id', $ClientId)
+    }
+    $actual = [string](Get-Value $sp 'appId')
+    if ($actual -and $actual -ne $ClientId) {
+        throw ("The enterprise application found for '$ClientId' reports appId '$actual'. Refusing to assign " +
+            'roles on an application other than the configured one.')
+    }
+    return $sp
+}
+
+function Get-EntraAppRoleId {
+    <#
+    .SYNOPSIS  The id of an application role by its value, or $null when it is absent (or disabled).
+    .DESCRIPTION
+        Assignments reference the role's GUID, not its name, so every grant, revoke and readiness check needs
+        this lookup - it was written out by hand in two places before it lived here.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowNull()][object]$Application,
+        [Parameter(Mandatory)][string]$Value,
+        [switch]$RequireEnabled
+    )
+    $role = @(@(Get-Value $Application 'appRoles') |
+            Where-Object { $_ -and ([string](Get-Value $_ 'value')) -eq $Value }) | Select-Object -First 1
+    if (-not $role) { return $null }
+    if ($RequireEnabled -and -not (Get-Value $role 'isEnabled')) { return $null }
+    return [string](Get-Value $role 'id')
+}
+
+function Get-EntraRoleAssignment {
+    <#
+    .SYNOPSIS
+        Every app role assignment on the enterprise application, with the role VALUE joined on.
+    .DESCRIPTION
+        Graph returns appRoleId as a GUID. Reporting that to an operator is useless - the join against the
+        registration's appRoles is what turns "e3f1... -> 8ab2..." into "Priya -> rag.admin".
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ServicePrincipalId,
+        [AllowNull()][object]$Application
+    )
+    $raw = Invoke-AzRest -Method get -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$ServicePrincipalId/appRoleAssignedTo"
+    $valueById = @{}
+    foreach ($role in @(Get-Value $Application 'appRoles')) {
+        if ($role) { $valueById[[string](Get-Value $role 'id')] = [string](Get-Value $role 'value') }
+    }
+    return @(@(Get-Value $raw 'value') | Where-Object { $_ } | ForEach-Object {
+            $roleId = [string](Get-Value $_ 'appRoleId')
+            [pscustomobject]@{
+                Id            = [string](Get-Value $_ 'id')
+                PrincipalId   = [string](Get-Value $_ 'principalId')
+                Principal     = [string](Get-Value $_ 'principalDisplayName')
+                PrincipalType = [string](Get-Value $_ 'principalType')
+                RoleId        = $roleId
+                # A role that was deleted after being assigned leaves the assignment behind, pointing at nothing.
+                Role          = $valueById.ContainsKey($roleId) ? $valueById[$roleId] : "(no such role: $roleId)"
+            }
+        })
+}
+
+function Grant-EntraRoleAssignment {
+    <# .SYNOPSIS  Assigns one application role to one principal. Idempotent: an existing pairing is left alone. #>
+    param(
+        [Parameter(Mandatory)][string]$ServicePrincipalId,
+        [Parameter(Mandatory)][string]$PrincipalId,
+        [Parameter(Mandatory)][string]$RoleId,
+        [Parameter(Mandatory)][string]$Label,
+        [AllowNull()][object[]]$Existing,
+        [switch]$DryRun
+    )
+    # Graph does not deduplicate: the same assignment posted twice becomes two assignments, not one.
+    $already = @(@($Existing) | Where-Object {
+            $_ -and $_.PrincipalId -eq $PrincipalId -and $_.RoleId -eq $RoleId })
+    if ($already.Count -gt 0) { Write-Ok "already assigned: $Label"; return $false }
+    if ($DryRun) { Write-Host "    would assign $Label" -ForegroundColor Yellow; return $false }
+    $null = Invoke-AzRest -Method post -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$ServicePrincipalId/appRoleAssignedTo" `
+        -Body @{ principalId = $PrincipalId; resourceId = $ServicePrincipalId; appRoleId = $RoleId }
+    Write-Ok "assigned: $Label"
+    return $true
+}
+
+function Revoke-EntraRoleAssignment {
+    <# .SYNOPSIS  Removes one app role assignment by its own id (not the principal's and not the role's). #>
+    param(
+        [Parameter(Mandatory)][string]$ServicePrincipalId,
+        [Parameter(Mandatory)][string]$AssignmentId,
+        [Parameter(Mandatory)][string]$Label,
+        [switch]$DryRun
+    )
+    if ($DryRun) { Write-Host "    would revoke $Label" -ForegroundColor Yellow; return $false }
+    $null = Invoke-AzRest -Method delete `
+        -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$ServicePrincipalId/appRoleAssignedTo/$AssignmentId"
+    Write-Ok "revoked: $Label"
+    return $true
+}
+
+function Resolve-EntraRoleValue {
+    <#
+    .SYNOPSIS  Accepts 'rag.admin' or the internal name 'admin' and returns the Entra value, or throws.
+    .DESCRIPTION
+        Both spellings are in circulation: the docs and access-policy.yaml talk about `admin` and `contributor`,
+        while Entra and the token's `roles` claim carry `rag.admin`. Refusing one of them would be a trap, and
+        guessing at an unknown name would create a role that gates nothing.
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+    $known = @($script:RagOsEntraAppRoles | ForEach-Object { $_.Value })
+    if ($known -contains $Name) { return $Name }
+    $prefixed = "rag.$Name"
+    if ($known -contains $prefixed) { return $prefixed }
+    throw ("Unknown application role '$Name'. RAG-OS understands: $($known -join ', ') " +
+        "(the 'rag.' prefix is optional). A role outside that list gates nothing - see access-policy.yaml.")
 }
 
 # ------------------------------------------------------------------------------------------------ secrets
