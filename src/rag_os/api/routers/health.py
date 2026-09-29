@@ -23,6 +23,10 @@ router = APIRouter(prefix="/api", tags=["health"])
 # least informative answer for every slow-but-working database: asyncio.wait_for cancels the await but cannot
 # cancel the worker thread, so the real error arrived after nobody was listening for it.
 _DB_TIMEOUT_S = 12
+# Deliberately small, and NOT another _DB_TIMEOUT_S: this reads one row from alembic_version on a connection
+# the ping above has already proved good, and every second here is added to readyz's worst case - which
+# several client timeouts in infra/scripts are sized against.
+_SCHEMA_TIMEOUT_S = 3
 _GUARD_TIMEOUT_S = 20
 # Worst case is therefore 32s, sequential. Every client that polls /api/readyz must allow more than that -
 # test_every_readyz_client_timeout_exceeds_readyz_own_budget enforces it, because the relationship spans two
@@ -60,6 +64,21 @@ async def readyz(c: Container = Depends(get_container), fresh: bool = False) -> 
         ok = False
         log.error("readyz: state database check failed", exc_info=True)
         checks["state_db"] = f"error: {type(e).__name__}"
+    else:
+        # Reachable is not the same as correct. SELECT 1 succeeds against any schema at any revision, so an
+        # image deployed without running its migrations used to report ready and then fail on the first query
+        # touching a new column - as an anonymous 500, with healthy probes and a clean `doctor`. The column
+        # list comes from the Table metadata in this build, so one missing column breaks every full-row read
+        # of that table: this is a whole-feature outage, and it belongs in readiness.
+        #
+        # Revision ids only, no exception text: this route is reachable unauthenticated, as the docstring says.
+        status = await asyncio.wait_for(asyncio.to_thread(c.schema_status), timeout=_SCHEMA_TIMEOUT_S)
+        checks["schema"] = {"ok": not status.needs_migration, "current": status.current, "expected": status.head}
+        if status.needs_migration:
+            ok = False
+            log.error("readyz: database schema is behind this build", extra={
+                "current": status.current, "expected": status.head})
+            checks["schema"]["detail"] = status.detail
     try:
         # Both pools, because the index is only trustworthy if the vectors in it and the vectors a query is
         # embedded into came from the same model. The ingestion pool is advisory: it scales to zero when idle,

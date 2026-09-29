@@ -52,6 +52,7 @@ from rag_os.infrastructure.registry import (
 from rag_os.infrastructure.secrets import KeyVaultSecretResolver
 from rag_os.infrastructure.settings import Settings
 from rag_os.infrastructure.sources.factory import SourceFactory
+from rag_os.infrastructure.state.schema_status import SchemaStatus, schema_status
 from rag_os.infrastructure.state.sql_store import SqlStateStore
 
 log = logging.getLogger(__name__)
@@ -344,6 +345,11 @@ class Container:
                 "source_problems": source_problems,
                 "migrations": migrations, "fields": len(self.schema.fields),
                 "sources": [s.id for s in self.domain.sources.sources]}
+
+    def schema_status(self) -> SchemaStatus:
+        """Whether the database carries the schema this build expects. Never raises - see the module docstring."""
+        return schema_status(self.state.engine,
+                             _migration_config(self.settings.state_db_url, self.settings.pg_entra_auth))
 
     def _migrate(self) -> str:
         cfg = _migration_config(self.settings.state_db_url, self.settings.pg_entra_auth)

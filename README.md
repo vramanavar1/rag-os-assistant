@@ -986,6 +986,7 @@ including how to read each field: [Deployment.md](Deployment.md#rag-os-doctor---
 
 | Symptom | Cause and fix |
 |---|---|
+| Upload, Uploads, Documents or retry return **"Internal server error"** while chat still works | The database is missing columns this build expects — an image deployed without its migrations. The column list comes from the code's table metadata, so one missing column breaks every full-row read of that table. `GET /api/readyz` now names both revisions, and `rag-os doctor` reports it. Fix: `rag-os bootstrap`, or in Azure `./infra/scripts/08-bootstrap.ps1 -Env dev`. Since 2026-09-29 the request answers 503 "The database schema is out of date" rather than a bare 500, and step 07 refuses to deploy into it. |
 | `/api/readyz` returns 503 `embedding_profile` | The body names the cause; `rag-os doctor` gives the full error. Either a pool serves a different model/revision/dimensions than the profile, or the index has no recorded profile (`rag-os bootstrap`). There is deliberately no fallback embedder. |
 | Worker logs "worker idle: embedding profile guard failing" | Same as above. The worker refuses to index vectors from an unexpected model. |
 | Answers are plausible but wrong, citing unrelated passages | Documents and queries may have been embedded by different models — searching one vector space with another's vector returns arbitrary passages with full confidence, and nothing errors. Run `./infra/scripts/Test-EmbeddingAlignment.ps1 -Env dev`, and find affected chunks with the index filter `embedded_by ne '<model>@<revision>'`. |

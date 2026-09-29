@@ -9,16 +9,16 @@
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     },
     "rag-api": {
-      "tag": "e01aa08",
-      "digest": "sha256:37b98e0ca87637852888e8676faed39f82fdf6d6af0a58382642c9128f002fa4",
-      "ref": "acrragosdevragos.azurecr.io/rag-api@sha256:37b98e0ca87637852888e8676faed39f82fdf6d6af0a58382642c9128f002fa4",
-      "recordedAt": "2026-09-28T23:03:39.0389739Z"
+      "tag": "f004e26",
+      "digest": "sha256:707d8610306d3ca784e50f3f7e8eba6ae94d6f4f6460a0d6c702bd9b67e8ce3b",
+      "ref": "acrragosdevragos.azurecr.io/rag-api@sha256:707d8610306d3ca784e50f3f7e8eba6ae94d6f4f6460a0d6c702bd9b67e8ce3b",
+      "recordedAt": "2026-09-29T06:44:28.1354774Z"
     },
     "rag-chat-ui": {
-      "tag": "e01aa08",
-      "digest": "sha256:b4754fa916c0e05b11da98762646c8dc060c518f9100248e3b70e80cbd6b3b8f",
-      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:b4754fa916c0e05b11da98762646c8dc060c518f9100248e3b70e80cbd6b3b8f",
-      "recordedAt": "2026-09-28T23:03:46.0018720Z"
+      "tag": "f004e26",
+      "digest": "sha256:7dd712808e42908423e825901275f0747788fd8e3bd2655812d5f955e70693f0",
+      "ref": "acrragosdevragos.azurecr.io/rag-chat-ui@sha256:7dd712808e42908423e825901275f0747788fd8e3bd2655812d5f955e70693f0",
+      "recordedAt": "2026-09-29T06:44:34.9817542Z"
     },
     "rag-embedder-cpu": {
       "tag": "8baaf66",
@@ -29,7 +29,7 @@
       "modelRevision": "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
     }
   },
-  "tag": "e01aa08",
+  "tag": "f004e26",
   "embedding": {
     "profile": "aoai-3-small-1536",
     "provider": "azure_openai",

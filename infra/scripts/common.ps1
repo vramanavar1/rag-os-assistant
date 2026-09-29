@@ -919,6 +919,97 @@ $script:RagOsEntraAppRoles = @(
     }
 )
 
+function Get-MigrationHead {
+    <#
+    .SYNOPSIS
+        The Alembic revision this checkout would deploy, read from migrations/versions.
+    .DESCRIPTION
+        The head is the revision no other migration names as its down_revision. Computed from the files rather
+        than by running Alembic, because this runs on an operator's machine that has no database connection and
+        may have no Python environment.
+
+        Returns $null when the directory is missing or the chain cannot be read - the caller then skips its
+        check rather than blocking a deploy on a parsing problem.
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    $dir = Join-Path $RepoRoot 'migrations/versions'
+    if (-not (Test-Path -LiteralPath $dir)) { return $null }
+    $revisions = @{}
+    $parents = @{}
+    foreach ($file in Get-ChildItem -LiteralPath $dir -Filter '*.py') {
+        $text = Get-Content -LiteralPath $file.FullName -Raw
+        $rev = [regex]::Match($text, "(?m)^revision:\s*str\s*=\s*'([^']+)'")
+        if (-not $rev.Success) { continue }
+        $revisions[$rev.Groups[1].Value] = $file.Name
+        $down = [regex]::Match($text, "(?m)^down_revision:\s*str \| None\s*=\s*'([^']+)'")
+        if ($down.Success) { $parents[$down.Groups[1].Value] = $true }
+    }
+    if ($revisions.Count -eq 0) { return $null }
+    $heads = @($revisions.Keys | Where-Object { -not $parents.ContainsKey($_) })
+    # Exactly one head, or the chain has branched and a script is the wrong place to resolve that.
+    if ($heads.Count -ne 1) { return $null }
+    return $heads[0]
+}
+
+function Test-SchemaUpToDate {
+    <#
+    .SYNOPSIS
+        Refuse to roll out an image whose migrations have not been applied.
+    .DESCRIPTION
+        The failure this prevents: step 07 deploys a new image and redefines the rag-bootstrap job WITHOUT
+        starting it, so an image carrying a new migration runs against the old schema. Because SQLAlchemy emits
+        the column list from the code's table metadata, one missing column breaks every full-row read of that
+        table - the whole Upload and Documents surface returning 500 while chat keeps working, with healthy
+        probes. It has happened.
+
+        The database revision comes from the RUNNING api's /api/readyz, so this script needs no database
+        connectivity of its own and 07 keeps its contract of never touching the database.
+
+        Returns $true when it is safe to proceed, including every case it cannot determine: a first deploy has
+        no API to ask, and an older image does not report its schema. Blocking on an unknown would make the
+        check worse than the bug.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BaseUrl,
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [string]$Env = 'dev'
+    )
+
+    $head = Get-MigrationHead -RepoRoot $RepoRoot
+    if (-not $head) {
+        Write-Info 'Could not read the migration head from migrations/versions; skipping the schema pre-flight.'
+        return $true
+    }
+    try {
+        $response = Invoke-WebRequest -Uri "$BaseUrl/api/readyz" -TimeoutSec 30 -SkipHttpErrorCheck
+        $body = $response.Content | ConvertFrom-Json
+    }
+    catch {
+        Write-Info "No running API to ask about the schema ($($_.Exception.Message.Split([char]10)[0]))."
+        Write-Info '  Skipping the pre-flight - a first deploy has nothing to be behind.'
+        return $true
+    }
+    $current = $body.checks.schema.current
+    if (-not $current) {
+        Write-Info 'The running API does not report its schema revision (an older image); skipping the pre-flight.'
+        return $true
+    }
+    if ($current -eq $head) {
+        Write-Ok "Database schema is at $head, which this checkout expects."
+        return $true
+    }
+    Write-Fail "The database schema is behind what this checkout deploys."
+    Write-Info "  database is at : $current"
+    Write-Info "  this build wants: $head"
+    Write-Info ''
+    Write-Info '  Deploying now would leave every query against the changed tables failing with a 500.'
+    Write-Info '  Apply the migrations first, then re-run this script:'
+    Write-Info "    ./infra/scripts/08-bootstrap.ps1 -Env $Env"
+    Write-Info '  Or re-run with -SkipSchemaCheck if you intend the image to go out ahead of the migration.'
+    return $false
+}
+
 function Get-EntraScopeName {
     <#
     .SYNOPSIS  The scope name out of a scope identifier: api://<app-id>/access_as_user -> access_as_user.

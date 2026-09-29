@@ -17,7 +17,7 @@ from rag_os.application.services.index_schema import build_schema
 from rag_os.composition import Container
 from rag_os.domain.access import AccessPolicy, Principal
 from rag_os.domain.classification import FacetSchema
-from rag_os.domain.errors import NotFound, ValidationFailed
+from rag_os.domain.errors import ConfigError, NotFound, ValidationFailed
 from rag_os.domain.ingestion import SourcesFile
 from rag_os.infrastructure.registry import EMBEDDERS, LLMS, PARSERS, QUEUES, SEARCH_INDEXES, SOURCES
 from rag_os.infrastructure.storage.config_repo import validate_yaml
@@ -31,7 +31,10 @@ EDITABLE = {"sources": admin, "access-policy": admin, "facets": editor, "path-ru
 def _cross_validate(c: Container, kind: str, text: str) -> None:
     model = validate_yaml(kind, text)
     if kind == "sources":
-        assert isinstance(model, SourcesFile)
+        # A real check, not an assert: this is a request path, and `python -O` strips asserts - leaving the
+        # narrowing gone and `model.sources` to fail as an anonymous 500 instead.
+        if not isinstance(model, SourcesFile):
+            raise ConfigError(f"expected a sources file for kind '{kind}', got {type(model).__name__}")
         for s in model.sources:
             c.source_factory.validate(s)
     if kind in ("access-policy", "facets"):

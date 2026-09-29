@@ -293,8 +293,9 @@ def test_the_guard_would_have_caught_the_timeout_that_produced_the_499s() -> Non
 
 def test_the_budget_reader_sees_the_numbers_it_claims_to() -> None:
     """A sum computed from an AST walk is worth checking against the file, or the guard could pass on zero."""
-    assert readyz_internal_budget_seconds() == 32, (
-        "expected 12s (database) + 20s (embedding profile guard); if health.py changed deliberately, "
+    assert readyz_internal_budget_seconds() == 35, (
+        "expected 12s (database) + 3s (schema revision) + 20s (embedding profile guard); "
+        "if health.py changed deliberately, "
         "update this and re-check the client timeouts that depend on it")
 
 

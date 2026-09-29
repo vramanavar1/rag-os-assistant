@@ -118,6 +118,13 @@ async def _doctor_report(c: Any) -> int:
         ok = False
         # The full message, unlike readyz: this output is not public.
         report["state_db"] = f"{type(e).__name__}: {e}"
+    else:
+        # `doctor` is the first thing anyone runs when the app misbehaves, and until now it said everything was
+        # fine while the schema was revisions behind and every upload was failing.
+        status = await asyncio.to_thread(c.schema_status)
+        report["schema"] = status.detail
+        if status.needs_migration:
+            ok = False
 
     embedders = {"query": c.embed_query, "ingest": c.embed_ingest}
     pools: dict[str, Any] = {}

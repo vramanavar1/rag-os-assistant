@@ -23,7 +23,10 @@ param(
     [string]$Env = 'dev',
     [string]$Tag,
     [ValidateSet('rag-embed-query', 'rag-embed-ingest', 'rag-api', 'rag-ingest-worker', 'rag-chat-ui', 'rag-scheduler', 'rag-bootstrap')]
-    [string[]]$Only
+    [string[]]$Only,
+    # Deploy even when the database has not had this checkout's migrations applied. Only for deliberately
+    # putting an image out ahead of its migration; the default refuses, because the accident is silent.
+    [switch]$SkipSchemaCheck
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 $Config = Initialize-RagOsScript -Env $Env -Title '07 Container Apps'
@@ -41,6 +44,16 @@ $required = @{
 if ($Config.AnswerModelProvider -eq 'aoai') { $required.chatDeployment = '05' }
 foreach ($key in $required.Keys) { $null = Get-Output -Config $Config -Name $key -ProducedBy "step $($required[$key])" }
 $templatesDir = Join-Path $Config.InfraDir 'containerapps'
+
+# ======================================================================================= schema pre-flight
+# This step redefines the rag-bootstrap job with the new image but never starts it, so nothing here applies a
+# migration. Rolling an image forward past its migration takes out every query against the changed tables.
+if (-not $SkipSchemaCheck) {
+    Write-Step 'Checking the database schema matches this checkout'
+    if (-not (Test-SchemaUpToDate -BaseUrl (Get-ChatUiUrl -Config $Config) -RepoRoot $Config.RepoRoot -Env $Env)) {
+        throw 'Database schema is behind this checkout. Run 08-bootstrap.ps1 first, or pass -SkipSchemaCheck.'
+    }
+}
 
 # ============================================================================================== images
 Write-Step 'Images'

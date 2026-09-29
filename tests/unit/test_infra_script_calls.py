@@ -323,3 +323,57 @@ def test_every_script_path_printed_to_an_operator_exists() -> None:
     missing = {name: where for name, where in referenced.items() if not (SCRIPTS / name).exists()}
     assert not missing, "these referenced scripts do not exist:\n  " + "\n  ".join(
         f"{name} (referenced at {', '.join(where[:3])})" for name, where in sorted(missing.items()))
+
+
+def test_the_update_runbook_applies_migrations() -> None:
+    """The documentation bug that caused an outage.
+
+    "Update (new code)" listed 06 -> 07 -> 09. Step 07 redefines the rag-bootstrap job with the new image but
+    never starts it, and nothing else in that sequence applies a migration - so following the runbook verbatim
+    put an image carrying a new migration in front of the old schema, and every query against the changed
+    tables returned 500 while the probes stayed green.
+    """
+    text = (REPO / "Deployment.md").read_text(encoding="utf-8")
+    block = re.search(r"### Update \(new code\).*?```powershell(.*?)```", text, re.S)
+    assert block, "the Update (new code) runbook moved; re-point this test"
+    steps = re.findall(r"\./infra/scripts/(\d\d)-", block.group(1))
+    assert "08" in steps, (
+        "the update runbook does not run step 08, so a migration shipped in the image is never applied. "
+        f"It lists steps: {steps}")
+    assert steps == sorted(steps), f"the steps must be in order; got {steps}"
+
+
+def test_the_deploy_step_refuses_to_run_ahead_of_the_migration() -> None:
+    """Belt to the runbook's braces: a runbook can be ignored, a pre-flight cannot."""
+    script = (SCRIPTS / "07-container-apps.ps1").read_text(encoding="utf-8")
+    assert "Test-SchemaUpToDate" in script, "07 must check the schema before rolling an image forward"
+    assert "SkipSchemaCheck" in script, "...with a deliberate override for putting an image out ahead of it"
+    common = (SCRIPTS / "common.ps1").read_text(encoding="utf-8")
+    for helper in ("function Get-MigrationHead", "function Test-SchemaUpToDate"):
+        assert helper in common, f"{helper} is missing from common.ps1"
+
+
+def test_the_schema_preflight_reads_the_real_migration_head() -> None:
+    """Get-MigrationHead parses migrations/versions rather than running Alembic, because it runs on an
+    operator's machine with no database and possibly no Python environment. That parsing must actually work
+    against the migrations in this repo - a silent $null would skip the check for ever."""
+    assert PWSH, "pwsh is needed to exercise the helper"
+    script = (
+        f". '{(SCRIPTS / 'common.ps1').as_posix()}'\n"
+        f"Get-MigrationHead -RepoRoot '{REPO.as_posix()}'\n"
+    )
+    done = subprocess.run([PWSH, "-NoProfile", "-Command", script],
+                          capture_output=True, text=True, timeout=180, check=False)
+    assert done.returncode == 0, done.stderr
+    head = done.stdout.strip()
+    assert re.fullmatch(r"[0-9a-f]{12}", head), f"expected one revision id, got {head!r}"
+
+    # ...and it must agree with what Alembic itself considers head.
+    revisions, parents = set(), set()
+    for path in (REPO / "migrations" / "versions").glob("*.py"):
+        body = path.read_text(encoding="utf-8")
+        if m := re.search(r"(?m)^revision: str = '([^']+)'", body):
+            revisions.add(m.group(1))
+        if m := re.search(r"(?m)^down_revision: str \| None = '([^']+)'", body):
+            parents.add(m.group(1))
+    assert head in (revisions - parents), f"{head} is not the head of the migration chain"

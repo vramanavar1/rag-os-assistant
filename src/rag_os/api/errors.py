@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DatabaseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from rag_os.domain.errors import RagOsError
@@ -49,7 +50,38 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return problem(exc.status_code, str(exc.detail), None, "http_error")
 
+    @app.exception_handler(DatabaseError)
+    async def _database(request: Request, exc: DatabaseError) -> JSONResponse:
+        """A schema that does not match this build is an operational state, not a mystery.
+
+        The column list in a query comes from the Table metadata in this build, so a database missing one
+        column fails every full-row read of that table. That used to arrive as a bare "Internal server error"
+        with nothing pointing at the cause - the whole Upload feature down, and no clue in the response, in
+        readyz, or in `doctor`. 503 rather than 500: it is a dependency being in the wrong state, and it is
+        fixed by running the migration rather than by changing code.
+
+        Only the exception TYPE and the two revision ids reach the client; the driver's message can carry
+        hostnames and identity details, and it is already in the log.
+        """
+        log.exception("database error", extra={"path": request.url.path})
+        if _looks_like_missing_column(exc):
+            return problem(503, "The database schema is out of date",
+                           "This build expects columns the database does not have. Run the migrations "
+                           "(rag-os bootstrap; in Azure ./infra/scripts/08-bootstrap.ps1), then retry. "
+                           "GET /api/readyz reports the exact revisions.", "schema_out_of_date")
+        return problem(503, "The database is unavailable", "The error has been logged.", "database_error")
+
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         log.exception("unhandled error", extra={"path": request.url.path})
         return problem(500, "Internal server error", "The error has been logged.", "internal_error")
+
+
+def _looks_like_missing_column(exc: BaseException) -> bool:
+    """Postgres raises ProgrammingError/UndefinedColumn, SQLite OperationalError 'no such column'.
+
+    Matched on the driver's text rather than on a code, because the two backends agree on neither the class
+    nor the SQLSTATE. Getting this wrong only costs a less specific message, never a wrong status.
+    """
+    text = f"{exc}".lower()
+    return "undefinedcolumn" in text or "does not exist" in text or "no such column" in text

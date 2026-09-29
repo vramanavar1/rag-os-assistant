@@ -179,7 +179,10 @@ async def upload(
     source = c.source_factory.create(cfg)
     await c.discover.submit(source, [item], trigger="upload")
     rec = c.state.by_tracking_id(tracking_id)
-    assert rec is not None
+    if rec is None:
+        # submit() writes the row synchronously, so this means the write did not land. An assert here became
+        # an anonymous 500 - and under python -O it disappeared entirely, leaving a None to fail later.
+        raise ConfigError("upload was accepted but no document row was created")
     return _describe(rec, rel_path if rel_dir else None, path_facets)
 
 

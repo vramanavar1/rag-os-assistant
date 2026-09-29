@@ -2037,11 +2037,29 @@ ContainerAppConsoleLogs_CL
 git pull
 ./infra/scripts/06-registry-build.ps1 -Env dev                 # builds :<new git sha>, records digests
 ./infra/scripts/07-container-apps.ps1 -Env dev                 # new revisions, deployed by digest
+./infra/scripts/08-bootstrap.ps1 -Env dev                      # migrations, index, policy - idempotent
 ./infra/scripts/09-smoke.ps1 -Env dev
 ```
+
+> **Step 08 is not optional, and this list used to omit it.** Step 07 redefines the `rag-bootstrap` job with the
+> new image but never *starts* it, so nothing else in this sequence applies a migration. An image deployed ahead
+> of its migration takes out every query against the changed tables — SQLAlchemy builds the column list from the
+> code's table metadata, so one missing column breaks every full-row read — while chat and the dashboard keep
+> working and the probes stay green. That exact outage happened on 2026-09-29: Upload and Documents returned
+> "Internal server error" with a database two revisions behind.
+>
+> Step 07 now refuses to deploy when the running API reports a schema older than this checkout's migration head,
+> and `GET /api/readyz` names both revisions. Step 08 is idempotent, so running it when nothing changed costs a
+> few seconds.
+
 Configuration-only changes (psd1 app settings): run step 07 alone. Domain configuration: upload + reload ([section 6](#6-domain-configuration)).
 
 ### Rollback
+> **Rolling back past a migration is the case nothing here protects you from.** There are no down-migrations,
+> and step 07's pre-flight only catches a schema that is *behind* the code — not code that is behind the schema.
+> An older image against a newer database is usually harmless (it ignores columns it does not know about), but
+> verify it before relying on it, and pass `-SkipSchemaCheck` if the pre-flight objects.
+
 ```powershell
 # preferred: redeploy the previous tag (deterministic, same scripts)
 az acr repository show-tags -n acrragosdevxxxxx --repository rag-api --orderby time_desc -o table
