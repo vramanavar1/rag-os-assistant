@@ -228,6 +228,93 @@ class AccessPolicyEngine:
                     clean[rule.name] = ok
         return clean
 
+    def account(self, principal: Principal) -> dict[str, object]:
+        """Everything Account Information shows, assembled where the matching semantics live.
+
+        The alternative was to hand the browser the policy and let it work out what `hierarchical` or
+        `max_level` mean for the caller. Two implementations of an access rule is one too many, and the one in
+        a bundle anybody can read would be the wrong place to discover a disagreement.
+
+        No role is required to call this - it describes only the caller, from the token they already hold.
+        """
+        d = self.decide(principal)
+        attributes: list[dict[str, object]] = []
+        for rule in self.policy.attributes:
+            values = self._principal_values(rule, principal)
+            # `values` is post-expansion for a hierarchical attribute, which is what the FILTER uses but not
+            # what the caller was given: someone whose claim says UK would be shown "UK, EMEA, Global" as
+            # though their account carried all three. Show what they hold, and report the reach separately.
+            raw = principal.attributes.get(rule.name)
+            own = [str(v) for v in raw] if isinstance(raw, list) else ([] if raw is None else [str(raw)])
+            reaches = [v for v in values if v not in own] if isinstance(values, list) else []
+            attributes.append({
+                "name": rule.name,
+                "label": rule.label or rule.name.replace("_", " ").title(),
+                "description": rule.description,
+                "match": rule.match.value,
+                # Which token claim this came from, for THIS issuer - the answer to "why is my department
+                # wrong?" is almost always that the claim is not arriving, and naming it saves the hunt.
+                "claim": rule.claims.get(principal.issuer_kind),
+                "values": own,
+                "also_reaches": reaches,
+                "level": values if rule.is_numeric and isinstance(values, int) else None,
+                "levels": [lvl.model_dump() for lvl in rule.levels],
+                "required": rule.required,
+                "present": values is not None,
+                "meaning": self._attribute_meaning(rule, values, own, reaches),
+            })
+        return {
+            "policy_version": self.policy.version,
+            "bypass": d.bypass,
+            "deny_all": d.deny_all,
+            "attributes": attributes,
+            "summary": self._access_summary(d, attributes),
+        }
+
+    def _attribute_meaning(self, rule: AttributeRule, values: list[str] | int | None,
+                           own: list[str], reaches: list[str]) -> str:
+        """One sentence, in the reader's terms rather than the filter's."""
+        if rule.is_numeric:
+            if not isinstance(values, int):
+                # Absent is not the same as zero to the claims mapper, which drops the attribute entirely -
+                # but the policy then reads it as 0, so saying "lowest level" is the honest translation.
+                return "No value on your account, so you see only documents at the lowest level."
+            label = next((lvl.label for lvl in rule.levels if lvl.value == values), str(values))
+            return f"You can read documents classified {label} or below."
+        if not own:
+            return ("No value on your account. " + (
+                "This attribute is required, so you can only reach documents shared with you individually."
+                if rule.required else "This attribute does not narrow what you can read."))
+        listed = ", ".join(own)
+        if rule.match == MatchKind.HIERARCHICAL:
+            wider = f", which also reaches {', '.join(reaches)}" if reaches else ""
+            return f"You can read documents tagged {listed}{wider}."
+        if rule.match == MatchKind.EXACT:
+            return f"Documents shared with {listed} directly. A document open to everyone does not match here."
+        return f"You can read documents tagged {listed}, and any tagged as open to everyone."
+
+    def _access_summary(self, decision: AccessDecision, attributes: list[dict[str, object]]) -> str:
+        if decision.bypass:
+            return ("You hold an administrator role, so the document filter does not apply to you: you can "
+                    "read every document, whatever its department, region or clearance.")
+        if decision.deny_all:
+            missing = [str(a["label"]) for a in attributes if a["required"] and not a["present"]]
+            return ("You cannot read any document yet" + (
+                f", because your account carries no {' or '.join(missing)}." if missing else "."))
+        # all_of is a conjunction and grant_any_of is an independent escape hatch; running them together
+        # would describe an explicit per-person share as one more hurdle rather than a way past the others.
+        by_name = {str(a["name"]): str(a["label"]) for a in attributes}
+        required = [by_name[n] for n in self.policy.combine.all_of if n in decision.attributes_used]
+        granted = [by_name[n] for n in self.policy.combine.grant_any_of if n in decision.attributes_used]
+        if not required and not granted:
+            return "Your access is not narrowed by any attribute."
+        parts = []
+        if required:
+            parts.append("a document has to match every one of " + ", ".join(required))
+        if granted:
+            parts.append("— or be shared with you individually (" + ", ".join(granted) + ")")
+        return "To read it, " + " ".join(parts) + "."
+
     def explain(self, principal: Principal) -> dict[str, object]:
         d = self.decide(principal)
         return {

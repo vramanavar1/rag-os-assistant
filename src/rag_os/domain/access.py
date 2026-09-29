@@ -22,11 +22,42 @@ class MatchKind(StrEnum):
     MAX_LEVEL = "max_level"  # document level <= principal level (integers)
 
 
+class AttributeLevel(BaseModel):
+    """One rung of a max_level ladder, e.g. 2 = Confidential.
+
+    The ladder is configuration rather than code because `max_level` is generic: a deployment may run 0-5 and
+    name the rungs whatever its handbook names them. Until this existed the four familiar names lived only in a
+    YAML comment, so a caller was shown `clearance=2` with nothing anywhere that could turn 2 into a word.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: int
+    label: str
+    description: str = ""
+
+
+class AppRole(BaseModel):
+    """An application role as defined on the Entra app registration, which is where permission is granted.
+
+    Mirrors the catalogue that provisions them (`$script:RagOsEntraAppRoles` in infra/scripts/common.ps1); a
+    test keeps the two in step. Two copies exist because one provisions Entra from PowerShell and the other is
+    served to a browser, and neither can read the other.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str  # the value that appears in the token's roles claim, e.g. rag.admin
+    display_name: str = ""
+    description: str = ""
+
+
 class AttributeRule(BaseModel):
     model_config = ConfigDict(extra="forbid")  # a typo'd key here is a security bug, not a nicety
 
     name: str
     field: str
+    label: str = ""  # for display; falls back to a title-cased name
     match: MatchKind = MatchKind.ANY_OF
     wildcard: str | None = "*"
     required: bool = False
@@ -38,6 +69,7 @@ class AttributeRule(BaseModel):
     drop_unmapped: bool = False  # for claims like Entra "groups" that also carry values meaning nothing here
     hierarchy_facet: str | None = None  # facet whose tree defines ancestors (else "/"-separated paths)
     description: str = ""
+    levels: list[AttributeLevel] = Field(default_factory=list)  # max_level only: what each rung means
 
     _value_lookup: dict[str, str] = PrivateAttr(default_factory=dict)  # lower-cased keys of value_map
 
@@ -124,6 +156,7 @@ class AccessPolicy(BaseModel):
     attributes: list[AttributeRule]
     combine: CombineRule
     roles: dict[str, list[str]] = Field(default_factory=dict)  # app role -> accepted role claim values
+    app_roles: list[AppRole] = Field(default_factory=list)  # as defined on the Entra app registration
     role_sources: IssuerRoleConfig = Field(default_factory=IssuerRoleConfig)
 
     @model_validator(mode="after")
@@ -141,6 +174,21 @@ class AccessPolicy(BaseModel):
             raise ValueError("only default_decision: deny is supported")
         if not self.combine.all_of and not self.combine.grant_any_of:
             raise ValueError("combine must reference at least one attribute")
+        # A ladder only means something where the match is "document level <= mine".
+        for a in self.attributes:
+            if a.levels and a.match != MatchKind.MAX_LEVEL:
+                raise ValueError(f"attribute '{a.name}' has levels but match is {a.match}, not max_level")
+            values = [lvl.value for lvl in a.levels]
+            if len(values) != len(set(values)):
+                raise ValueError(f"attribute '{a.name}' has duplicate level values")
+        # The catalogue and the mapping describe the same app registration, so they must not drift: a role
+        # granted by a value nobody defined would be invisible on the account page and impossible to assign.
+        if self.app_roles:
+            defined = {r.value for r in self.app_roles}
+            granted = {v for accepted in self.roles.values() for v in accepted}
+            missing = granted - defined
+            if missing:
+                raise ValueError(f"roles reference app role values not in app_roles: {sorted(missing)}")
         return self
 
     def attribute(self, name: str) -> AttributeRule:
@@ -162,6 +210,10 @@ class Principal(BaseModel):
     display_name: str = ""
     attributes: dict[str, list[str] | int] = Field(default_factory=dict)
     roles: set[str] = Field(default_factory=set)  # application roles (admin, taxonomy_editor, ...)
+    # The role values the token actually carried, kept because the mapping above is many-to-many and so
+    # cannot be inverted: rag.admin grants BOTH admin and contributor, so working backwards from the mapped
+    # roles would report an app role nobody assigned. Only set from an issuer trusted to assert roles.
+    claimed_roles: list[str] = Field(default_factory=list)
     raw_claims: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     def has_role(self, role: str) -> bool:

@@ -4,6 +4,7 @@ import { SessionTokenStore, fetchPublicConfig } from './auth';
 import { setUpEntra, type EntraTokenProvider } from './entra';
 import { byId, h, mount, show } from './dom';
 import { renderSignIn } from './signin';
+import { openAccountDialog } from './account';
 import { identityChip, isAdmin, problemBox, toast, toastError } from './ui';
 import type { Me, PublicConfig } from './types';
 import type { View, ViewContext } from './admin/common';
@@ -168,8 +169,8 @@ window.addEventListener('hashchange', () => void route());
 async function loadIdentity(): Promise<void> {
   try {
     me = await api.get<Me>('/api/me');
-    // The console deliberately passes no link to itself.
-    mount(identitySlot, identityChip(me, signOut));
+    // The console deliberately passes no link to itself, but the account panel belongs on both pages.
+    mount(identitySlot, identityChip(me, signOut, { onOpenAccount: () => openAccountDialog(api) }));
     const admin = isAdmin(me);
     mount(banner, admin ? null : h('p', null, h('strong', null, 'This principal has no admin role. '), 'Admin requests will be refused (403). Sign out and choose an administrator.'));
     show(banner, !admin);

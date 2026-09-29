@@ -52,11 +52,16 @@ class ClaimsMapper:
                         mapped_vals.append(m)
                 attrs[rule.name] = mapped_vals
         roles: set[str] = set()
+        claimed: set[str] = set()
         rs = self.policy.role_sources
         if issuer_kind in rs.trusted_for_roles:
             claim_name = rs.role_claim.get(issuer_kind, "roles")
             raw_roles = claims.get(claim_name) or []
             raw_set = {str(r) for r in (raw_roles if isinstance(raw_roles, list) else [raw_roles])}
+            # Kept, not just matched and dropped. The mapping below is many-to-many, so it cannot be inverted
+            # afterwards to answer "which application role was I actually assigned?" - and a value that
+            # matches nothing (a typo'd assignment) would otherwise be indistinguishable from no assignment.
+            claimed = raw_set
             for app_role, accepted in self.policy.roles.items():
                 if raw_set & set(accepted):
                     roles.add(app_role)
@@ -66,5 +71,6 @@ class ClaimsMapper:
             display_name=str(claims.get("name") or claims.get("preferred_username") or claims.get("sub") or ""),
             attributes=attrs,
             roles=roles,
+            claimed_roles=sorted(claimed),
             raw_claims=claims,
         )

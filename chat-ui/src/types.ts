@@ -37,6 +37,52 @@ export interface FacetValue {
   count?: number;
 }
 
+/** GET /api/me/account. Assembled server-side so the browser never reimplements the access rules. */
+export interface AccountLevel {
+  value: number;
+  label: string;
+  description: string;
+}
+
+export interface AccountAttribute {
+  name: string;
+  label: string;
+  description: string;
+  match: string;
+  /** Which token claim supplied it, for this issuer - the usual answer to "why is mine wrong?". */
+  claim: string | null;
+  values: string[];
+  /** For a hierarchical attribute: what your values also reach (UK also reaches EMEA, Global). */
+  also_reaches: string[];
+  level: number | null;
+  levels: AccountLevel[];
+  required: boolean;
+  present: boolean;
+  meaning: string;
+}
+
+export interface AccountAppRole {
+  value: string;
+  display_name: string;
+  description: string;
+  held: boolean;
+  grants: string[];
+}
+
+export interface AccountInfo {
+  subject: string;
+  display_name: string;
+  issuer_kind: string;
+  roles: string[];
+  app_roles: AccountAppRole[];
+  unrecognised_roles: string[];
+  attributes: AccountAttribute[];
+  summary: string;
+  bypass: boolean;
+  deny_all: boolean;
+  policy_version: number;
+}
+
 export interface VocabularyValue {
   id: string;
   label: string;

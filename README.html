@@ -906,15 +906,29 @@ rag-os purge --retention-days 7 --apply    # actually free it</code></pre>
   <div class="code"><span class="lang">bash</span><button class="copy">Copy</button><pre><code>curl -H "Authorization: Bearer $TOKEN" https://&lt;chat-ui-fqdn&gt;/api/me</code></pre></div>
   <p><code>"roles": ["admin", "contributor"]</code> means it worked. <code>"roles": []</code> has two quite
     different causes that look identical here — no role assigned, or a role assigned whose value the policy does
-    not map (a typo such as <code>rag.contrbutor</code>). <code>/api/me</code> shows only mapped roles, so to tell
-    them apart decode the token and read its raw <code>roles</code> claim. To see what a given combination
-    <em>would</em> be allowed, without a token at all:</p>
+    not map (a typo such as <code>rag.contrbutor</code>).</p>
+  <p><strong>Account Information tells them apart.</strong> Click your name in the chat page or the admin
+    console. It shows every application role defined on the app registration, which of them your token actually
+    carries, and &mdash; under <em>unrecognised</em> &mdash; any role value the token carries that matches none
+    of them, which is what a misspelled assignment looks like. It also shows your Department, Region, Clearance
+    (with every level and what each means), your Employee OID, the token claim each value arrived in, and a
+    plain-English statement of what you can read.</p>
+  <p>Note that the roles shown there are the <strong>application roles</strong>, not RAG-OS's internal names. The
+    mapping is many-to-many &mdash; <code>rag.admin</code> grants both <code>admin</code> and
+    <code>contributor</code> &mdash; so it cannot be run backwards; the panel reads the token's own
+    <code>roles</code> claim instead. To see what a given combination <em>would</em> be allowed, without a token
+    at all:</p>
   <div class="code"><span class="lang">bash</span><button class="copy">Copy</button><pre><code>uv run rag-os explain --attr department=HR --attr region=UK --role admin</code></pre></div>
   <div class="callout warn">
     <p><strong><code>rag.admin</code> is not "may upload" — it is "sees everything".</strong> An admin bypasses
       the document filter entirely, and the bypass is audit-logged. Grant it deliberately, and prefer
       <code>rag.contributor</code> for people who only need to add documents.</p>
   </div>
+  <p><strong>Clearance levels are configuration, not four fixed names.</strong> <code>access-policy.yaml</code>
+    gives each rung of the <code>clearance</code> ladder a label and a description under <code>levels:</code>,
+    and Account Information renders whatever is there &mdash; so a deployment running 0&ndash;5, or naming them
+    differently, describes its own. Adding a rung is safe; renumbering one silently re-classifies every document
+    already tagged at that level.</p>
   <p>Roles and attributes are two different systems, and fixing one does not fix the other: roles decide what you
     may <strong>do</strong>, while <code>department</code>, <code>region</code> and <code>clearance</code> decide
     what you may <strong>see</strong>. A non-admin whose token carries no <code>department</code> or

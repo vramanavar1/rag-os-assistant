@@ -5,6 +5,7 @@ import { byId, fmtDuration, fmtNum, h, mount, show } from './dom';
 import { combineProviders, setUpEntra, type EntraTokenProvider } from './entra';
 import { setMarkdown } from './markdown';
 import { renderSignIn } from './signin';
+import { openAccountDialog } from './account';
 import { correlationTag, identityChip, isAdmin, problemBox, toast, toastError } from './ui';
 import { createUploadWidget } from './upload';
 import { createUploadsList, type UploadsList } from './uploads-list';
@@ -158,7 +159,10 @@ async function loadIdentity(onSignOut?: () => void): Promise<void> {
     signedInAs = me;
     // The chat page links to the console; the console does not link to itself. Passing the href explicitly
     // keeps that readable at each call site instead of hiding it behind a location check inside the chip.
-    mount(identitySlot, identityChip(me, onSignOut, { adminHref: '/admin' }));
+    mount(identitySlot, identityChip(me, onSignOut, {
+      adminHref: '/admin',
+      onOpenAccount: () => openAccountDialog(api),
+    }));
   } catch (err) {
     signedInAs = null;
     mount(identitySlot);

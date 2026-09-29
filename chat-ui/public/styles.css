@@ -228,6 +228,24 @@ details > summary { cursor: pointer; color: var(--accent-text); margin: 8px 0; }
 .identity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
 .identity-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .identity-attrs { color: var(--muted); }
+.identity-link { cursor: pointer; border-radius: 999px; }
+.identity-link:hover { color: var(--accent-text); text-decoration: underline; }
+.identity-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Account Information */
+.account-section { display: flex; flex-direction: column; gap: 6px; }
+.account-section h3 { margin: 0; font-size: 0.95rem; }
+.account-attr { border-left: 3px solid var(--border-strong); padding: 2px 0 2px 10px; }
+.account-attr p { margin: 2px 0 0; }
+.account-attr-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.level-ladder, .role-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.level, .role { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; }
+.level { display: grid; grid-template-columns: 28px 1fr; gap: 2px 10px; align-items: center; }
+.level p { grid-column: 2; margin: 0; }
+.level-value { font-variant-numeric: tabular-nums; text-align: center; color: var(--muted); }
+.level.is-current, .role.is-held { border-color: var(--accent); background: var(--accent-soft); }
+.level.is-current .level-value { color: var(--accent-text); font-weight: 700; }
+.role p { margin: 4px 0 0; }
 
 /* ------------------------------------------------------------------ chat layout */
 

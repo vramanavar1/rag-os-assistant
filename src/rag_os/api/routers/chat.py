@@ -54,3 +54,39 @@ async def me(principal: Principal = Depends(get_principal)) -> MeResponse:
     return MeResponse(subject=principal.subject, issuer_kind=principal.issuer_kind,
                       display_name=principal.display_name, attributes=principal.attributes,
                       roles=sorted(principal.roles))
+
+
+@router.get("/me/account", summary="Account Information: who the caller is and what it lets them read")
+async def me_account(principal: Principal = Depends(get_principal),
+                     c: Container = Depends(get_container)) -> dict[str, Any]:
+    """Everything the Account Information panel shows. No role required - it describes only the caller.
+
+    Roles are reported as the APPLICATION ROLES defined on the app registration, because that is the unit an
+    administrator actually assigns. `held` comes from the token's own roles claim rather than from the mapped
+    roles, since the mapping is many-to-many and cannot be inverted: rag.admin grants both admin and
+    contributor, so deriving it backwards would claim an assignment nobody made.
+    """
+    policy = c.domain.policy
+    claimed = set(principal.claimed_roles)
+    app_roles = [
+        {
+            "value": r.value,
+            "display_name": r.display_name or r.value,
+            "description": r.description,
+            "held": r.value in claimed,
+            # What holding it means inside RAG-OS, from the same map the authoriser uses.
+            "grants": sorted(name for name, accepted in policy.roles.items() if r.value in accepted),
+        }
+        for r in policy.app_roles
+    ]
+    return {
+        "subject": principal.subject,
+        "display_name": principal.display_name,
+        "issuer_kind": principal.issuer_kind,
+        "roles": sorted(principal.roles),
+        "app_roles": app_roles,
+        # Values the token carries that match no defined app role - a misspelled assignment, or one left over
+        # from another application. Stated rather than silently dropped, which is what used to happen.
+        "unrecognised_roles": sorted(claimed - {r.value for r in policy.app_roles}),
+        **c.engine.account(principal),
+    }

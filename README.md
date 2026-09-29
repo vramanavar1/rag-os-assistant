@@ -571,8 +571,18 @@ curl -H "Authorization: Bearer $TOKEN" https://<chat-ui-fqdn>/api/me
 
 `"roles": ["admin", "contributor"]` means it worked. `"roles": []` has two quite different causes that look
 identical here — no role assigned, or a role assigned whose value the policy does not map (a typo such as
-`rag.contrbutor`). `/api/me` shows only mapped roles, so to tell them apart decode the token and read its raw
-`roles` claim. To see what a given combination *would* be allowed, without a token at all:
+`rag.contrbutor`).
+
+**Account Information tells them apart.** Click your name in the chat page or the admin console. It shows every
+application role defined on the app registration, which of them your token actually carries, and — under
+*unrecognised* — any role value the token carries that matches none of them, which is what a misspelled
+assignment looks like. It also shows your Department, Region, Clearance (with every level and what each means),
+your Employee OID, the token claim each value arrived in, and a plain-English statement of what you can read.
+
+Note that the roles shown there are the **application roles**, not RAG-OS's internal names. The mapping is
+many-to-many — `rag.admin` grants both `admin` and `contributor` — so it cannot be run backwards; the panel
+reads the token's own `roles` claim instead. To see what a given combination *would* be allowed, without a
+token at all:
 
 ```bash
 uv run rag-os explain --attr department=HR --attr region=UK --role admin
@@ -581,6 +591,11 @@ uv run rag-os explain --attr department=HR --attr region=UK --role admin
 > **`rag.admin` is not "may upload" — it is "sees everything".** An admin bypasses the document filter entirely,
 > and the bypass is audit-logged. Grant it deliberately, and prefer `rag.contributor` for people who only need to
 > add documents.
+
+**Clearance levels are configuration, not four fixed names.** `access-policy.yaml` gives each rung of the
+`clearance` ladder a label and a description under `levels:`, and Account Information renders whatever is there —
+so a deployment running 0–5, or naming them differently, describes its own. Adding a rung is safe; renumbering
+one silently re-classifies every document already tagged at that level.
 
 Roles and attributes are two different systems, and fixing one does not fix the other: roles decide what you may
 **do**, while `department`, `region` and `clearance` decide what you may **see**. A non-admin whose token carries

@@ -908,3 +908,104 @@ async def test_purge_leaves_documents_inside_the_retention_window_alone(
     report = await c.purge.run(retention_days=7, dry_run=False)
     assert report.documents == 0, "deleted moments ago is inside the window"
     assert c.state.get(body["doc_id"]) is not None
+
+
+# ---------------------------------------------------------------- Account Information
+# A signed-in user could see nothing about their own identity beyond a name: the chip showed `clearance=2`
+# with nothing anywhere in the repo that could turn 2 into a word, because the ladder lived in a YAML comment
+# and the application roles lived in a PowerShell provisioning script.
+
+
+def _account(client: TestClient, pid: str) -> dict:
+    r = client.get("/api/me/account", headers=dev_token(client, pid))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _attr(info: dict, name: str) -> dict:
+    return next(a for a in info["attributes"] if a["name"] == name)
+
+
+async def test_the_account_panel_explains_a_clearance_number(client: TestClient) -> None:
+    """The gap that started this: 2 means nothing on its own, and the ladder was a comment."""
+    info = _account(client, "sme-reviewer")  # clearance 2
+    clearance = _attr(info, "clearance")
+    assert clearance["level"] == 2
+    assert [(lvl["value"], lvl["label"]) for lvl in clearance["levels"]] == [
+        (0, "Public"), (1, "Internal"), (2, "Confidential"), (3, "Restricted")]
+    assert all(lvl["description"] for lvl in clearance["levels"]), "every rung needs a sentence, not just a name"
+    assert "Confidential" in clearance["meaning"]
+
+
+async def test_a_principal_with_no_clearance_is_told_what_that_means(client: TestClient, container: Container) -> None:
+    """The claims mapper drops a numeric attribute entirely rather than defaulting it, and the policy then
+    reads it as 0 - so "no value" and "level 0" are the same access but very different things to be shown."""
+    from rag_os.domain.access import Principal
+
+    info = container.engine.account(Principal(subject="x", issuer_kind="dev",
+                                              attributes={"department": ["HR"], "region": ["UK"]}))
+    clearance = next(a for a in info["attributes"] if a["name"] == "clearance")
+    assert clearance["present"] is False and clearance["level"] is None
+    assert "lowest level" in clearance["meaning"], "a blank here answers nothing"
+
+
+async def test_the_app_roles_shown_are_the_ones_actually_assigned(client: TestClient) -> None:
+    """The regression guard for this whole feature.
+
+    RAG-OS role mapping is many-to-many: rag.admin grants BOTH admin and contributor
+    (access-policy.yaml roles:). So the mapped roles cannot be inverted to say which application role was
+    assigned - doing so would tell a user they hold rag.contributor when nobody granted it. The token's own
+    roles claim is the only truthful source, which is why it is now kept.
+    """
+    info = _account(client, "admin")  # roles: [rag.admin] only
+    assert "contributor" in info["roles"], "the mapped roles do include contributor - that is the trap"
+    held = {r["value"] for r in info["app_roles"] if r["held"]}
+    assert held == {"rag.admin"}, f"only rag.admin was assigned; reported {held}"
+    admin_role = next(r for r in info["app_roles"] if r["value"] == "rag.admin")
+    assert set(admin_role["grants"]) == {"admin", "contributor"}, "what it grants is still shown"
+    assert admin_role["display_name"] and admin_role["description"]
+
+
+async def test_every_app_role_is_listed_whether_held_or_not(client: TestClient) -> None:
+    """The panel answers "what could I be given?" as well as "what do I have?"."""
+    info = _account(client, "hr-emea")  # no roles at all
+    assert [r["value"] for r in info["app_roles"]] == [
+        "rag.admin", "rag.contributor", "rag.sme", "rag.reviewer"]
+    assert not any(r["held"] for r in info["app_roles"])
+    assert info["unrecognised_roles"] == []
+
+
+async def test_a_role_value_matching_nothing_is_reported_not_dropped(client: TestClient, container: Container) -> None:
+    """A misspelled assignment used to be indistinguishable from no assignment, which README calls out as
+    needing you to decode the token by hand."""
+    principal = container.claims.map({"sub": "u", "roles": ["rag.contrbutor", "rag.admin"]}, "dev")
+    assert principal.claimed_roles == ["rag.admin", "rag.contrbutor"]
+    assert "contributor" in principal.roles, "rag.admin still grants it, so the typo is easy to miss"
+
+
+async def test_the_panel_says_what_you_can_actually_read(client: TestClient) -> None:
+    hr = _account(client, "hr-emea")
+    assert hr["bypass"] is False
+    # all_of is a conjunction; grant_any_of is an escape hatch, not another hurdle
+    assert "every one of" in hr["summary"] and "shared with you individually" in hr["summary"]
+    assert _attr(hr, "region")["values"] == ["UK"], "your own claim, not the expansion"
+    assert set(_attr(hr, "region")["also_reaches"]) == {"EMEA", "Global"}
+
+    admin = _account(client, "admin")
+    assert admin["bypass"] is True
+    assert "every document" in admin["summary"], "an admin bypassing the filter is worth saying plainly"
+
+
+async def test_each_attribute_names_the_claim_it_came_from(client: TestClient) -> None:
+    """"Why is my department wrong?" is nearly always a claim that is not arriving."""
+    info = _account(client, "hr-emea")
+    assert _attr(info, "department")["claim"] == "departments"   # the dev issuer's claim name
+    oid = _attr(info, "employee_id")
+    assert oid["label"] == "Employee OID" and oid["values"] == ["E1001"]
+
+
+async def test_the_account_endpoint_needs_no_role(client: TestClient) -> None:
+    """It describes only the caller, from the token they already hold - so gating it behind admin would put it
+    out of reach of everyone it is for."""
+    assert client.get("/api/me/account", headers=dev_token(client, "support-de")).status_code == 200
+    assert client.get("/api/me/account").status_code == 401, "but it is not anonymous"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,9 @@ from rag_os.domain.access import AccessPolicy, AttributeRule, CombineRule, Match
 from rag_os.domain.classification import FacetDef, FacetSchema, FacetValue
 from rag_os.domain.errors import AuthenticationFailed
 from rag_os.infrastructure.search.odata_eval import compile_filter
+from rag_os.infrastructure.storage.config_repo import FileConfigRepository
+
+REPO = Path(__file__).resolve().parents[2]
 
 REGION = FacetDef(name="region", field="f_region", hierarchical=True, values=[
     FacetValue(id="Global"), FacetValue(id="EMEA", parent="Global"), FacetValue(id="UK", parent="EMEA"),
@@ -228,3 +232,87 @@ def docs(draw: st.DrawFn) -> dict[str, object]:
 @given(principals(), docs())
 def test_odata_and_predicate_agree(p: Principal, d: dict[str, object]) -> None:
     assert visible(p, d) == ENGINE.allows(p, acl_of(d))  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------- policy metadata that the UI renders
+# The clearance ladder and the application-role catalogue became configuration so Account Information could
+# show a caller what their numbers and roles mean. Both are security-adjacent, so both are validated.
+
+
+def _policy(**over: object) -> dict:
+    base = {
+        "attributes": [
+            {"name": "department", "field": "acl_department", "match": "any_of", "required": True,
+             "claims": {"dev": "departments"}},
+            {"name": "clearance", "field": "acl_clearance", "match": "max_level", "claims": {"dev": "clearance"}},
+        ],
+        "combine": {"all_of": ["department", "clearance"]},
+    }
+    return {**base, **over}
+
+
+def test_a_level_ladder_is_only_meaningful_for_max_level() -> None:
+    """Rungs describe "document level <= mine". On an any_of attribute they would be decoration that reads
+    like policy, which is the worst kind of configuration."""
+    from rag_os.domain.access import AccessPolicy
+
+    bad = _policy(attributes=[
+        {"name": "department", "field": "acl_department", "match": "any_of", "claims": {"dev": "departments"},
+         "levels": [{"value": 0, "label": "Public"}]},
+    ], combine={"all_of": ["department"]})
+    with pytest.raises(ValidationError, match="max_level"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_duplicate_level_values_are_rejected() -> None:
+    from rag_os.domain.access import AccessPolicy
+
+    bad = _policy(attributes=[
+        {"name": "clearance", "field": "acl_clearance", "match": "max_level", "claims": {"dev": "clearance"},
+         "levels": [{"value": 1, "label": "Internal"}, {"value": 1, "label": "Confidential"}]},
+    ], combine={"all_of": ["clearance"]})
+    with pytest.raises(ValidationError, match="duplicate level"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_a_role_cannot_be_granted_by_an_app_role_nobody_defined() -> None:
+    """The catalogue and the mapping describe one app registration. A value in the mapping with no entry in
+    the catalogue is invisible on the account page and impossible to assign - it would silently grant nothing
+    while looking configured."""
+    from rag_os.domain.access import AccessPolicy
+
+    bad = _policy(roles={"admin": ["rag.admin"], "contributor": ["rag.typo"]},
+                  app_roles=[{"value": "rag.admin", "display_name": "Admin"}])
+    with pytest.raises(ValidationError, match=re.escape("rag.typo")):
+        AccessPolicy.model_validate(bad)
+
+
+def test_the_shipped_policy_describes_every_role_it_grants() -> None:
+    repo = FileConfigRepository(config_dir="./config")
+    policy = repo.load_access_policy()
+    defined = {r.value for r in policy.app_roles}
+    assert defined, "the catalogue is what Account Information lists"
+    for accepted in policy.roles.values():
+        assert set(accepted) <= defined
+    for role in policy.app_roles:
+        assert role.display_name and role.description, f"{role.value} needs a name and a sentence for the UI"
+
+
+def test_the_app_roles_agree_with_the_script_that_creates_them() -> None:
+    """Two copies, in two languages, of one app registration's roles.
+
+    infra/scripts/common.ps1 creates them in Entra through Graph; access-policy.yaml is served to a browser.
+    Neither can read the other, so this pins them together - the same cross-artefact idiom used for the Entra
+    redirect path and the upload size cap.
+    """
+    ps = (REPO / "infra" / "scripts" / "common.ps1").read_text(encoding="utf-8")
+    block = re.search(r"\$script:RagOsEntraAppRoles\s*=\s*@\((.*?)\n\)", ps, re.S)
+    assert block, "the PowerShell role catalogue moved; re-point this test"
+    from_ps = dict(re.findall(r"Value\s*=\s*'([^']+)';\s*DisplayName\s*=\s*'([^']+)'", block.group(1)))
+    assert from_ps, "no roles parsed out of the PowerShell catalogue"
+
+    policy = FileConfigRepository(config_dir="./config").load_access_policy()
+    from_yaml = {r.value: r.display_name for r in policy.app_roles}
+    assert from_yaml == from_ps, (
+        "access-policy.yaml app_roles and $script:RagOsEntraAppRoles disagree. They provision and describe the "
+        "same four roles; change one and you must change the other.")

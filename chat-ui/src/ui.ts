@@ -150,6 +150,8 @@ export function isAdmin(me: Me | null | undefined): boolean {
 }
 
 export interface IdentityChipOptions {
+  /** Opens Account Information. Given it, the chip becomes a real control rather than a label. */
+  onOpenAccount?: () => void;
   /** Where the admin console lives. Passed by the chat page; omitted by the console, which must not link to
    *  itself. Rendered only for an admin - /admin already refuses everyone else, so this is about not
    *  advertising a door that will not open, not about access control. */
@@ -159,18 +161,33 @@ export interface IdentityChipOptions {
 export function identityChip(me: Me, onSignOut?: () => void, opts: IdentityChipOptions = {}): HTMLElement {
   const name = me.display_name || me.subject;
   const attrs = attributeSummary(me.attributes);
-  const roles = me.roles?.length ? me.roles.join(', ') : 'none';
+  const open = opts.onOpenAccount;
+  // The attribute dump used to live in this tooltip, where it rendered as `clearance=2` with nothing anywhere
+  // that could turn 2 into a word. The panel supersedes it.
+  const who = h(
+    'span',
+    {
+      class: open ? 'identity-text identity-link' : 'identity-text',
+      ...(open
+        ? { role: 'button', tabindex: '0', title: 'Account Information', onclick: open,
+            onkeydown: (ev: KeyboardEvent) => {
+              // A div with an onclick is not a control: without this it is unreachable by keyboard.
+              if (ev.key === 'Enter' || ev.key === ' ') {
+                ev.preventDefault();
+                open();
+              }
+            } }
+        : { title: `Subject: ${me.subject}\nIssuer: ${me.issuer_kind}` }),
+    },
+    'Signed in as ',
+    h('strong', null, name),
+    attrs ? h('span', { class: 'identity-attrs' }, ` (${attrs})`) : null,
+  );
   return h(
     'div',
-    { class: 'identity', title: `Subject: ${me.subject}\nIssuer: ${me.issuer_kind}\nRoles: ${roles}\n${attrs}` },
+    { class: 'identity' },
     h('span', { class: 'identity-dot', 'aria-hidden': 'true' }),
-    h(
-      'span',
-      { class: 'identity-text' },
-      'Signed in as ',
-      h('strong', null, name),
-      attrs ? h('span', { class: 'identity-attrs' }, ` (${attrs})`) : null,
-    ),
+    who,
     opts.adminHref && isAdmin(me)
       ? h('a', {
           class: 'btn btn-ghost btn-sm',

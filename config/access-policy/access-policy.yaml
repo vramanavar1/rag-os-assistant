@@ -52,16 +52,27 @@ attributes:
 
   - name: clearance
     field: acl_clearance
-    match: max_level         # 0 Public, 1 Internal, 2 Confidential, 3 Restricted: doc level <= caller level
+    match: max_level         # a document is readable when its level <= the caller's level
     required: false          # missing -> treated as 0 (public only)
     claims: { entra: extension_Clearance, dev: clearance }
+    description: How sensitive a document may be before this caller stops being able to read it.
+    # The rungs. These are DATA, not a comment, because Account Information shows a caller what their number
+    # means, and because max_level is generic - a deployment may run 0-5 and name them differently. Adding a
+    # rung here is safe; renumbering one silently re-classifies every document already tagged at that level.
+    levels:
+      - { value: 0, label: Public, description: "Anyone who can sign in, including callers with no clearance claim at all." }
+      - { value: 1, label: Internal, description: "Ordinary staff-facing material: policies, handbooks, FAQs." }
+      - { value: 2, label: Confidential, description: "Commercially sensitive: contracts, pricing, financial reports." }
+      - { value: 3, label: Restricted, description: "The most sensitive material; granted individually rather than by team." }
     # This claim must be an INTEGER, not a label. If your IdP only emits labels, map them here:
     #   value_map: { Public: "0", Internal: "1", Confidential: "2", Restricted: "3" }
 
   - name: employee_id
+    label: Employee OID
     field: acl_employee_id
     match: exact             # explicit per-person share (never matches "*")
     claims: { entra: oid, dev: employee_id }
+    description: This caller's own object id, used to share a single document with one person.
 
 # How the per-attribute checks are joined into one filter:
 #   all_of        -> AND. Every attribute listed must allow the caller.
@@ -81,6 +92,32 @@ roles:
   taxonomy_editor: [rag.sme]
   reviewer: [rag.sme, rag.reviewer]
   contributor: [rag.contributor, rag.admin]
+
+# The application roles as DEFINED ON THE APP REGISTRATION - the unit an administrator actually assigns, in
+# Entra under "Enterprise applications -> Users and groups" (see infra/scripts/Set-EntraAppRoleAssignment.ps1).
+# The map above says what each grants inside RAG-OS; this says what they are, for people.
+#
+# This duplicates $script:RagOsEntraAppRoles in infra/scripts/common.ps1, which is what creates them in Entra.
+# Two copies are unavoidable - that one runs in PowerShell against Graph, this one is served to a browser -
+# so a test asserts they agree. Change one and the test will tell you about the other.
+app_roles:
+  - value: rag.admin
+    display_name: RAG-OS administrator
+    description: >-
+      Full administration: ingestion, configuration and the review queue. Also bypasses the document access
+      filter, so an administrator sees every document whatever its department, region or clearance - grant it
+      deliberately.
+  - value: rag.contributor
+    display_name: RAG-OS contributor
+    description: >-
+      May upload documents. What they can read stays filtered by the department, region and clearance their
+      account carries.
+  - value: rag.sme
+    display_name: RAG-OS subject-matter expert
+    description: May edit the taxonomy - facets and path rules - and work the document review queue.
+  - value: rag.reviewer
+    display_name: RAG-OS reviewer
+    description: May work the document review queue and approve tags.
 role_sources:
   trusted_for_roles: [entra, dev]
   role_claim: { entra: roles, dev: roles }
