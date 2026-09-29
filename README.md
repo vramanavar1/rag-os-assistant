@@ -325,6 +325,26 @@ the document in place, without re-embedding.
   appear in URLs. Add the host origin to `EMBED_ORIGINS`. Details are in [Deployment.md](Deployment.md).
 * **Upload.** Contributors and admins can upload from the chat or admin UI (`POST /api/uploads`). An upload gets a
   `tracking_id`, is processed on the **priority lane** and is visible to the uploader's own scope by default.
+* **How an upload gets its facets.** Three sources, weakest first:
+  1. **the folder it came from.** Choose *choose a folder* (or drop a folder) and the browser sends the path
+     relative to the folder you picked, which `path-rules.yaml` reads exactly as it does for a crawl. **Pick the
+     department folder** — a browser only reports the path *below* your selection, so picking `HR` sends
+     `HR/UK/policies/x.pdf` and tags Department, Region and Document type, while picking `policies` sends one
+     segment and matches nothing. The panel tells you which happened.
+  2. **the pickers** in the upload panel, which override the folder for that upload. Values come from
+     `facets.yaml`, and anything outside the vocabulary is refused with the reason rather than dropped silently.
+  3. **the classifier**, during indexing, for facets still unset — only those marked `classify: true`
+     (`doc_type` and `topic` as shipped) and only above its confidence floor; below it the document goes to the
+     review queue.
+
+  A single loose file has no folder path at all, so for that the pickers are the only route. Nothing sets a
+  language by default: there is no language detection in the pipeline, so the facet stays unset unless you pick
+  one.
+* **A folder does not grant access.** Path rules carry both halves — `hr/**` sets the *facet* `department: HR`
+  **and** `acl.department: [HR]`. For an upload the path comes from the browser, so only the facet half is
+  honoured: the tag makes the document filterable as HR, while who can read it keeps coming from your own
+  identity attributes. Widening access stays deliberate — a crawl of a shared folder, or an admin editing ACL in
+  the review queue.
 * **Did my upload work?** The upload panel shows a live status badge per file, and below it **Recent documents** —
   every document you uploaded, newest first, ten at a time, under **All / Failed / In progress**. That list is what
   survives closing the tab: it is served by `GET /api/uploads`, which scopes to your own documents, or to
@@ -340,8 +360,61 @@ the document in place, without re-embedding.
   * review queue (approve or correct automatic tags)
   * controls (pause/throttle)
   * configuration editor and "explain access" tool
+### New Scenarios: the same file more than once
+
+A **document** is identified by `(source_id, item_id)` — its owner, provenance, tags and status. Its **content**
+is identified by the sha256 of its bytes. Several documents can share one content: two people uploading the same
+file, a file both crawled and uploaded, the same file in two folders. What is shared, and what is deliberately
+not, follows from that split.
+
+| # | Scenario | Documents | Blob storage | Search index | Embedding cost | Retrieval | On delete |
+|---|---|---|---|---|---|---|---|
+| 1 | Same file, **same person**, uploaded twice | **1** — the second call returns the first, with `duplicate_of` set | 1 | 1 set | **0** for the second | one passage, once | purge frees blob + chunks |
+| 2 | Same file, **two different people** | **2** — each owns theirs and sees it in their own list | **1**, shared | 2 sets — their access tags differ | paid per document † | one passage; the other locations are listed as `also_at` | purge frees only the deleted one's chunks; the blob stays while the other refers to it |
+| 3 | Same file, **two sources** (a crawl and an upload) | **2** — provenance per source is kept on purpose | **1**, shared | 2 sets | paid per document † | collapsed to one passage | reference-counted, as #2 |
+| 4 | Same file, same source, **re-crawled unchanged** | 1 | 1, untouched | untouched | 0 | unaffected | — |
+| 5 | Local file **`touch`ed**, bytes identical | 1 | 1, untouched | untouched | **0** | unaffected | — |
+| 6 | Same file in **two folders** → different path rules | 2 | **1**, shared | **2 sets** — facets and ACL differ, and are never merged | paid per document † | each caller sees the copy their tags admit | reference-counted |
+| 7 | File **edited** (content changed) | 1 | 2 until purge | old chunks swept, new written | full, once | only the new version | purge reclaims the old blob |
+| 8 | **One of several sharers** deleted | that row → `DELETED` | **kept** — still referenced | its chunks removed | — | its path stops being offered | nothing else is freed, correctly |
+| 9 | **Last sharer** deleted | row → `DELETED` | **freed by purge** | chunks removed | — | gone | the case that reclaims space |
+| 10 | **Ingest fails mid-run** | 1 | 1 | retry overwrites | re-embedded on retry | one passage | — |
+
+
+† **Embedding is paid once per document, not once per content.** Sharing the work would mean either reading the
+twin's vectors back out of the index — they are written `stored=False` (`azure_search.py:66`) precisely to keep
+the index small, so they cannot be read back — or having both documents reference one shared chunk row, which is
+only safe when their facets and ACL are identical, since the row carries those fields. Scenario 1 avoids the
+cost entirely by collapsing to one document, and scenario 5 by recognising unchanged bytes; the remaining cases
+pay per document today.
+
+Rows 5 and 10 are bug fixes rather than features. A local folder has no cheap content hash, so change detection
+is size+mtime — meaning a `robocopy` or a `touch` across a corpus used to re-parse and re-embed every file to
+produce byte-identical vectors. And because old chunks are swept only *after* the new ones are written, an
+ingest that died in between left both versions live and retrievable.
+
+**Two limits, stated plainly because both are otherwise discovered the hard way:**
+
+* **Tags are never merged across documents.** The same file tagged two ways is indexed twice, by design. Merging
+  would escalate privilege: the access filter is a conjunction (`department AND region AND clearance`), so
+  combining `(HR, UK)` with `(Finance, US)` into `department [HR, Finance]`, `region [UK, US]` would let an
+  **HR/US** caller read content that neither original copy allowed them. Flat index fields cannot express a
+  disjunction of conjunctions, so no merged row can be made safe.
+* **Space is reclaimed only by purge**, never automatically on delete. A deleted document keeps its row and its
+  bytes until `rag-os purge` runs, so that a source briefly failing to list a file does not permanently destroy
+  it:
+
+  ```bash
+  rag-os purge --retention-days 7            # dry run: reports what would be freed
+  rag-os purge --retention-days 7 --apply    # actually free it
+  ```
+
+  The same is available to administrators as `POST /api/admin/ingestion/purge`. `blobs_kept_shared` in the
+  report counts content left in place because a live document still references it.
+
+
 * **CLI:** `rag-os discover --source <id>` (run where a local folder is mounted), `rag-os status`,
-  `rag-os explain --attr department=HR --attr region=UK`, `rag-os ask "…" --as hr-emea`, `rag-os bootstrap`.
+  `rag-os explain --attr department=HR --attr region=UK`, `rag-os ask "…" --as hr-emea`, `rag-os bootstrap`, `rag-os purge`.
 
 ## 11. Security model
 

@@ -37,7 +37,10 @@ sources:
     settings:
       allowed_roles: [admin, contributor]
     defaults:
-      facets: { language: en }
+      # No language default on purpose. There is no language detection in the pipeline, so a default here is an
+      # assertion about content nobody checked - it labelled every German and Hindi upload English. The uploader
+      # picks it instead, and an unset facet is honest where a wrong one is not. (The crawled sources below keep
+      # theirs: those are corpora we control.)
       acl: { clearance: 1 }
 
   # Bulk store in Azure Blob Storage, synced every 30 minutes by the scheduler job.

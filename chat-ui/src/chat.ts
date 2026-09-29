@@ -548,9 +548,14 @@ btnUpload?.addEventListener('click', () => {
       uploadPanel,
       h('div', { class: 'panel-head' }, h('h2', null, 'Upload documents'), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-label': 'Close upload', onclick: () => btnUpload.click() }, '×')),
       createUploadWidget(api, {
+        facetPickers: true,
         onFinished: (rec) => {
           if (rec.status === 'INDEXED') toast(`“${rec.title || rec.path}” is indexed and searchable.`, { kind: 'success' });
           recent?.reload();
+          // Filter values are an aggregation over the index, so a document tagged with a Department nobody had
+          // used yet adds a value that is simply absent until this runs. Without it the tag looks like it did
+          // not take - which is the confusion this whole feature exists to end.
+          void loadFacets();
         },
       }),
       h('h3', { class: 'small muted' }, 'Recent documents'),

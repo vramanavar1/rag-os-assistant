@@ -164,6 +164,24 @@ async def dlq(lane: Lane = Lane.BULK, limit: int = Query(default=100, le=500), _
     return {"messages": [m.model_dump(mode="json") for m in msgs]}
 
 
+@router.post("/ingestion/purge", summary="Free deleted documents: index chunks, staged blobs and state rows")
+async def purge(retention_days: int = Query(default=7, ge=0, le=3650),
+                limit: int = Query(default=1000, ge=1, le=10_000),
+                apply: bool = Query(default=False, description="false (the default) reports without deleting"),
+                principal: Principal = Depends(admin),
+                c: Container = Depends(get_container)) -> dict[str, Any]:
+    """Dry run unless `apply` is true: this is the one admin call that destroys data.
+
+    A blob is content-addressed and so may be shared by several documents; `blobs_kept_shared` counts the ones
+    left in place because a live document still references that content.
+    """
+    report = await c.purge.run(retention_days=retention_days, limit=limit, dry_run=not apply)
+    if apply:
+        log.warning("purge applied", extra={"by": principal.subject, **{
+            k: v for k, v in report.as_dict().items() if k != "errors"}})
+    return report.as_dict()
+
+
 @router.get("/ingestion/controls", response_model=IngestionControls, summary="Worker controls")
 async def get_controls(_: Principal = Depends(admin), c: Container = Depends(get_container)) -> IngestionControls:
     return c.state.get_controls()

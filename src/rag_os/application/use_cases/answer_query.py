@@ -22,8 +22,8 @@ from rag_os.application.services.prompts import (
 )
 from rag_os.application.services.query_expansion import QueryExpander
 from rag_os.domain.access import Principal
-from rag_os.domain.answers import Answer, ChatTurn, Citation, TokenUsage
-from rag_os.domain.classification import FacetSchema
+from rag_os.domain.answers import Answer, ChatTurn, Citation, SearchHit, TokenUsage
+from rag_os.domain.classification import FacetDef, FacetSchema
 from rag_os.domain.errors import ValidationFailed
 
 log = logging.getLogger(__name__)
@@ -32,6 +32,35 @@ audit = logging.getLogger("rag_os.audit")
 MAX_QUESTION_CHARS = 2000
 _FILTER_VALUE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.@/&-]{0,127}$")
 _NOT_FOUND_HINTS = ("could not find", "couldn't find", "not in the documents", "no information")
+_WS = re.compile(r"\s+")
+
+
+def _collapse_duplicates(hits: list[SearchHit]) -> tuple[list[SearchHit], dict[str, list[str]]]:
+    """One passage, one context block - however many documents happen to hold it.
+
+    The same file uploaded twice, crawled from two sources, or left behind by an ingest that failed between
+    upserting the new version and sweeping the old one, all put byte-identical text in the index under
+    different chunk ids. Retrieval then ranks them identically and adjacently, so with top_k of 8 a duplicate
+    costs a slot; worse, the answer prompt says to prefer the most recent when blocks conflict, which makes
+    two copies of one passage read as two sources agreeing.
+
+    Every hit here has already passed the caller's access filter, so listing the other locations discloses
+    nothing they could not already retrieve.
+    """
+    kept: list[SearchHit] = []
+    first_by_text: dict[str, SearchHit] = {}
+    also_at: dict[str, list[str]] = {}
+    for hit in hits:
+        key = _WS.sub(" ", hit.content).strip().casefold()
+        winner = first_by_text.get(key)
+        if winner is None:
+            first_by_text[key] = hit
+            kept.append(hit)
+            continue
+        # Ranked order, so the first occurrence is the best-scoring one; the rest become "also at".
+        if hit.path and hit.path not in also_at.setdefault(winner.chunk_id, []):
+            also_at[winner.chunk_id].append(hit.path)
+    return kept, also_at
 
 
 class AnswerQuery:
@@ -132,7 +161,7 @@ class AnswerQuery:
                                                   odata_filter=odata, top=self.top_k)
         usage.add(retrieval.usage, "embed_query")
         timings.update(retrieval.timings_ms)
-        hits = retrieval.hits
+        hits, also_at = _collapse_duplicates(retrieval.hits)
         if not hits:
             timings["total"] = (time.perf_counter() - t0) * 1000
             return Answer(answer=NOT_FOUND_MESSAGE, refused=True, refusal_reason="no_relevant_context", usage=usage,
@@ -155,7 +184,8 @@ class AnswerQuery:
         citations = [
             Citation(index=i, doc_id=hits[i - 1].doc_id, chunk_id=hits[i - 1].chunk_id, title=hits[i - 1].title,
                      path=hits[i - 1].path, page=hits[i - 1].page, heading=hits[i - 1].heading,
-                     score=hits[i - 1].reranker_score or hits[i - 1].score, snippet=hits[i - 1].content[:300])
+                     score=hits[i - 1].reranker_score or hits[i - 1].score, snippet=hits[i - 1].content[:300],
+                     also_at=also_at.get(hits[i - 1].chunk_id, []))
             for i in idx
         ]
         answer_text = result.text.strip()
@@ -172,17 +202,32 @@ class AnswerQuery:
                       provider=result.provider, model=result.model, timings_ms=timings,
                       correlation_id=correlation_id)
 
+    def _vocabulary(self, fd: FacetDef) -> dict[str, object]:
+        """The facet as CONFIGURED, independent of what is indexed.
+
+        `values` below is an aggregation, so it is empty for a facet no visible document carries - which is
+        exactly the state an upload picker has to offer choices in. The two answer different questions and
+        both are needed: counts for filtering what exists, vocabulary for tagging what does not yet.
+        """
+        return {
+            "label": fd.label or fd.name,
+            "closed": fd.closed,
+            "hierarchical": fd.hierarchical,
+            "multi": fd.multi,
+            "vocabulary": [{"id": v.id, "label": v.label or v.id, "parent": v.parent} for v in fd.values],
+        }
+
     async def facet_counts(self, principal: Principal, index: object) -> dict[str, dict[str, object]]:
         access, deny_all = self.access_filter(principal)
         out: dict[str, dict[str, object]] = {}
         if deny_all:
-            return {f.name: {"label": f.label or f.name, "values": []} for f in self.facets.facets}
+            return {f.name: {**self._vocabulary(f), "values": []} for f in self.facets.facets}
         counts = await index.facets(self.combine(CURRENT_FILTER, access), list(self.facet_fields.values()))  # type: ignore[attr-defined]
         for fd in self.facets.facets:
             c = counts.get(fd.field, {})
             labels = {v.id: v.label or v.id for v in fd.values}
             out[fd.name] = {
-                "label": fd.label or fd.name,
+                **self._vocabulary(fd),
                 "values": [{"id": k, "label": labels.get(k, k), "count": n}
                            for k, n in sorted(c.items(), key=lambda kv: -kv[1])],
             }

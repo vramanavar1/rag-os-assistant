@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import IO, Any, Protocol, runtime_checkable
+from typing import IO, Any, NamedTuple, Protocol, runtime_checkable
 
 from rag_os.domain.access import AccessPolicy
 from rag_os.domain.answers import SearchHit, TokenUsage
@@ -268,6 +268,16 @@ class MessageQueue(ABC):
 
 
 @dataclass
+class PurgeCandidate:
+    """A deleted document, and whether its content may be freed with it."""
+
+    doc_id: str
+    blob_uri: str | None
+    content_hash: str | None
+    free_blob: bool
+
+
+@dataclass
 class DocumentQuery:
     status: list[DocumentStatus] | None = None
     source_id: str | None = None
@@ -275,6 +285,7 @@ class DocumentQuery:
     text: str | None = None  # path contains
     review_pending: bool | None = None
     path_prefix: str | None = None  # ownership scope, e.g. "<subject>/" - see uploads.list_uploads
+    content_hash: str | None = None  # exact bytes; several documents may share one
     after: str | None = None  # opaque keyset cursor; its shape follows `newest_first`
     limit: int = 100
     # Newest first, by when the document was DISCOVERED. Not doc_id, which is a content hash and so orders
@@ -339,6 +350,14 @@ class IngestionStateStore(ABC):
     def query(self, q: DocumentQuery) -> tuple[list[DocumentRecord], str | None]: ...
 
     @abstractmethod
+    def purgeable(self, older_than: datetime, limit: int = 1000) -> list[PurgeCandidate]:
+        """Deleted documents past the retention window, with whether their blob is still shared."""
+
+    @abstractmethod
+    def delete_documents(self, doc_ids: Sequence[str]) -> int:
+        """Remove state rows. The caller is responsible for the index and the blobs."""
+
+    @abstractmethod
     def count_by_status(self, q: DocumentQuery) -> dict[str, int]:
         """How many documents each status holds, for the same filters MINUS `status` itself.
 
@@ -393,10 +412,30 @@ class IngestionStateStore(ABC):
 # --------------------------------------------------------------------------- storage / config / secrets
 
 
+class Staged(NamedTuple):
+    """Where staged bytes landed, and what they hashed to."""
+
+    uri: str
+    content_hash: str
+
+
 class RawDocumentStore(ABC):
     @abstractmethod
-    def stage(self, source_id: str, doc_id: str, filename: str, stream: IO[bytes]) -> str:
-        """Copy bytes into the raw store; returns a uri readable by workers."""
+    def stage(self, source_id: str, doc_id: str, filename: str, stream: IO[bytes],
+              content_hash: str | None = None) -> Staged:
+        """Copy bytes into the raw store, keyed by content; returns a uri readable by workers and the sha256.
+
+        Identical bytes are stored once however many documents reference them, so a caller must never assume
+        the uri is its own: see `delete`.
+        """
+
+    @abstractmethod
+    def delete(self, uri: str) -> bool:
+        """Remove staged bytes. Returns False when they were already gone.
+
+        The blob is shared, so the ONLY safe caller is a purge that has established no live document still
+        references this content. Deleting from the document path would take another document's bytes with it.
+        """
 
     @abstractmethod
     def open(self, uri: str) -> IO[bytes]: ...

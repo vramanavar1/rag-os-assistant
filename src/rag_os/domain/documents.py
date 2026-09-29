@@ -94,17 +94,25 @@ class TagSet(BaseModel):
     sources: dict[str, str] = Field(default_factory=dict)  # "facet:region" -> "path_rule" etc.
 
     def merged_with(self, other: TagSet, source_name: str) -> TagSet:
+        """Whole-key replacement (not union), and only non-empty values overwrite - so a blank manifest cell
+        inherits from the folder rule rather than clearing it.
+
+        `source_name` labels the provenance of what came in, EXCEPT where `other` already records its own: a
+        set assembled from several layers (an upload, whose facets come partly from path rules and partly from
+        the person) keeps each value's real origin instead of having the whole batch relabelled by whoever
+        merged it last. The sets built by crawls carry no sources, so for them nothing changes.
+        """
         facets = dict(self.facets)
         acl = dict(self.acl)
         sources = dict(self.sources)
         for k, v in other.facets.items():
             if v:
                 facets[k] = list(v)
-                sources[f"facet:{k}"] = source_name
+                sources[f"facet:{k}"] = other.sources.get(f"facet:{k}", source_name)
         for k, av in other.acl.items():
             if av is not None and av != []:
                 acl[k] = av
-                sources[f"acl:{k}"] = source_name
+                sources[f"acl:{k}"] = other.sources.get(f"acl:{k}", source_name)
         return TagSet(facets=facets, acl=acl, sources=sources)
 
 
@@ -152,8 +160,15 @@ class DocumentRecord(BaseModel):
     item_id: str
     path: str
     blob_uri: str | None = None
+    # sha256 of the bytes. The identity of the CONTENT, as opposed to doc_id which identifies the document:
+    # several documents (two uploaders, two sources, two folders) can share one content_hash, and the blob
+    # and - when their tags also match - the indexed chunks are shared with it.
+    content_hash: str | None = None
     version_key: str
     indexed_version: str | None = None
+    # The content that is actually in the index right now. Compared with content_hash to answer "did the
+    # bytes change?" independently of version_key, which for a local folder is only size+mtime.
+    indexed_content_hash: str | None = None
     indexed_tags_hash: str | None = None
     status: DocumentStatus = DocumentStatus.DISCOVERED
     stage: str | None = None

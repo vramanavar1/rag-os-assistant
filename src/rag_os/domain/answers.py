@@ -52,6 +52,8 @@ class Citation(BaseModel):
     heading: str = ""
     score: float | None = None
     snippet: str = ""
+    also_at: list[str] = Field(default_factory=list)
+    """Other paths holding this same passage, all of them ones the caller may already read."""
 
 
 class SearchHit(BaseModel):

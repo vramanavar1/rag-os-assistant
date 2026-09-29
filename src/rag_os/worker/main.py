@@ -17,10 +17,11 @@ import time
 from rag_os.application.ports import ReceivedMessage
 from rag_os.application.use_cases.process_item import PERMANENT_ERRORS
 from rag_os.composition import Container
+from rag_os.domain.answers import TokenUsage
 from rag_os.domain.documents import DocumentStatus
 from rag_os.domain.errors import Conflict, NotFound
 from rag_os.domain.ingestion import IngestionControls
-from rag_os.infrastructure.telemetry import correlation_id_var, record_ingest, span
+from rag_os.infrastructure.telemetry import correlation_id_var, record_ingest, record_tokens, span
 
 log = logging.getLogger("rag_os.worker")
 
@@ -114,7 +115,10 @@ class Worker:
                 outcome = await self.c.processor.handle(msg)
             await self.c.queue.complete(m)
             self.processed += 1
-            record_ingest(outcome.status, msg.source_id)
+            record_ingest(outcome.status, msg.source_id, chunks=outcome.chunks, reused=outcome.reused)
+            if outcome.embedding_tokens:
+                record_tokens(TokenUsage(embedding=outcome.embedding_tokens), self.c.profile.provider,
+                              self.c.profile.model, purpose="ingest_embed")
             log.info("document processed", extra={"doc_id": msg.doc_id, "outcome": outcome.status,
                                                    "chunks": outcome.chunks, "seconds": round(outcome.seconds, 2)})
         except PERMANENT_ERRORS as e:

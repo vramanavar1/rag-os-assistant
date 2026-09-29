@@ -216,6 +216,7 @@ export const documentsView: View = async (ctx: ViewContext) => {
     if (open && !uploadPanel.childElementCount) {
       mount(uploadPanel, h('h2', null, 'Upload documents'), createUploadWidget(ctx.api, {
         documentHref: (docId) => `#/documents/${encodeURIComponent(docId)}`,
+        facetPickers: true,
         onFinished: () => void reload(),
       }));
     }

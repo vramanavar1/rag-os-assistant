@@ -498,6 +498,10 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .upload-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload-detail { font-size: 0.82rem; margin-top: 4px; }
 .upload-detail:empty { display: none; }
+.facet-pickers { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface); }
+.facet-pickers .row { align-items: flex-end; gap: 12px; }
+.facet-pickers .field { min-width: 150px; }
+.facet-pickers .hint { margin: 0 0 8px; }
 
 @media (max-width: 760px) {
   .admin-layout { grid-template-columns: 1fr; }

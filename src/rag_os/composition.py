@@ -32,6 +32,7 @@ from rag_os.application.services.tagging import TagResolver
 from rag_os.application.use_cases.answer_query import AnswerQuery
 from rag_os.application.use_cases.discover import DiscoverSource
 from rag_os.application.use_cases.process_item import ProcessItem
+from rag_os.application.use_cases.purge import Purge
 from rag_os.application.use_cases.scheduler import Reconcile, SchedulerTick
 from rag_os.domain.access import AccessPolicy
 from rag_os.domain.classification import FacetSchema, PathRules
@@ -277,6 +278,10 @@ class Container:
     @cached_property
     def discover(self) -> DiscoverSource:
         return DiscoverSource(self.state, self.queue, self.raw, self.tagger, embedding_fp=self.guard.fp)
+
+    @cached_property
+    def purge(self) -> Purge:
+        return Purge(self.state, self.raw, self.index)
 
     @cached_property
     def index_semaphore(self) -> asyncio.Semaphore:

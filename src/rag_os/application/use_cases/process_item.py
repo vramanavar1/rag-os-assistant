@@ -62,6 +62,13 @@ class Outcome:
     status: str  # indexed | retagged | deleted | skipped | failed_permanent
     chunks: int = 0
     seconds: float = 0.0
+    # This document's content was already in the index, so no parse and no embedding was paid for. Reported
+    # separately from a plain skip because the ratio of reused to embedded is the measure of de-duplication.
+    reused: bool = False
+    # Measured here and RECORDED BY THE WORKER: telemetry is infrastructure, and the application layer does
+    # not import it. Until now this number was only ever written into a human-readable event, so the largest
+    # recurring cost in the system appeared on no dashboard.
+    embedding_tokens: int = 0
 
 
 def chunk_id(doc_id: str, version: str, ordinal: int) -> str:
@@ -146,7 +153,29 @@ class ProcessItem:
         if (rec.status == DocumentStatus.INDEXED and rec.indexed_version == msg.version_key
                 and rec.indexed_tags_hash == tags_hash(rec.tags) and rec.embedding_fp == self.fp):
             return Outcome("skipped")
+        if self._content_already_indexed(rec):
+            # The version_key moved but the bytes did not. For a local folder version_key is size+mtime
+            # (LocalFolderSource has no cheap content hash), so a robocopy or a `touch` across a corpus would
+            # otherwise re-parse and re-embed every file to arrive at byte-identical vectors. The hash that
+            # decides this was computed during staging, which had to read the bytes anyway.
+            self.state.transition(rec.doc_id, DocumentStatus.INDEXED, stage="index",
+                                  indexed_version=rec.version_key,
+                                  event_message="bytes unchanged; re-indexing skipped")
+            return Outcome("skipped", rec.chunk_count, time.perf_counter() - t0, reused=True)
         return await self._full(rec, msg, t0)
+
+    def _content_already_indexed(self, rec: DocumentRecord) -> bool:
+        """Are these exact bytes already in the index, under these tags and this embedding profile?"""
+        return bool(
+            # Only from QUEUED: a redelivered message can arrive mid-pipeline, and PARSING -> INDEXED is not a
+            # legal transition. Falling through to the full path there is merely slower, never wrong.
+            rec.status == DocumentStatus.QUEUED
+            and rec.content_hash
+            and rec.content_hash == rec.indexed_content_hash
+            and rec.indexed_tags_hash == tags_hash(rec.tags)
+            and rec.embedding_fp == self.fp
+            and rec.chunk_count > 0
+        )
 
     # ------------------------------------------------------------------ full pipeline
 
@@ -216,9 +245,10 @@ class ProcessItem:
                 await self.index.upsert(docs[i:i + self.index_batch])
             removed = await self.index.delete_doc_versions(doc_id, keep_version=version)
         self.state.transition(doc_id, DocumentStatus.INDEXED, stage="index", indexed_version=version,
+                              indexed_content_hash=rec.content_hash,
                               chunk_count=len(docs), embedding_fp=self.fp, indexed_tags_hash=tags_hash(tags),
                               event_message=f"{len(docs)} chunks indexed, {removed} stale removed")
-        return Outcome("indexed", len(docs), time.perf_counter() - t0)
+        return Outcome("indexed", len(docs), time.perf_counter() - t0, embedding_tokens=emb_usage.embedding)
 
     # ------------------------------------------------------------------ retag
 

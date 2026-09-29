@@ -235,3 +235,89 @@ def test_a_malformed_cursor_is_refused_rather_than_silently_returning_page_one(s
     # An absent cursor is not a malformed one: the first page asks for no cursor at all.
     page, _ = store.query(DocumentQuery(limit=5, after="", newest_first=True))
     assert [r.doc_id for r in page] == ["a"]
+
+
+# ------------------------------------------------------------------ facets from an untrusted path
+# Browser uploads carry a folder path the client chose, and a path rule sets ACL as well as facets. These two
+# helpers are the boundary between "the folder describes the document" and "the folder grants access".
+
+
+def upload_resolver() -> TagResolver:
+    repo = FileConfigRepository(config_dir="./config")
+    return TagResolver(repo.load_facets(), repo.load_path_rules())
+
+
+def test_path_rules_from_an_untrusted_path_yield_facets_and_never_acl() -> None:
+    """`it/**` grants `acl: { department: ["*"] }` - readable by everyone - and `legal/**` raises clearance.
+    Both are reachable by anyone who can name a folder, so the ACL half of every rule must stay unread here."""
+    r = upload_resolver()
+    for path in ("hr/uk/policies/x.md", "it/global/policies/x.md", "legal/global/policies/x.md",
+                 "sales/emea/contracts/x.docx", "support/global/faq/x.json"):
+        tags = r.facets_from_path("uploads", path)
+        assert tags.facets, f"no facets derived from {path} - the rules should match this"
+        assert tags.acl == {}, f"{path} produced ACL {tags.acl}; a client-supplied path must never grant access"
+
+
+def test_path_rules_still_set_the_facets_the_folders_describe() -> None:
+    r = upload_resolver()
+    tags = r.facets_from_path("uploads", "HR/UK/policies/benefits.pdf")
+    assert tags.facets["department"] == ["HR"]
+    assert tags.facets["region"] == ["UK"]
+    assert tags.facets["doc_type"] == ["Policy"]
+    assert tags.sources["facet:department"] == "path_rule:hr/**", "provenance must name the rule that fired"
+
+
+def test_a_path_with_no_matching_rule_yields_nothing_rather_than_guessing() -> None:
+    r = upload_resolver()
+    assert r.facets_from_path("uploads", "policies/benefits.pdf").facets == {}
+    assert r.facets_from_path("uploads", "benefits.pdf").facets == {}
+
+
+def test_caller_supplied_facets_report_what_the_vocabulary_refused() -> None:
+    """A crawl should not stop for one bad manifest cell, so `resolve` drops silently. An interactive uploader
+    is owed the reason instead, which is what separates these two entry points."""
+    r = upload_resolver()
+    ok, rejected = r.canonical_facets({"department": ["HR"], "region": ["UK"]})
+    assert ok.facets == {"department": ["HR"], "region": ["UK"]} and rejected == []
+    _, unknown = r.canonical_facets({"marketing_owner": ["x"]})
+    assert unknown == ["unknown facet 'marketing_owner'"]
+    _, bad_value = r.canonical_facets({"department": ["Marketing"]})
+    assert bad_value == ["'Marketing' is not a value of facet 'department'"]
+    # synonyms are part of the vocabulary, so they must be accepted and canonicalised
+    canon, none_rejected = r.canonical_facets({"department": ["people"]})
+    assert canon.facets == {"department": ["HR"]} and none_rejected == []
+
+
+def test_merging_keeps_each_value_s_own_provenance() -> None:
+    """An upload's TagSet is assembled from path rules and the person's picks before anything else sees it.
+    Relabelling the whole set by whoever merged it last would report a rule-derived facet as user-supplied,
+    which is exactly the attribution the UI shows back to the uploader."""
+    from_path = TagSet(facets={"department": ["HR"]}, sources={"facet:department": "path_rule:hr/**"})
+    merged = TagSet().merged_with(from_path, "uploader")
+    assert merged.sources["facet:department"] == "path_rule:hr/**"
+    # a set with no provenance of its own is still labelled by the merge
+    plain = TagSet(facets={"region": ["UK"]})
+    assert merged.merged_with(plain, "uploader").sources["facet:region"] == "uploader"
+
+
+@pytest.mark.parametrize("bad", [
+    "../../etc/passwd", "/absolute/x.txt", "C:\\windows\\x.txt", "a//b/x.txt", "hr/./x.txt",
+    "hr/../../x.txt", "a\nb/x.txt", "a\x00b/x.txt", "/".join(["d"] * 40) + "/x.txt", "x" * 500 + "/f.txt",
+])
+def test_a_hostile_relative_path_is_rejected(bad: str) -> None:
+    """This string becomes part of the stored `path`, which is also the ownership boundary for listing uploads
+    (`uploads._scope`). Repairing a hostile value quietly is how a traversal becomes a cross-principal read."""
+    from rag_os.api.routers.uploads import _safe_relative_dir
+
+    with pytest.raises(ValidationFailed):
+        _safe_relative_dir(bad)
+
+
+def test_a_good_relative_path_keeps_its_folders_and_drops_the_filename() -> None:
+    from rag_os.api.routers.uploads import _safe_relative_dir
+
+    assert _safe_relative_dir("HR/UK/policies/Benefits.pdf") == ["HR", "UK", "policies"]
+    assert _safe_relative_dir("HR\\UK\\policies\\Benefits.pdf") == ["HR", "UK", "policies"]
+    assert _safe_relative_dir("Benefits.pdf") == [], "a loose file has no folders"
+    for empty in (None, "", "   "):
+        assert _safe_relative_dir(empty) == []

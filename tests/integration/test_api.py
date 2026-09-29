@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from rag_os.api.app import create_app
 from rag_os.composition import Container
+from rag_os.domain.answers import SearchHit
+from rag_os.domain.documents import DocumentStatus
+from rag_os.domain.errors import ValidationFailed
 from rag_os.infrastructure.queue.in_memory import InMemoryQueue
 from rag_os.infrastructure.settings import Settings
 
-from .test_pipeline import principal
+from .test_pipeline import drain, principal
 
 
 @pytest.fixture()
@@ -510,3 +518,393 @@ async def test_recent_uploads_list_is_paged_scoped_and_tabbed(client: TestClient
 
     # ---- a cursor that did not come from us is refused, not silently treated as page one
     assert client.get("/api/uploads?after=rubbish", headers=sme).status_code == 422
+
+
+def _upload(client: TestClient, headers: dict[str, str], name: str, body: bytes | None = None, **form: str):
+    """Content varies with the filename unless `body` says otherwise.
+
+    Identical bytes from one uploader now collapse into a single document, so a helper that always sent the
+    same text would silently make every test below a duplicate of the one before it. Pass `body` explicitly
+    when duplication IS the thing under test.
+    """
+    payload = body if body is not None else f"Some text about {name}.".encode()
+    return client.post("/api/uploads", headers=headers, files={"file": (name, payload, "text/plain")},
+                       data=form or None)
+
+
+async def test_a_client_supplied_folder_sets_facets_and_can_never_widen_access(client: TestClient) -> None:
+    """The security property of folder-derived facets, stated as a test.
+
+    A path rule carries both halves: `it/**` sets facets.department AND `acl: { department: ["*"] }` - readable
+    by everyone. The folder path comes from the browser, so honouring the ACL half would let any contributor
+    publish a document to the whole company by naming a folder `it`. Facets are descriptive and safe to take;
+    ACL keeps coming from the uploader's own identity attributes.
+
+    This test checks the OUTCOME, and two things produce it: `facets_from_path` never reads `rule.acl`, and the
+    identity ACL is merged afterwards so it would overwrite a leak for every key the access policy sets. That
+    second layer means this test still passes if the first is broken - so the sharp guard is the unit test
+    `test_path_rules_from_an_untrusted_path_yield_facets_and_never_acl`, which asserts on the helper directly
+    and does catch it. Both are kept: this one for the property users care about, that one for the mechanism.
+    """
+    sme = dev_token(client, "sme-reviewer")  # departments: [HR]
+    control = _upload(client, sme, "plain.txt").json()
+    assert control["facets_from_path"] == [] and control["relative_path"] is None
+
+    claimed = _upload(client, sme, "sneaky.txt", relative_path="it/global/policies/sneaky.txt").json()
+    # the facet half DID apply - this is the feature working
+    assert claimed["facets"]["department"] == ["IT"]
+    assert claimed["facet_sources"]["department"] == "path_rule:it/**"
+    assert set(claimed["facets_from_path"]) == {"department", "region", "doc_type"}
+
+    # ...and the ACL is what an upload with no path at all produced, key for key.
+    acl_control = client.get(f"/api/uploads/{control['tracking_id']}", headers=sme).json()["tags"]["acl"]
+    acl_claimed = client.get(f"/api/uploads/{claimed['tracking_id']}", headers=sme).json()["tags"]["acl"]
+    assert acl_claimed["department"] == ["HR"], "ACL must come from identity, not from the folder"
+    assert acl_claimed["department"] != ["*"], "the it/** rule made this document world-readable"
+    assert acl_control == acl_claimed, "a folder path changed the ACL in some way this test did not name"
+
+
+async def test_the_folder_supplies_department_region_and_doc_type(client: TestClient) -> None:
+    """The original report: a PDF from an HR folder should arrive tagged HR."""
+    sme = dev_token(client, "sme-reviewer")
+    body = _upload(client, sme, "Benefits.pdf", relative_path="HR/UK/policies/Benefits.pdf").json()
+    assert body["facets"]["department"] == ["HR"]
+    assert body["facets"]["region"] == ["UK"]
+    assert body["facets"]["doc_type"] == ["Policy"]
+    assert body["relative_path"] == "HR/UK/policies/Benefits.pdf"
+    # the folders live inside the ownership prefix, so listing still scopes and the path stays searchable
+    rec = client.get(f"/api/uploads/{body['tracking_id']}", headers=sme).json()
+    assert rec["path"] == "sme-reviewer/HR/UK/policies/Benefits.pdf"
+
+
+async def test_the_wrong_folder_root_is_reported_rather_than_silently_doing_nothing(client: TestClient) -> None:
+    """A browser gives a path relative to the folder the person PICKED, so picking `policies` instead of `HR`
+    yields one segment and matches no rule. That has to be visible, or it is the same afternoon of confusion
+    this whole feature exists to prevent."""
+    sme = dev_token(client, "sme-reviewer")
+    body = _upload(client, sme, "Benefits.pdf", relative_path="policies/Benefits.pdf").json()
+    assert body["relative_path"] == "policies/Benefits.pdf", "the path was accepted"
+    assert body["facets_from_path"] == [], "...and matched nothing, which the UI must be able to say"
+
+
+async def test_an_explicit_choice_beats_the_folder_it_sat_in(client: TestClient) -> None:
+    sme = dev_token(client, "sme-reviewer")
+    picked = '{"department": ["Legal"], "confidentiality": ["Restricted"]}'
+    body = _upload(client, sme, "x.txt", relative_path="HR/UK/policies/x.txt", facets=picked).json()
+    assert body["facets"]["department"] == ["Legal"], "the pick must win over the folder"
+    assert body["facet_sources"]["department"] == "uploader"
+    assert body["facets"]["confidentiality"] == ["Restricted"], "a facet no rule sets at all"
+    assert body["facets"]["region"] == ["UK"], "facets the uploader did not pick still come from the folder"
+    assert body["facet_sources"]["region"] == "path_rule:*/uk/**"
+
+
+async def test_each_file_is_tagged_from_its_own_folder(client: TestClient) -> None:
+    """A dropped tree spans departments, so the rules run per file, not per batch."""
+    sme = dev_token(client, "sme-reviewer")
+    hr = _upload(client, sme, "a.txt", relative_path="hr/uk/policies/a.txt").json()
+    fin = _upload(client, sme, "b.txt", relative_path="finance/global/policies/b.txt").json()
+    assert hr["facets"]["department"] == ["HR"] and fin["facets"]["department"] == ["Finance"]
+    assert hr["facets"]["region"] == ["UK"] and fin["facets"]["region"] == ["Global"]
+
+
+async def test_no_language_is_asserted_for_an_upload(client: TestClient) -> None:
+    """There is no language detection in the pipeline, so the old `language: en` source default was a claim
+    about content nobody had read - every German upload was labelled English."""
+    sme = dev_token(client, "sme-reviewer")
+    body = _upload(client, sme, "de.txt").json()
+    assert "language" not in body["facets"], "an unset facet is honest; a guessed one is not"
+    picked = _upload(client, sme, "de2.txt", facets='{"language": ["de"]}').json()
+    assert picked["facets"]["language"] == ["de"]
+
+
+async def test_a_facet_outside_the_controlled_vocabulary_is_refused_with_the_reason(client: TestClient) -> None:
+    """These used to be dropped silently at index time, so a typo looked like the feature not working."""
+    sme = dev_token(client, "sme-reviewer")
+    unknown = _upload(client, sme, "x.txt", facets='{"nope": ["HR"]}')
+    assert unknown.status_code == 422 and "nope" in unknown.text
+    bad_value = _upload(client, sme, "x.txt", facets='{"department": ["Marketing"]}')
+    assert bad_value.status_code == 422 and "Marketing" in bad_value.text
+    assert _upload(client, sme, "x.txt", facets="not json").status_code == 422
+
+
+async def test_a_hostile_relative_path_is_refused_and_nothing_is_written(client: TestClient) -> None:
+    """`path` is also the ownership boundary for listing (see `_scope`), so quietly repairing a traversal is
+    how one becomes a cross-principal read."""
+    sme = dev_token(client, "sme-reviewer")
+    before = len(client.get("/api/uploads?limit=100", headers=sme).json()["items"])
+    hostile = ["../../etc/passwd", "/absolute/x.txt", "C:\\windows\\x.txt", "a//b/x.txt",
+               "hr/./x.txt", "hr/../../x.txt", "a\nb/x.txt", "/".join(["d"] * 40) + "/x.txt"]
+    for bad in hostile:
+        r = _upload(client, sme, "x.txt", relative_path=bad)
+        assert r.status_code == 422, f"this path was accepted: {bad}"
+    assert len(client.get("/api/uploads?limit=100", headers=sme).json()["items"]) == before
+
+
+async def test_the_facets_endpoint_offers_the_vocabulary_even_with_an_empty_index(client: TestClient) -> None:
+    """The counts and the vocabulary answer different questions. An upload picker needs the values that COULD
+    be set, which is precisely the list that is empty when nothing is indexed yet."""
+    facets = client.get("/api/facets", headers=dev_token(client, "sme-reviewer")).json()["facets"]
+    assert set(facets) == {"department", "region", "doc_type", "topic", "confidentiality", "language"}
+    assert facets["department"]["values"] == [], "nothing indexed, so no counts"
+    assert [v["id"] for v in facets["department"]["vocabulary"]] == ["HR", "Finance", "Sales", "IT", "Legal", "Support"]
+    assert facets["region"]["hierarchical"] is True
+    assert next(v for v in facets["region"]["vocabulary"] if v["id"] == "UK")["parent"] == "EMEA"
+    assert facets["language"]["closed"] is False and facets["department"]["closed"] is True
+
+
+# ---------------------------------------------------------------- New Scenarios: the same bytes, more than once
+# Identity used to be (source_id, item_id) and never the content, so the same file uploaded twice was two
+# documents, two blobs and two sets of vectors - and an upload's sha256 was computed, used as that one
+# document's version_key, and never compared with anything. These are the scenarios from the New Scenarios
+# table in README.md, one test each, so the documented behaviour and the tested behaviour cannot drift.
+
+SAME_BYTES = b"The Q3 offsite is in Lisbon on 12 September, and the budget is fixed."
+
+
+def _blobs(settings: Settings) -> set[str]:
+    """Every staged blob on disk. Content-addressed, so the count IS the number of distinct contents."""
+    staged = Path(settings.raw_dir) / "staged"
+    if not staged.exists():
+        return set()
+    # Relative paths, not names: under the old doc_id-keyed layout two copies of one file shared a filename
+    # and differed only by directory, so comparing names would call that deduplicated when it was not.
+    return {p.relative_to(staged).as_posix() for p in staged.rglob("*") if p.is_file()}
+
+
+async def test_scenario_1_the_same_person_uploading_twice_gets_one_document(
+    client: TestClient, container: Container, settings: Settings,
+) -> None:
+    """Clicking upload twice is the common case and used to cost everything twice."""
+    sme = dev_token(client, "sme-reviewer")
+    first = _upload(client, sme, "offsite.txt", body=SAME_BYTES).json()
+    await _drain(container)
+    calls_after_first = container.embed_ingest.calls  # type: ignore[attr-defined]
+
+    second = _upload(client, sme, "offsite.txt", body=SAME_BYTES).json()
+    await _drain(container)
+
+    assert second["doc_id"] == first["doc_id"], "a repeat upload must return the existing document"
+    assert second["duplicate_of"] == first["doc_id"], "...and say so, rather than pretending it ingested"
+    assert len(_blobs(settings)) == 1
+    assert container.embed_ingest.calls == calls_after_first, "nothing should have been embedded a second time"  # type: ignore[attr-defined]
+    mine = client.get("/api/uploads?limit=50", headers=sme).json()
+    assert len(mine["items"]) == 1, "and it must not appear twice in the uploader's own list"
+
+
+async def test_scenario_2_two_people_uploading_the_same_file_keep_their_own_documents(
+    client: TestClient, container: Container, settings: Settings,
+) -> None:
+    """Each owns theirs and each sees it in their own list - they have different access tags, so collapsing
+    them would take a document away from one of them. The bytes are still stored once."""
+    sme = dev_token(client, "sme-reviewer")
+    admin = dev_token(client, "admin")
+    a = _upload(client, sme, "shared.txt", body=SAME_BYTES).json()
+    b = _upload(client, admin, "shared.txt", body=SAME_BYTES).json()
+    await _drain(container)
+
+    assert a["doc_id"] != b["doc_id"], "two owners, two documents"
+    assert b["duplicate_of"] is None, "somebody else's upload is not this uploader's duplicate"
+    assert len(_blobs(settings)) == 1, "but identical bytes are stored once"
+    assert len(client.get("/api/uploads?limit=50", headers=sme).json()["items"]) == 1
+    # each keeps their own access tags; nothing is merged
+    for token, dept in ((sme, "HR"), (admin, "IT")):
+        tid = (a if dept == "HR" else b)["tracking_id"]
+        assert client.get(f"/api/uploads/{tid}", headers=token).json()["tags"]["acl"]["department"] == [dept]
+
+
+async def test_scenario_3_the_same_file_from_a_crawl_and_an_upload_shares_one_blob(
+    client: TestClient, container: Container, settings: Settings, tmp_path: Path,
+) -> None:
+    """Provenance per source is kept deliberately - a crawled copy and an uploaded copy are different
+    documents with different tags - but there is no reason to store the bytes twice."""
+    c = container
+    cfg = c.domain.sources.get("sample-corpus")
+    assert cfg is not None
+    corpus = Path(cfg.settings["root"]) / "hr" / "uk" / "policies"
+    corpus.mkdir(parents=True, exist_ok=True)
+    (corpus / "shared-note.txt").write_bytes(SAME_BYTES)
+    await c.discover.run(c.source_factory.create(cfg), "manual")
+    blobs_after_crawl = _blobs(settings)
+
+    _upload(client, dev_token(client, "sme-reviewer"), "shared-note.txt", body=SAME_BYTES)
+    assert _blobs(settings) == blobs_after_crawl, "the uploaded copy must reuse the crawled bytes"
+
+
+async def test_scenario_5_a_touched_file_is_not_re_embedded(container: Container) -> None:
+    """A local folder has no cheap content hash, so version_key is size+mtime - and a robocopy or a `touch`
+    across a corpus therefore re-parsed and re-embedded every file to produce byte-identical vectors. The
+    hash computed while staging (which reads the bytes anyway) is what settles it."""
+    c = container
+    cfg = c.domain.sources.get("sample-corpus")
+    assert cfg is not None
+    source = c.source_factory.create(cfg)
+    await c.discover.run(source, "manual")
+    await drain(c)
+    calls_after_first = c.embed_ingest.calls  # type: ignore[attr-defined]
+
+    # touch every file: new mtime, identical bytes
+    for path in Path(cfg.settings["root"]).rglob("*"):
+        if path.is_file():
+            path.touch()
+    run = await c.discover.run(source, "manual")
+    outcomes = await drain(c)
+
+    assert run.queued > 0, "the mtime moved, so discovery must still re-examine them"
+    assert outcomes.get("indexed", 0) == 0, "...but nothing should have been re-indexed"
+    assert c.embed_ingest.calls == calls_after_first, "a touch must not re-embed a corpus"  # type: ignore[attr-defined]
+
+
+async def test_blobs_are_addressed_by_content_not_by_document(
+    client: TestClient, container: Container, settings: Settings,
+) -> None:
+    """The property every scenario above rests on."""
+    sme = dev_token(client, "sme-reviewer")
+    _upload(client, sme, "one.txt", body=b"alpha")
+    _upload(client, sme, "two.txt", body=b"beta")
+    assert len(_blobs(settings)) == 2, "different bytes, different blobs"
+    _upload(client, dev_token(client, "admin"), "three.txt", body=b"alpha")
+    assert len(_blobs(settings)) == 2, "identical bytes must not add a blob, even for another uploader"
+
+
+def test_the_raw_store_refuses_to_delete_what_it_did_not_stage(tmp_path: Path) -> None:
+    """`delete` exists for purge, which frees content nothing references any more. A source that reads its
+    own files in place (file://) is not ours to delete from."""
+    from rag_os.infrastructure.storage.raw_store import RawStore
+
+    store = RawStore(target="filesystem", raw_dir=str(tmp_path))
+    staged = store.stage("s", "d", "x.txt", io.BytesIO(b"hello"))
+    assert store.delete(staged.uri) is True
+    assert store.delete(staged.uri) is False, "already gone is not an error"
+    with pytest.raises(ValidationFailed):
+        store.delete("file:///etc/passwd")
+
+
+def test_staging_the_same_bytes_twice_writes_one_blob_and_is_idempotent(tmp_path: Path) -> None:
+    from rag_os.infrastructure.storage.raw_store import RawStore
+
+    store = RawStore(target="filesystem", raw_dir=str(tmp_path))
+    a = store.stage("source-one", "doc-a", "a.txt", io.BytesIO(SAME_BYTES))
+    b = store.stage("source-two", "doc-b", "b.txt", io.BytesIO(SAME_BYTES), content_hash=a.content_hash)
+    assert a.uri == b.uri and a.content_hash == b.content_hash
+    assert len([p for p in (tmp_path / "staged").rglob("*") if p.is_file()]) == 1
+    # the hash is returned even when the caller had none to give - that is how a local folder gets one
+    assert a.content_hash == hashlib.sha256(SAME_BYTES).hexdigest()
+    with store.open(a.uri) as fh:
+        assert fh.read() == SAME_BYTES
+
+
+def test_scenario_10_identical_passages_do_not_each_take_a_context_slot() -> None:
+    """Duplicates arrive in the index from several directions - the same file crawled from two sources, and an
+    ingest that died between upserting the new version and sweeping the old one, which leaves both live.
+
+    Retrieval ranks byte-identical text identically and adjacently, so with top_k of 8 each duplicate costs a
+    slot. The sharper harm is the answer prompt telling the model to prefer the most recent when blocks
+    conflict: two copies of one passage then read as two independent sources agreeing.
+    """
+    from rag_os.application.use_cases.answer_query import _collapse_duplicates
+
+    def hit(chunk: str, path: str, text: str, score: float) -> SearchHit:
+        return SearchHit(chunk_id=chunk, doc_id=f"doc-{chunk}", title="Leave policy", path=path,
+                         content=text, score=score, heading="", page=None, source_id="s")
+
+    passage = "Employees in the UK receive 26 weeks of paid parental leave."
+    hits = [
+        hit("a", "hr/uk/policies/leave.md", passage, 0.9),
+        hit("b", "uploads/sam/leave.md", f"  {passage.upper()}  ", 0.9),   # same text, whitespace and case
+        hit("c", "hr/us/policies/pto.md", "US employees receive 12 weeks.", 0.7),
+        hit("d", "archive/leave-old.md", passage, 0.6),
+    ]
+    kept, also_at = _collapse_duplicates(hits)
+
+    assert [h.chunk_id for h in kept] == ["a", "c"], "one block per distinct passage, best-scoring kept"
+    assert also_at["a"] == ["uploads/sam/leave.md", "archive/leave-old.md"], (
+        "the other locations are still reported - they are documents the caller already passed the access "
+        "filter for, so naming them discloses nothing new and answers 'where else does this live?'")
+    assert "c" not in also_at, "different text must never be collapsed"
+
+
+def test_deduplication_leaves_a_corpus_without_duplicates_untouched() -> None:
+    """The guard against over-collapsing: ordinary results must pass through in their original order."""
+    from rag_os.application.use_cases.answer_query import _collapse_duplicates
+
+    hits = [
+        SearchHit(chunk_id=str(i), doc_id=f"d{i}", title="t", path=f"p/{i}.md", content=f"passage {i}",
+                  score=1.0, heading="", page=None, source_id="s")
+        for i in range(5)
+    ]
+    kept, also_at = _collapse_duplicates(hits)
+    assert kept == hits and also_at == {}
+
+
+# ---------------------------------------------------------------- purge: the only thing that reclaims space
+# Nothing in this system used to free anything: a deleted document lost its chunks and kept its state row, its
+# event timeline and its staged bytes forever, because RawDocumentStore had no delete at all.
+
+
+async def _delete_doc(c: Container, doc_id: str) -> None:
+    """Mark a document deleted and age it past the retention window, as a source dropping it would."""
+    from sqlalchemy import update
+
+    from rag_os.infrastructure.state.sql_store import documents
+
+    c.state.transition(doc_id, DocumentStatus.DELETED)
+    # Through the table, not raw SQL: sqlite needs SQLAlchemy's adapter for the timestamp column.
+    with c.state.engine.begin() as conn:  # type: ignore[attr-defined]
+        conn.execute(update(documents).where(documents.c.doc_id == doc_id)
+                     .values(updated_at=datetime.now(UTC) - timedelta(days=30)))
+
+
+async def test_scenario_9_purging_the_last_holder_of_some_content_frees_its_blob(
+    client: TestClient, container: Container, settings: Settings,
+) -> None:
+    c = container
+    body = _upload(client, dev_token(client, "sme-reviewer"), "only.txt", body=b"the only copy").json()
+    await _drain(c)
+    assert len(_blobs(settings)) == 1
+
+    await _delete_doc(c, body["doc_id"])
+    dry = await c.purge.run(retention_days=7, dry_run=True)
+    assert dry.documents == 1 and dry.blobs == 1 and dry.dry_run is True
+    assert len(_blobs(settings)) == 1, "a dry run must not delete anything"
+
+    applied = await c.purge.run(retention_days=7, dry_run=False)
+    assert applied.documents == 1 and applied.blobs == 1
+    assert _blobs(settings) == set(), "the last reference is gone, so the bytes go too"
+    assert c.state.get(body["doc_id"]) is None, "and the row with them"
+
+
+async def test_scenario_8_purging_one_of_several_sharers_keeps_the_shared_blob(
+    client: TestClient, container: Container, settings: Settings,
+) -> None:
+    """The reason a content-addressed blob may not be deleted from a document's point of view: it would take
+    another document's bytes with it."""
+    c = container
+    shared = b"a report that two people both uploaded"
+    mine = _upload(client, dev_token(client, "sme-reviewer"), "r.txt", body=shared).json()
+    theirs = _upload(client, dev_token(client, "admin"), "r.txt", body=shared).json()
+    await _drain(c)
+    assert len(_blobs(settings)) == 1
+
+    await _delete_doc(c, mine["doc_id"])
+    report = await c.purge.run(retention_days=7, dry_run=False)
+
+    assert report.documents == 1 and report.blobs == 0
+    assert report.blobs_kept_shared == 1, "the blob is still referenced and must be reported as kept"
+    assert len(_blobs(settings)) == 1, "the surviving document's content must still be there"
+    with c.raw.open(c.state.get(theirs["doc_id"]).blob_uri) as fh:  # type: ignore[union-attr,arg-type]
+        assert fh.read() == shared, "and still readable - this is the regression that would lose data"
+
+
+async def test_purge_leaves_documents_inside_the_retention_window_alone(
+    client: TestClient, container: Container,
+) -> None:
+    """A source that briefly fails to list a file - a dropped mount, a permissions blip - marks it DELETED.
+    Purging immediately would make that transient failure permanent."""
+    c = container
+    body = _upload(client, dev_token(client, "sme-reviewer"), "recent.txt", body=b"deleted just now").json()
+    await _drain(c)
+    c.state.transition(body["doc_id"], DocumentStatus.DELETED)
+
+    report = await c.purge.run(retention_days=7, dry_run=False)
+    assert report.documents == 0, "deleted moments ago is inside the window"
+    assert c.state.get(body["doc_id"]) is not None

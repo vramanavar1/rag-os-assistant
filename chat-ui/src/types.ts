@@ -37,9 +37,21 @@ export interface FacetValue {
   count?: number;
 }
 
+export interface VocabularyValue {
+  id: string;
+  label: string;
+  parent: string | null;
+}
+
 export interface Facet {
   label?: string;
+  /** Aggregation over the index: what EXISTS and can be filtered on. Empty when nothing matching is indexed. */
   values: FacetValue[];
+  /** The facet as configured in facets.yaml: what CAN be set. This is what an upload picker offers. */
+  vocabulary?: VocabularyValue[];
+  closed?: boolean;
+  hierarchical?: boolean;
+  multi?: boolean;
 }
 
 export interface FacetsResponse {
@@ -158,6 +170,13 @@ export interface UploadAccepted {
   tracking_id: string;
   doc_id: string;
   status: string;
+  /** The folder path the server derived facets from, or null when none was sent. */
+  relative_path?: string | null;
+  facets?: Record<string, string[]>;
+  /** Per facet: source_default, path_rule:<glob> or uploader. */
+  facet_sources?: Record<string, string>;
+  /** Facets the path rules supplied. Empty with relative_path set means no rule matched - the wrong-root case. */
+  facets_from_path?: string[];
 }
 
 export interface LaneDepth {

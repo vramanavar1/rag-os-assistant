@@ -149,3 +149,78 @@ def test_a_non_admin_gets_no_link_into_a_console_they_cannot_open() -> None:
     """The row link goes to an admin-only detail endpoint. A link that 403s is worse than no link."""
     assert re.search(r"isAdmin\(signedInAs\)\s*\?", source("chat.ts")), (
         "the chat page must only pass documentHref when the viewer can actually open the target")
+
+
+# ---------------------------------------------------------------- facets on upload
+# A document uploaded from an HR folder arrived with no Department, because the folder never left the browser:
+# the widget sent only the file. These pin the three pieces that fixed it - the path goes up, the pickers are
+# an override rather than the only route, and the outcome is shown rather than left to be inferred.
+
+
+def test_the_folder_path_is_sent_so_path_rules_can_apply() -> None:
+    text = source("upload.ts")
+    assert "form.append('relative_path'" in text, (
+        "the relative path must be sent, or path-rules.yaml can never see the folder a file came from - which "
+        "is the entire reason an upload from an HR folder arrived with no Department")
+    assert "webkitRelativePath" in text, "the only path a browser will give us"
+    assert "webkitdirectory" in text, "a folder has to be selectable, not just individual files"
+    assert "webkitGetAsEntry" in text, "a dropped folder must be walked, not silently ignored"
+
+
+def test_the_uploader_can_override_what_the_folder_implied() -> None:
+    text = source("upload.ts")
+    assert "form.append('facets'" in text, "the API has always accepted this field; the UI must actually send it"
+    assert "FROM_FOLDER" in text, (
+        "every picker needs an explicit 'from folder' default, so respecting the folder is the default and an "
+        "override is something the uploader chose")
+
+
+def test_an_untouched_picker_sends_nothing() -> None:
+    """If an untouched picker sent a value, a single choice would overwrite the folder-derived tags of every
+    file in a dropped tree - which is the opposite of respecting the folders."""
+    body = function_body(source("upload.ts"), "createUploadWidget", "upload.ts")
+    chosen = body[body.index("function chosenFacets("):]
+    assert "select.value !== FROM_FOLDER" in chosen, "only explicitly chosen values may be sent"
+    assert "Object.keys(chosen).length ? JSON.stringify(chosen) : null" in chosen, (
+        "with nothing chosen the field must be omitted entirely, not sent as an empty object")
+
+
+def test_the_pickers_are_driven_by_the_configured_vocabulary_not_by_counts() -> None:
+    """`values` is an aggregation, so it is empty for exactly the facets an upload most needs to set. Building
+    pickers from it would offer Department only once some other document already had one."""
+    text = source("upload.ts")
+    assert "vocabulary" in text, "pickers must read the configured vocabulary"
+    assert ".values" not in text.split("loadPickers")[1].split("function pickerFor")[0], (
+        "loadPickers must not build options from the aggregated `values`")
+
+
+def test_a_folder_that_matched_no_rule_says_so() -> None:
+    """A browser reports the path *below* the folder you picked, so picking `policies` instead of `HR` sends one
+    segment and matches nothing. Silence here is the original bug wearing a different hat."""
+    body = function_body(source("upload.ts"), "createUploadWidget", "upload.ts")
+    describe = body[body.index("function describeTags("):]
+    assert "facets_from_path" in describe, "the no-match case has to be detected"
+    assert "No tags matched" in describe, "...and stated"
+    assert "department folder" in describe, "...with the correction, since the fix is to pick a different root"
+
+
+def test_the_filter_panel_is_refreshed_after_an_upload() -> None:
+    """Filter values come from an index aggregation, so a newly used Department is absent until refetched -
+    making a tag that worked look like one that did not."""
+    text = source("chat.ts")
+    upload_block = text[text.index("createUploadWidget(api, {"):]
+    assert "loadFacets()" in upload_block[:800], "onFinished must refresh the facet lists"
+
+
+def test_no_language_default_is_asserted_for_uploads() -> None:
+    """Cross-artefact, like the size cap: there is no language detection in the pipeline, so a default here was
+    a claim about content nobody read. If it comes back, the picker silently stops mattering."""
+    import re as _re
+
+    sources_yaml = (REPO / "config" / "sources" / "sources.yaml").read_text(encoding="utf-8")
+    block = _re.search(r"^  - id: uploads$.*?(?=^  - id: |\Z)", sources_yaml, _re.S | _re.M)
+    assert block, "the uploads source is gone from sources.yaml"
+    # Comments stripped: the question is what the YAML *sets*, and the comment there explains the absence.
+    settings = [ln for ln in block.group(0).splitlines() if not ln.lstrip().startswith("#")]
+    assert not [ln for ln in settings if "language" in ln], (
+        "the uploads source sets a language facet again; every non-English upload would be mislabelled")

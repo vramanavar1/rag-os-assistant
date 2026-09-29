@@ -10,7 +10,13 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from rag_os.application.ports import DocumentSource, IngestionStateStore, MessageQueue, RawDocumentStore
+from rag_os.application.ports import (
+    DocumentSource,
+    IngestionStateStore,
+    MessageQueue,
+    RawDocumentStore,
+    Staged,
+)
 from rag_os.application.services.tagging import TagResolver
 from rag_os.domain.documents import DocumentRecord, DocumentStatus, SourceItem, tags_hash
 from rag_os.domain.ingestion import IngestionRun, IngestMessage, MessageMode, RunStatus, SourceConfig
@@ -40,7 +46,8 @@ class DiscoverSource:
                     tags = tags.merged_with(item.sidecar, "uploader")
                 batch.append((item, DocumentRecord(
                     doc_id=item.doc_id, source_id=cfg.id, item_id=item.item_id, path=item.path, blob_uri=item.uri,
-                    version_key=item.version_key, tags=tags, content_type=item.content_type, size=item.size,
+                    content_hash=item.content_hash, version_key=item.version_key, tags=tags,
+                    content_type=item.content_type, size=item.size,
                     tracking_id=item.metadata.get("tracking_id"), correlation_id=item.metadata.get("correlation_id"),
                 )))
             await self._flush(source, cfg, run, batch)
@@ -117,12 +124,13 @@ class DiscoverSource:
                 continue
             if source.staging_required:
                 try:
-                    uri = await asyncio.to_thread(self._stage, source, item)
+                    staged = await asyncio.to_thread(self._stage, source, item)
                 except Exception as e:
                     self.state.transition(rec.doc_id, DocumentStatus.FAILED, stage="staging",
                                           error_type=type(e).__name__, error_message=str(e)[:1000])
                     continue
-                self.state.transition(rec.doc_id, DocumentStatus.QUEUED, blob_uri=uri)
+                self.state.transition(rec.doc_id, DocumentStatus.QUEUED, blob_uri=staged.uri,
+                                      content_hash=staged.content_hash)
             else:
                 queued_ids.append(rec.doc_id)
             messages.append(IngestMessage(doc_id=rec.doc_id, version_key=rec.version_key, source_id=cfg.id,
@@ -136,6 +144,9 @@ class DiscoverSource:
             await self.queue.send(messages)
         run.queued += len(messages)
 
-    def _stage(self, source: DocumentSource, item: SourceItem) -> str:
+    def _stage(self, source: DocumentSource, item: SourceItem) -> Staged:
+        # The hash comes back even when the source could not supply one (a local folder, where change
+        # detection is otherwise size+mtime): staging reads every byte anyway.
         with source.open(item) as stream:
-            return self.raw.stage(source.id, item.doc_id, item.path.split("/")[-1], stream)
+            return self.raw.stage(source.id, item.doc_id, item.path.split("/")[-1], stream,
+                                  content_hash=item.content_hash)

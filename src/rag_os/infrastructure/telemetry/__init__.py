@@ -85,6 +85,8 @@ def setup_telemetry(service: str, level: str = "INFO", connection_string: str | 
         _instruments["tokens"] = _meter.create_counter("rag.tokens", unit="{token}", description="LLM/embedding tokens")
         _instruments["stage"] = _meter.create_histogram("rag.stage.duration", unit="ms", description="Stage latency")
         _instruments["docs"] = _meter.create_counter("rag.ingest.docs", unit="{document}", description="Ingested docs")
+        _instruments["chunks"] = _meter.create_counter("rag.ingest.chunks", unit="{chunk}",
+                                                       description="Chunks indexed (what consumes index quota)")
     except Exception:  # noqa: S110
         pass
 
@@ -122,7 +124,18 @@ def record_tokens(usage: Any, provider: str, model: str, purpose: str = "answer"
                 c.add(int(n), {"kind": kind, "provider": provider, "model": model, "purpose": p})
 
 
-def record_ingest(status: str, source_id: str) -> None:
+def record_ingest(status: str, source_id: str, chunks: int = 0, reused: bool = False) -> None:
+    """One document ingested, and what it actually cost.
+
+    The document counter alone made duplicate work invisible: a corpus with every file uploaded twice reported
+    twice the documents and no extra cost at all, while paying for two parses, two embeddings and two sets of
+    vectors. `chunks` is the unit that consumes index quota, and `reused` separates documents whose content was
+    already indexed from those that were embedded from scratch - the ratio between them is how you tell whether
+    de-duplication is working.
+    """
     c = _instruments.get("docs")
     if c is not None:
-        c.add(1, {"status": status, "source_id": source_id})
+        c.add(1, {"status": status, "source_id": source_id, "reused": str(reused).lower()})
+    ch = _instruments.get("chunks")
+    if ch is not None and chunks:
+        ch.add(chunks, {"source_id": source_id, "reused": str(reused).lower()})

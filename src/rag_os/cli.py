@@ -157,6 +157,19 @@ async def _status() -> int:
         await c.aclose()
 
 
+async def _purge(retention_days: int, limit: int, apply: bool) -> int:
+    """Dry run unless --apply. The only command here that destroys data, so it does not do so by accident."""
+    c = _container()
+    try:
+        report = await c.purge.run(retention_days=retention_days, limit=limit, dry_run=not apply)
+        _print(report.as_dict())
+        if report.dry_run and report.documents:
+            print("Dry run - nothing was deleted. Re-run with --apply to free this.")
+        return 1 if report.errors else 0
+    finally:
+        await c.aclose()
+
+
 async def _ask(question: str, principal_id: str) -> int:
     from rag_os.api.routers.dev import _principals
 
@@ -193,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
     ep = sub.add_parser("explain")
     ep.add_argument("--attr", action="append", default=[], help="name=value[,value2]  (repeatable)")
     ep.add_argument("--role", action="append", default=[])
+    pp = sub.add_parser("purge", help="free deleted documents: index chunks, staged blobs and state rows")
+    pp.add_argument("--retention-days", type=int, default=7,
+                    help="only touch documents deleted longer ago than this (default 7)")
+    pp.add_argument("--limit", type=int, default=1000)
+    pp.add_argument("--apply", action="store_true",
+                    help="actually delete. Without it this is a dry run, which is the default on purpose.")
     qp = sub.add_parser("ask")
     qp.add_argument("question")
     qp.add_argument("--as", dest="principal", default="hr-emea")
@@ -237,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
             attrs[k] = int(v) if v.isdigit() else [x for x in v.split(",") if x]
         _print(c.engine.explain(Principal(subject="cli", issuer_kind="cli", attributes=attrs, roles=set(args.role))))
         return 0
+    if args.cmd == "purge":
+        return asyncio.run(_purge(args.retention_days, args.limit, apply=args.apply))
     if args.cmd == "ask":
         return asyncio.run(_ask(args.question, args.principal))
     return 2

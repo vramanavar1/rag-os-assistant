@@ -35,7 +35,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection, RowMapping
 
-from rag_os.application.ports import DiscoveryDelta, DocumentEvent, DocumentQuery, IngestionStateStore
+from rag_os.application.ports import (
+    DiscoveryDelta,
+    DocumentEvent,
+    DocumentQuery,
+    IngestionStateStore,
+    PurgeCandidate,
+)
 from rag_os.domain.documents import (
     IN_FLIGHT_STATUSES,
     DocumentRecord,
@@ -59,9 +65,11 @@ documents = Table(
     Column("item_id", Text, nullable=False),
     Column("path", Text, nullable=False),
     Column("blob_uri", Text),
+    Column("content_hash", String(64)),
     Column("version_key", String(80), nullable=False),
     Column("indexed_version", String(80)),
     Column("tags_hash", String(64)),
+    Column("indexed_content_hash", String(64)),
     Column("indexed_tags_hash", String(64)),
     Column("status", String(24), nullable=False),
     Column("stage", String(32)),
@@ -87,6 +95,10 @@ documents = Table(
     # Newest-first paging. The composite carries the doc_id tie-breaker so the keyset condition is covered
     # end to end; ix_documents_status_updated cannot serve a discovered_at sort.
     Index("ix_documents_discovered", "discovered_at", "doc_id"),
+    # Content identity. Nullable and unindexed until now, the sha256 was computed on every upload and then
+    # only ever compared with the same document's own previous value - so the same file uploaded twice was
+    # two documents, two blobs and two sets of vectors. This index is what lets one content be found.
+    Index("ix_documents_content", "content_hash"),
     Index("ix_documents_status_discovered", "status", "discovered_at"),
     Index("ix_documents_run_status", "run_id", "status"),
     Index("ix_documents_review", "review_status"),
@@ -169,8 +181,10 @@ def _to_record(r: RowMapping) -> DocumentRecord:
         item_id=r["item_id"],
         path=r["path"],
         blob_uri=r["blob_uri"],
+        content_hash=r.get("content_hash"),
         version_key=r["version_key"],
         indexed_version=r["indexed_version"],
+        indexed_content_hash=r.get("indexed_content_hash"),
         indexed_tags_hash=r.get("indexed_tags_hash"),
         status=DocumentStatus(r["status"]),
         stage=r["stage"],
@@ -249,6 +263,7 @@ class SqlStateStore(IngestionStateStore):
                 base = {
                     "source_id": rec.source_id, "item_id": rec.item_id, "path": rec.path,
                     "blob_uri": rec.blob_uri, "content_type": rec.content_type, "size": rec.size,
+                    "content_hash": rec.content_hash,
                     "last_seen_run_id": run_id, "updated_at": now,
                 }
                 if cur is None:
@@ -374,6 +389,53 @@ class SqlStateStore(IngestionStateStore):
                     .values(status=DocumentStatus.QUEUED.value, updated_at=_now())
                 )
 
+    def purgeable(self, older_than: datetime, limit: int = 1000) -> list[PurgeCandidate]:
+        """Deleted documents, and whether their bytes are safe to remove with them.
+
+        A blob is content-addressed, so several documents can point at one - deleting from the document's
+        point of view would take another document's content away. `free_blob` is therefore only true once no
+        LIVE document shares the content. Rows whose content_hash is NULL predate content addressing; their
+        blob was keyed by doc_id and so was never shared, which is why they are safe on their own.
+        """
+        with self.engine.connect() as c:
+            rows = list(c.execute(
+                select(documents.c.doc_id, documents.c.blob_uri, documents.c.content_hash)
+                .where(documents.c.status == DocumentStatus.DELETED.value, documents.c.updated_at < older_than)
+                .order_by(documents.c.updated_at)
+                .limit(limit)
+            ).mappings())
+            hashes = {r["content_hash"] for r in rows if r["content_hash"]}
+            still_referenced: set[str] = set()
+            if hashes:
+                still_referenced = {
+                    h for (h,) in c.execute(
+                        select(documents.c.content_hash).where(
+                            documents.c.content_hash.in_(hashes),
+                            documents.c.status != DocumentStatus.DELETED.value,
+                        ).distinct()
+                    )
+                }
+        return [
+            PurgeCandidate(
+                doc_id=r["doc_id"], blob_uri=r["blob_uri"], content_hash=r["content_hash"],
+                free_blob=bool(r["blob_uri"]) and r["content_hash"] not in still_referenced,
+            )
+            for r in rows
+        ]
+
+    def delete_documents(self, doc_ids: Sequence[str]) -> int:
+        """Remove state rows outright. Events and facets go with them; the caller frees index and blobs."""
+        if not doc_ids:
+            return 0
+        ids = list(doc_ids)
+        with self.engine.begin() as c:
+            for i in range(0, len(ids), 1000):
+                batch = ids[i:i + 1000]
+                c.execute(delete(document_facets).where(document_facets.c.doc_id.in_(batch)))
+                c.execute(delete(document_events).where(document_events.c.doc_id.in_(batch)))
+                c.execute(delete(documents).where(documents.c.doc_id.in_(batch)))
+        return len(ids)
+
     def mark_unseen_deleted(self, source_id: str, run_id: str) -> list[str]:
         with self.engine.begin() as c:
             ids = [
@@ -404,6 +466,8 @@ class SqlStateStore(IngestionStateStore):
             conds.append(documents.c.path.ilike(f"%{q.text}%"))
         if q.review_pending:
             conds.append(documents.c.review_status == ReviewStatus.PENDING.value)
+        if q.content_hash:
+            conds.append(documents.c.content_hash == q.content_hash)
         if q.path_prefix:
             # autoescape, because this is an ownership boundary: a subject containing % or _ would otherwise
             # widen its own prefix into a wildcard and match other people's documents.

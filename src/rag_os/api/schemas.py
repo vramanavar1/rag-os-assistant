@@ -41,6 +41,18 @@ class UploadResponse(BaseModel):
     tracking_id: str
     doc_id: str
     status: DocumentStatus
+    relative_path: str | None = Field(
+        default=None, description="the folder path the facets below were derived from, if one was sent")
+    facets: dict[str, list[str]] = Field(default_factory=dict, description="facets stored on the document")
+    facet_sources: dict[str, str] = Field(
+        default_factory=dict,
+        description="per facet, what set it: source_default, path_rule:<glob> or uploader")
+    facets_from_path: list[str] = Field(
+        default_factory=list,
+        description="facets the path rules supplied. Empty with a relative_path set means no rule matched it.")
+    duplicate_of: str | None = Field(
+        default=None,
+        description="set when these exact bytes were already uploaded by you: nothing new was ingested")
 
 
 class UploadSummary(BaseModel):
