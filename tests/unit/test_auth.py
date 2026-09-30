@@ -18,6 +18,7 @@ from rag_os.domain.access import AccessPolicy, AttributeRule, CombineRule, Issue
 from rag_os.domain.errors import AuthenticationFailed
 from rag_os.infrastructure.auth.jwt_validator import IssuerConfig, JwtValidator
 from rag_os.infrastructure.settings import Settings
+from rag_os.infrastructure.storage.config_repo import FileConfigRepository
 
 KEY = "dev-test-key-0123456789abcdef0123456789abcdef"
 DEV_ISS = "rag-os-dev"
@@ -358,3 +359,79 @@ def test_composition_trusts_both_issuer_urls_for_the_configured_tenant() -> None
     cfg = validator._by_iss[V1_ISS]
     assert cfg.audiences == (f"api://{APP}", APP) and cfg.algorithms == ("RS256",)
     assert "sub" not in cfg.required  # Entra tokens for an app+user flow need not carry it
+
+
+# ---------------------------------------------------------------- directory-extension claim names
+# Microsoft's optional-claims page states that a directory extension appears in a JWT as `extn.{name}`, and
+# then shows `extension_{appid}_{name}` in its own worked example further down. The page contradicts itself,
+# and the long form embeds the tenant's application id, so it cannot be a checked-in default. Both are
+# accepted, because the failure mode otherwise is everything-configured-correctly-and-no-documents.
+
+APP_ID = "9c1b3e4d5f6a7b8c9d0e1f2a3b4c5d6e"  # an appId with its hyphens stripped, as Entra writes it
+
+
+def _extn_policy() -> AccessPolicy:
+    return AccessPolicy(
+        attributes=[
+            AttributeRule(name="department", field="acl_department", match=MatchKind.ANY_OF, required=True,
+                          claims={"entra": "extn.department"}),
+            AttributeRule(name="clearance", field="acl_clearance", match=MatchKind.MAX_LEVEL,
+                          claims={"entra": "extn.clearance"}),
+        ],
+        combine=CombineRule(all_of=["department", "clearance"]),
+    )
+
+
+def test_either_spelling_of_a_directory_extension_claim_is_accepted() -> None:
+    m = ClaimsMapper(_extn_policy())
+    short = m.map({"sub": "u", "extn.department": "HR", "extn.clearance": 2}, "entra")
+    long = m.map({"sub": "u", f"extension_{APP_ID}_department": "HR",
+                  f"extension_{APP_ID}_clearance": "2"}, "entra")
+    assert short.attributes == {"department": ["HR"], "clearance": 2}
+    assert long.attributes == short.attributes, "the two documented spellings must be indistinguishable"
+
+
+def test_the_long_form_matches_regardless_of_the_case_it_was_registered_in() -> None:
+    """Entra treats extension names as case-sensitive when the token service reads them, so a tenant that
+    registered `Department` would never match a policy saying `department` if this were exact."""
+    m = ClaimsMapper(_extn_policy())
+    p = m.map({"sub": "u", f"extension_{APP_ID}_Department": "HR"}, "entra")
+    assert p.attributes["department"] == ["HR"]
+
+
+@pytest.mark.parametrize("claim", [
+    "my_extension_clearance",            # merely contains the word
+    "extension_clearance",               # no app id at all
+    "extension_notanappid_clearance",    # app id is not 32 hex
+    f"extension_{APP_ID}_clearance_2",   # a different attribute that shares a prefix
+])
+def test_a_claim_that_only_resembles_the_long_form_is_not_accepted(claim: str) -> None:
+    """The tolerance is for one documented ambiguity, not a substring search over the token."""
+    p = ClaimsMapper(_extn_policy()).map({"sub": "u", claim: "3"}, "entra")
+    assert "clearance" not in p.attributes
+
+
+def test_an_exact_match_wins_over_the_long_form() -> None:
+    """A token carrying both spellings is pathological, but it must resolve predictably rather than by dict
+    ordering - and the configured name is the one the operator wrote down."""
+    claims = {"sub": "u", "extn.clearance": 1, f"extension_{APP_ID}_clearance": 3}
+    assert ClaimsMapper(_extn_policy()).map(claims, "entra").attributes["clearance"] == 1
+
+
+def test_every_entra_claim_in_the_shipped_policy_is_one_entra_can_emit() -> None:
+    """The guard for the bug that prompted all of this.
+
+    The policy used to name `extension_Department`, `extension_Region` and `extension_Clearance`. No Entra
+    route emits those: a directory extension is `extn.<name>` (or the long form), `oid` and `roles` arrive by
+    default, and `groups` is switched on with groupMembershipClaims. Since department and region are
+    `required: true`, a name Entra never sends means every real caller sees nothing at all - with no error
+    anywhere to say why.
+    """
+    policy = FileConfigRepository(config_dir="./config").load_access_policy()
+    emitted = {"oid", "roles", "groups", "ctry", "email", "upn", "preferred_username"}
+    for rule in policy.attributes:
+        claim = rule.claims.get("entra")
+        assert claim, f"attribute '{rule.name}' has no entra claim"
+        assert claim in emitted or claim.startswith("extn."), (
+            f"attribute '{rule.name}' reads the claim '{claim}', which Microsoft Entra does not emit. Use a "
+            "directory extension (extn.<name>), a default claim, or groups with a value_map.")

@@ -316,3 +316,141 @@ def test_the_app_roles_agree_with_the_script_that_creates_them() -> None:
     assert from_yaml == from_ps, (
         "access-policy.yaml app_roles and $script:RagOsEntraAppRoles disagree. They provision and describe the "
         "same four roles; change one and you must change the other.")
+
+
+# ---------------------------------------------------------------- the master list of grantable values
+# Settings (Security) writes department/region/clearance onto an Entra user. What it may write is
+# `allowed_values` here, never whatever the browser posted, so these validations are the boundary of that
+# feature rather than convenience for a dropdown.
+
+
+def test_allowed_values_are_rejected_on_a_max_level_attribute() -> None:
+    """A ladder already has a master list - `levels` - and it carries the number each rung means. Two lists on
+    one attribute would disagree eventually, and the one the UI happened to read would decide who reads what."""
+    bad = _policy(attributes=[
+        {"name": "clearance", "field": "acl_clearance", "match": "max_level", "claims": {"dev": "clearance"},
+         "allowed_values": [{"value": "1"}]},
+    ], combine={"all_of": ["clearance"]})
+    with pytest.raises(ValidationError, match="levels"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_allowed_values_reject_duplicates_differing_only_in_case() -> None:
+    """`any_of` matches a caller's value against document tags case-sensitively, so HR and hr are two different
+    grants and at most one of them matches anything. Offering both in a picker guarantees someone picks the
+    one that silently grants nothing."""
+    bad = _policy(attributes=[
+        {"name": "department", "field": "acl_department", "match": "any_of", "claims": {"dev": "departments"},
+         "allowed_values": [{"value": "HR"}, {"value": "hr"}]},
+    ], combine={"all_of": ["department"]})
+    with pytest.raises(ValidationError, match="duplicate allowed_values"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_an_allowed_value_containing_the_filter_delimiter_is_rejected() -> None:
+    """The search filter joins a caller's values on "|", so AccessPolicyEngine refuses any attribute value
+    containing one - see _principal_values. Writing such a value onto a person does not narrow their access;
+    it makes every query they run fail authentication, permanently, until someone edits the directory."""
+    bad = _policy(attributes=[
+        {"name": "department", "field": "acl_department", "match": "any_of", "claims": {"dev": "departments"},
+         "value_pattern": r"^[A-Za-z|]+$", "allowed_values": [{"value": "HR|Finance"}]},
+    ], combine={"all_of": ["department"]})
+    with pytest.raises(ValidationError, match="delimiter"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_an_allowed_value_must_not_violate_the_value_pattern() -> None:
+    bad = _policy(attributes=[
+        {"name": "department", "field": "acl_department", "match": "any_of", "claims": {"dev": "departments"},
+         "allowed_values": [{"value": "!!nope!!"}]},
+    ], combine={"all_of": ["department"]})
+    with pytest.raises(ValidationError, match="value_pattern"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_an_allowed_value_must_survive_the_claims_mapper_unchanged() -> None:
+    """The check that makes writing attributes safe at all.
+
+    A deployment may point `department` at Entra's `groups` claim and map group object ids to names, which the
+    shipped policy documents as the way to grant a whole department. Under that configuration map_value("HR")
+    is None: the claim is discarded on the way in. Settings (Security) would PATCH the directory extension,
+    Graph would return 204, the page would report success - and the value would never reach a token. Nothing
+    downstream can detect that, so it has to be refused here.
+    """
+    bad = _policy(attributes=[
+        {"name": "department", "field": "acl_department", "match": "any_of", "claims": {"entra": "groups"},
+         "value_map": {"7c9f1b3e-2d4a-4a1c-9f6b-0b2d6e21a001": "HR"}, "drop_unmapped": True,
+         "allowed_values": [{"value": "HR"}]},
+    ], combine={"all_of": ["department"]})
+    with pytest.raises(ValidationError, match="value_map"):
+        AccessPolicy.model_validate(bad)
+
+
+def test_allowed_values_pass_when_the_mapper_leaves_them_alone() -> None:
+    """The same shape without drop_unmapped: "HR" passes through, so granting it is honest."""
+    ok = _policy(attributes=[
+        {"name": "department", "field": "acl_department", "match": "any_of", "claims": {"dev": "departments"},
+         "allowed_values": [{"value": "HR", "label": "Human Resources", "description": "People and payroll."}]},
+    ], combine={"all_of": ["department"]})
+    policy = AccessPolicy.model_validate(ok)
+    assert [v.value for v in policy.attribute("department").allowed_values] == ["HR"]
+    assert policy.attribute("department").allowed_values[0].label == "Human Resources"
+
+
+# ---------------------------------------------------------------- the caller's own directory object id
+
+
+def test_a_principal_knows_its_directory_object_id() -> None:
+    """`subject` is NOT the object id. ClaimsMapper prefers `sub`, which for Entra is a pairwise
+    per-application identifier that exists nowhere in the directory. Anything comparing a caller against a
+    Graph object - "you may not edit yourself" - must use this property, because comparing `subject` would
+    never match and would therefore fail open.
+    """
+    p = Principal(subject="pairwise-sub-value", issuer_kind="entra",
+                  raw_claims={"sub": "pairwise-sub-value", "oid": "11111111-2222-3333-4444-555555555555"})
+    assert p.directory_object_id == "11111111-2222-3333-4444-555555555555"
+    assert p.directory_object_id != p.subject, (
+        "if these are ever equal this test is not proving anything - ClaimsMapper prefers `sub` over `oid`")
+
+
+def test_a_dev_token_has_no_directory_object_id() -> None:
+    """The dev issuer asserts whatever the developer typed, including roles. It cannot identify a real person,
+    so a caller holding one must be refused rather than silently skipping the self-edit check."""
+    p = Principal(subject="alice", issuer_kind="dev", raw_claims={"sub": "alice", "oid": "not-a-real-oid"})
+    assert p.directory_object_id is None
+
+
+def test_an_entra_token_without_an_oid_has_no_directory_object_id() -> None:
+    p = Principal(subject="s", issuer_kind="entra", raw_claims={"sub": "s"})
+    assert p.directory_object_id is None
+
+
+def test_every_attribute_the_page_can_write_has_a_master_list() -> None:
+    """An attribute fed by a directory extension is one Settings (Security) writes. Without a master list the
+    page has nothing to offer, and the only alternative is a free-text box writing unvalidated values straight
+    into the directory - which is how somebody ends up with a department no document is tagged with."""
+    policy = FileConfigRepository(config_dir="./config").load_access_policy()
+    writable = [a for a in policy.attributes if a.claims.get("entra", "").startswith("extn.")]
+    assert writable, "no attribute reads a directory extension; re-point this test"
+    for rule in writable:
+        assert rule.allowed_values or rule.levels, (
+            f"attribute {rule.name!r} is written by Settings (Security) but has neither allowed_values nor "
+            f"levels, so there is nothing for an administrator to choose from")
+
+
+def test_the_region_master_list_matches_the_hierarchy_facet() -> None:
+    """region is `hierarchical`, so a caller's value is expanded to its ancestors through the facet tree. A
+    value absent from that tree does not fail - _expand_ancestors falls through to [value], so a caller
+    assigned it reaches UK and NOT EMEA or Global. Silently narrower access than the administrator granted,
+    with nothing anywhere to explain it.
+    """
+    repo = FileConfigRepository(config_dir="./config")
+    policy, facets = repo.load_access_policy(), repo.load_facets()
+    region = policy.attribute("region")
+    assert region.hierarchy_facet, "region stopped being hierarchical; re-point this test"
+    tree = {v.id for f in facets.facets if f.name == region.hierarchy_facet for v in f.values}
+    assert tree, f"facet {region.hierarchy_facet!r} has no values"
+    orphans = sorted(v.value for v in region.allowed_values if v.value not in tree)
+    assert not orphans, (
+        f"allowed_values for region names {orphans}, which are not in the {region.hierarchy_facet} facet tree. "
+        f"A caller assigned one reaches only that value, not its ancestors.")

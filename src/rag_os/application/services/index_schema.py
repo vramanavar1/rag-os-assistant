@@ -14,7 +14,10 @@ from rag_os.domain.classification import FacetSchema
 from rag_os.domain.documents import IndexedChunk
 from rag_os.domain.embedding import EmbeddingProfile
 
-BASE_SELECT = ["chunk_id", "doc_id", "title", "heading", "content", "path", "page", "source_id"]
+# effective_date is here so the answer prompt can act on its own rule about conflicting blocks. It was
+# declared and written from the start but never selected back, so the rule could never fire.
+BASE_SELECT = ["chunk_id", "doc_id", "title", "heading", "content", "path", "page", "source_id",
+               "effective_date"]
 CURRENT_FILTER = "is_current eq true"
 
 

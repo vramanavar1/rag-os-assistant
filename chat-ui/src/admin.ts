@@ -15,6 +15,7 @@ import { dlqView } from './admin/dlq';
 import { documentsView } from './admin/documents';
 import { reviewView } from './admin/review';
 import { runsView } from './admin/runs';
+import { settingsSecurityView } from './admin/settings-security';
 import { sourcesView } from './admin/sources';
 import { uploadsView } from './admin/uploads';
 
@@ -28,6 +29,7 @@ const ROUTES: { id: string; label: string; view: View }[] = [
   { id: 'review', label: 'Review queue', view: reviewView },
   { id: 'controls', label: 'Controls', view: controlsView },
   { id: 'config', label: 'Config', view: configView },
+  { id: 'settings-security', label: 'Settings (Security)', view: settingsSecurityView },
 ];
 
 const store = new SessionTokenStore('rag-os:token:admin');

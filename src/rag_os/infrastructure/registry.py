@@ -119,3 +119,6 @@ RAW_STORES: Registry[Any] = Registry("raw store", [f"{_I}.storage.raw_store"])
 CONFIG_REPOS: Registry[Any] = Registry("config repository", [f"{_I}.storage.config_repo"])
 RETRIEVERS: Registry[Any] = Registry("retriever", [f"{_I}.search.retrievers"])
 CLASSIFIERS: Registry[Any] = Registry("classifier", [f"{_I}.classifier.classifiers"])
+# Deliberately NOT surfaced by GET /api/admin/registry: a directory is chosen by environment variable for
+# the whole deployment, and that endpoint describes adapters a source can be configured with.
+DIRECTORIES: Registry[Any] = Registry("identity directory", [f"{_I}.directory.graph", f"{_I}.directory.fake"])

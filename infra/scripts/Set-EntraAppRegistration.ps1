@@ -56,6 +56,11 @@
     Assigns the rag.admin role to a person: a UPN, a user object id, or 'me'. Creating a role grants nobody
     anything, so a first deployment needs this (or the same action in the portal) before anyone can administer.
     NOTE the new role is NOT in a token that has already been issued - sign out and back in afterwards.
+.PARAMETER SkipUserAttributes
+    Skip creating the three directory extensions (department, region, clearance) and registering them as
+    access-token optional claims. Use it when directory schema is governed separately, or when this account
+    lacks the directory role. Without them a caller signs in successfully and reads NOTHING, because department
+    and region are required and never arrive - see "Entra user attributes and claims" in README.md.
 .PARAMETER PreAuthorizeAzureCli
     Also pre-authorise Microsoft's Azure CLI (04b07795-8ddb-461a-bbee-02f9e1bf7b46) for the scope, which is what
     makes `az account get-access-token --scope <the scope>` work - the token that Deployment.md section 9.5 and
@@ -87,6 +92,10 @@ param(
     # Drop the standalone closing guidance. Provisioning runs this as a step, where "re-run 07-container-apps.ps1"
     # is nonsense on the pass that happens before step 07 has run at all.
     [switch]$Brief,
+    # Skip the directory extensions and optional claims, for tenants where directory schema is governed
+    # separately. The rest of the registration still reconciles - but without them a caller arrives with no
+    # department and no region, and since both are required, reads nothing.
+    [switch]$SkipUserAttributes,
     # Print the diff and write nothing.
     [switch]$DryRun,
     # Print the help above and exit.
@@ -163,6 +172,31 @@ if ($PreAuthorizeAzureCli) { $preAuth += $AzureCliAppId }
 # on BOTH paths: a registration configured last week reconciles to zero changes, and `-GrantAdminTo me` against
 # it is exactly how somebody becomes an administrator. Leaving it after the write would have made the flag a
 # no-op in the one case people will use it for.
+function Save-ServicePrincipalId {
+    <#
+    .SYNOPSIS
+        Records the enterprise application's OBJECT id, which the API needs to read and write app-role assignments.
+    .DESCRIPTION
+        Not the app (client) id, and not the app registration's object id: assignments hang off the service
+        principal, and nothing recorded this until Settings (Security) needed it. Best-effort - a deployment that
+        does not administer people does not need it, so a missing enterprise application is not a failure here.
+    #>
+    param([switch]$DryRun)
+    try {
+        # -NoCreate on a dry run: this must never bring an enterprise application into existence as a side effect.
+        $sp = Get-EntraServicePrincipal -ClientId $Config.EntraClientId -NoCreate:$DryRun
+        $spId = [string](Get-Value $sp 'id')
+        if (-not $spId) { Write-Info 'No enterprise application yet, so there is no object id to record.'; return }
+        Save-Outputs -Config $Config -Values @{ entraServicePrincipalObjectId = $spId }
+        Write-Ok "enterprise application object id: $spId"
+    }
+    catch {
+        Write-Warn "Could not record the enterprise application object id: $($_.Exception.Message)"
+        Write-Info '  Settings (Security) needs ENTRA_SERVICE_PRINCIPAL_OBJECT_ID; everything else is unaffected.'
+    }
+}
+
+
 function Grant-AdminRole {
     <# .SYNOPSIS  Assigns rag.admin to -GrantAdminTo. Best-effort: reports and returns, never throws. #>
     param([Parameter(Mandatory)][AllowNull()][object]$Application)
@@ -193,6 +227,39 @@ function Grant-AdminRole {
     }
 }
 
+# ------------------------------------------------------------------------------- user attributes
+# Separate from the patch above because these are different Graph resources - extensionProperties are created
+# one at a time, and optionalClaims is a property of the app. Without them sign-in works and every caller
+# arrives with no department and no region; both are required, so they read nothing, and nothing says why.
+function Set-UserAttributes {
+    param([Parameter(Mandatory)][object]$App)
+    if ($SkipUserAttributes) {
+        Write-Info 'Skipped the user attributes (-SkipUserAttributes). Callers will have no department or region.'
+        return
+    }
+    Write-Step 'User attributes (directory extensions + optional claims)'
+    try {
+        $claims = Set-EntraUserAttributes -App $App -ObjectId $objectId -ClientId $Config.EntraClientId -DryRun:$DryRun
+        Write-Info 'The access token will carry these, and access-policy.yaml reads them as extn.<name>:'
+        foreach ($c in $claims) { Write-Info "    $c" }
+        Write-Info 'Set a value on somebody before they sign in - there is no portal UI for this:'
+        # Single-quoted: the body is JSON, and a double-quoted PowerShell string would need every quote in it
+        # escaped with a backtick - which is exactly the sort of line that gets copied out wrong.
+        Write-Info '    az rest --method patch --url https://graph.microsoft.com/v1.0/users/<upn> --body ''{"extension_<appid>_department": "HR"}'''
+    }
+    catch {
+        $message = $_.Exception.Message
+        if ($message -match '(?i)(Authorization_RequestDenied|Insufficient privileges|Forbidden|403)') {
+            Write-Warn 'Not allowed to define directory extensions on this registration.'
+            Write-Info '  This needs Application Administrator, or ownership of the registration.'
+            Write-Info "  Re-run with -SkipUserAttributes to finish the rest, then ask an identity administrator."
+            Write-Info '  See "Entra user attributes and claims" in README.md for the manual steps.'
+            return
+        }
+        throw
+    }
+}
+
 # ------------------------------------------------------------------------------------------- reconcile
 Write-Step 'Reconciling'
 $patch = Get-EntraAppPatch -App $app -ClientId $Config.EntraClientId -ScopeName $scopeName -AppIdUri $appIdUri `
@@ -204,6 +271,10 @@ if ($patch.Changes.Count -eq 0) {
     Write-Info 'in a private window. Entra keeps issuing a cached access token for up to an hour after a change.'
     # The roles are already there on this path, so the grant can go ahead without any write.
     Grant-AdminRole -Application $app
+    # Also on this path: an app whose scope and roles are already correct can still be missing the attributes,
+    # which is exactly the state a deployment made before this step existed is in.
+    Set-UserAttributes -App $app
+    Save-ServicePrincipalId -DryRun:$DryRun
     # Recorded here too: this path returns early, so without it a deployment whose registration was already
     # correct would leave the outputs file with no record of the object or scope id at all.
     Save-Outputs -Config $Config -Values @{
@@ -336,6 +407,8 @@ Save-Outputs -Config $Config -Values @{
 }
 
 Grant-AdminRole -Application $confirmed.App
+Set-UserAttributes -App $confirmed.App
+Save-ServicePrincipalId -DryRun:$DryRun
 
 if (-not $Brief) {
     Write-Step 'Next'

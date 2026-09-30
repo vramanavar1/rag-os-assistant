@@ -17,6 +17,36 @@ sources:
       facets: { language: en }
       acl: { clearance: 1 }
 
+  # Conflict-handling demonstration: two handbooks that disagree about the same entitlement, so a question
+  # about it retrieves both. Kept as two SOURCES rather than two files, because the point being shown is a
+  # disagreement between systems of record - the citations name different origins. Both are manual (no
+  # schedule), so `./tasks.ps1 seed` does not put contradictory documents in anyone's index by accident:
+  #   rag-os discover --source scenario-global-handbook
+  #   rag-os discover --source scenario-uk-handbook
+  # See "User Query Handling Scenarios" in README.md. The paths under each root follow the usual
+  # &lt;department&gt;/&lt;region&gt;/&lt;doc_type&gt;/ layout, so the shipped path rules tag them with no extra configuration.
+  - id: scenario-global-handbook
+    type: local_folder
+    domain: enterprise
+    lane: bulk
+    schedule: null
+    settings:
+      root: ./samples/scenarios/global-handbook
+    defaults:
+      facets: { language: en }
+      acl: { clearance: 1 }
+
+  - id: scenario-uk-handbook
+    type: local_folder
+    domain: enterprise
+    lane: bulk
+    schedule: null
+    settings:
+      root: ./samples/scenarios/uk-handbook
+    defaults:
+      facets: { language: en }
+      acl: { clearance: 1 }
+
   # Synthetic corpus for the load test (scripts/loadtest.py generate --out samples/synthetic).
   - id: synthetic-load
     type: local_folder

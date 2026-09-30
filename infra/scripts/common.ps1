@@ -383,6 +383,48 @@ function Invoke-AzRest {
     }
 }
 
+function Get-ODataNextLink {
+    <#
+    .SYNOPSIS  The '@odata.nextLink' of a Graph response, or '' when it is the last page.
+    .DESCRIPTION
+        Not Get-Value: that treats '.' as a path separator, so '@odata.nextLink' would be looked up as
+        @odata -> nextLink, miss every time, and paging would silently stop at page one - which reads as "there
+        is nothing else" rather than as a failure.
+    #>
+    param([AllowNull()][object]$Body)
+    if ($null -eq $Body) { return '' }
+    if ($Body -is [System.Collections.IDictionary]) { return [string]$Body['@odata.nextLink'] }
+    $property = $Body.PSObject.Properties['@odata.nextLink']
+    return $property ? [string]$property.Value : ''
+}
+
+
+function Invoke-AzRestPaged {
+    <#
+    .SYNOPSIS
+        Every row of a paged Graph collection, following @odata.nextLink.
+    .DESCRIPTION
+        Graph returns 100 rows by default and a link to the rest. Reading only the first page is not a partial
+        answer, it is a WRONG one: a caller that asks "is this already assigned?" gets "no" for anything past
+        row 100, and then assigns it again - which Graph accepts, because it does not deduplicate. The result is
+        a duplicate created on every run.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [int]$MaxPages = 100
+    )
+    $rows = @()
+    $next = $Url
+    for ($page = 0; $page -lt $MaxPages -and $next; $page++) {
+        $body = Invoke-AzRest -Method get -Url $next
+        $rows += @(@(Get-Value $body 'value') | Where-Object { $_ })
+        $next = Get-ODataNextLink $body
+    }
+    if ($next) { throw "Graph returned more than $MaxPages pages for $Url; refusing to keep paging." }
+    return @($rows)
+}
+
+
 function Get-Value {
     <#
     .SYNOPSIS  Safe nested lookup, e.g. Get-Value $account 'properties.allowProjectManagement'.
@@ -918,6 +960,140 @@ $script:RagOsEntraAppRoles = @(
         Description = 'May work the document review queue and approve tags.'
     }
 )
+
+# The user attributes RAG-OS reads. Each becomes a DIRECTORY EXTENSION on this app registration and an
+# access-token optional claim. Kept here beside the app-role catalogue for the same reason: PowerShell has no
+# YAML reader, and a test asserts these agree with config/access-policy/access-policy.yaml.
+#
+# Why directory extensions and not the built-in properties: `department` and `officeLocation` are NOT in
+# Entra's optional-claims list, so the Token configuration blade will not offer them - emitting a built-in
+# property needs a claims-mapping policy plus acceptMappedClaims or a custom signing key. A directory
+# extension is the only custom-data route that needs none of that.
+$script:RagOsUserAttributes = @(
+    @{ Name = 'department'; DataType = 'String'
+        Description = 'Which part of the organisation this person belongs to, e.g. HR. Single-valued: ' +
+        'somebody who belongs to several departments needs the groups route instead.'
+    }
+    @{ Name = 'region'; DataType = 'String'
+        Description = 'Where this person sits in the region tree, e.g. UK. A caller also reaches its parents.'
+    }
+    @{ Name = 'clearance'; DataType = 'String'
+        Description = 'How sensitive a document this person may read, as an integer 0-3. Absent means 0.'
+    }
+)
+
+
+# The Microsoft Graph application permissions the API needs in order to administer people from Settings
+# (Security). Granted to the MANAGED IDENTITY, not to the app registration: it is the running application that
+# calls Graph.
+#
+# AppRoleAssignment.ReadWrite.All deserves a sentence of its own. It cannot be scoped to one application: it
+# permits granting any app role on any service principal in the tenant, Graph's own included, so an identity
+# holding it can escalate itself to Global Administrator. Consenting to it needs Privileged Role Administrator
+# or Global Administrator - Application Administrator is NOT enough. The narrowing that makes it safe lives in
+# the API (infrastructure/directory/graph.py: a fixed resourceId, and appRoleIds only from our own catalogue),
+# not in Entra. A test pins this list against what the README documents.
+$script:RagOsGraphAppId = '00000003-0000-0000-c000-000000000000'
+$script:RagOsGraphPermissions = @(
+    @{ Value = 'User.ReadWrite.All'
+        Why = 'Find a person by address, read their directory extensions, write the three attributes, and end their sign-in sessions.'
+    }
+    @{ Value = 'AppRoleAssignment.ReadWrite.All'
+        Why = "Read, create and delete this application's own app-role assignments. Tenant-wide and unscopable - see the note above."
+    }
+    @{ Value = 'GroupMember.Read.All'
+        Why = 'Read group membership, so a role held THROUGH a group is shown as non-removable instead of silently missing.'
+    }
+)
+
+
+function Get-EntraIdentityRoleAssignment {
+    <#
+    .SYNOPSIS
+        The app roles a principal has been GRANTED, read from the principal's own side.
+    .DESCRIPTION
+        The outbound direction (/appRoleAssignments) rather than the inbound one (/appRoleAssignedTo), and that
+        is the whole point. Asking Microsoft Graph's service principal who holds its roles returns every app
+        permission consented anywhere in the tenant - thousands of rows. Asking our managed identity what it has
+        been granted returns a handful.
+    #>
+    param([Parameter(Mandatory)][string]$PrincipalId)
+    return @(Invoke-AzRestPaged -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$PrincipalId/appRoleAssignments")
+}
+
+
+function Set-EntraUserAttributes {
+    <#
+    .SYNOPSIS
+        Create the directory extensions RAG-OS reads, and emit them as access-token optional claims.
+    .DESCRIPTION
+        Without this, sign-in works and every caller arrives with no department and no region - and because
+        both are required, they can read nothing at all, with no error anywhere saying why.
+
+        Two writes, because they are different Graph resources: extensionProperties are created individually,
+        then the app's optionalClaims are patched to emit them. Both are idempotent.
+
+        The extension must live on the SAME app registration that requests the claim; an extension defined
+        elsewhere needs a claims-mapping policy instead. Entra allows at most 10 extension optional claims.
+    .OUTPUTS
+        The claim names registered, so the caller can print what to look for in a token.
+    #>
+    param(
+        [Parameter(Mandatory)][object]$App,
+        [Parameter(Mandatory)][string]$ObjectId,
+        [Parameter(Mandatory)][string]$ClientId,
+        [switch]$DryRun
+    )
+
+    $base = "https://graph.microsoft.com/v1.0/applications/$ObjectId"
+    $existing = @(Get-Value (Invoke-AzRest -Method get -Url "$base/extensionProperties") 'value')
+    $byName = @{}
+    foreach ($e in $existing) { $byName[[string](Get-Value $e 'name')] = $true }
+
+    # The registered name is extension_{appId-without-hyphens}_{name} - Entra composes it, we predict it so
+    # the optional claim can name it. The token itself may carry either this or the short extn.{name} form;
+    # Microsoft's own documentation gives both, and the API accepts either.
+    $prefix = "extension_$($ClientId -replace '-', '')_"
+    $claimNames = @()
+    foreach ($attr in $script:RagOsUserAttributes) {
+        $full = "$prefix$($attr.Name)"
+        $claimNames += $full
+        if ($byName.ContainsKey($full)) { Write-Ok "attribute already defined: $($attr.Name)"; continue }
+        if ($DryRun) { Write-Host "    would create directory extension $($attr.Name)" -ForegroundColor Yellow; continue }
+        $null = Invoke-AzRest -Method post -Url "$base/extensionProperties" -Body @{
+            name = $attr.Name; dataType = $attr.DataType; targetObjects = @('User')
+        }
+        Write-Ok "created directory extension: $($attr.Name)"
+    }
+
+    # optionalClaims is a complex property, so it is replaced wholesale: merge into what the caller already
+    # read, or every other optional claim on this registration is deleted by the write. The caller's copy is
+    # current enough - nothing else in this script touches optionalClaims.
+    $current = @(@(Get-Value $App 'optionalClaims.accessToken') | Where-Object { $_ })
+    $have = @($current | ForEach-Object { [string](Get-Value $_ 'name') })
+    $missing = @($claimNames | Where-Object { $_ -notin $have })
+    if ($missing.Count -eq 0) {
+        Write-Ok 'optional claims already emit all three attributes.'
+        return $claimNames
+    }
+    if (($have.Count + $missing.Count) -gt 10) {
+        throw ("This registration would emit $($have.Count + $missing.Count) extension optional claims; Entra " +
+            'allows 10. Remove some in App registrations -> Token configuration first.')
+    }
+    if ($DryRun) {
+        Write-Host "    would add $($missing.Count) optional claim(s) to the access token" -ForegroundColor Yellow
+        return $claimNames
+    }
+    $merged = @($current) + @($missing | ForEach-Object { @{ name = $_; essential = $false } })
+    $optional = @{}
+    foreach ($kind in @('idToken', 'accessToken', 'saml2Token')) {
+        $optional[$kind] = @(@(Get-Value $App "optionalClaims.$kind") | Where-Object { $_ })
+    }
+    $optional['accessToken'] = $merged
+    $null = Invoke-AzRest -Method patch -Url $base -Body @{ optionalClaims = $optional }
+    Write-Ok "optional claims: added $($missing.Count) to the access token."
+    return $claimNames
+}
 
 function Get-MigrationHead {
     <#
@@ -1547,12 +1723,14 @@ function Get-EntraRoleAssignment {
         [Parameter(Mandatory)][string]$ServicePrincipalId,
         [AllowNull()][object]$Application
     )
-    $raw = Invoke-AzRest -Method get -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$ServicePrincipalId/appRoleAssignedTo"
+    # Paged: an unpaged read reports "not assigned" for everything past row 100, and Grant-EntraRoleAssignment
+    # would then post a duplicate on every run.
+    $raw = Invoke-AzRestPaged -Url "https://graph.microsoft.com/v1.0/servicePrincipals/$ServicePrincipalId/appRoleAssignedTo"
     $valueById = @{}
     foreach ($role in @(Get-Value $Application 'appRoles')) {
         if ($role) { $valueById[[string](Get-Value $role 'id')] = [string](Get-Value $role 'value') }
     }
-    return @(@(Get-Value $raw 'value') | Where-Object { $_ } | ForEach-Object {
+    return @(@($raw) | Where-Object { $_ } | ForEach-Object {
             $roleId = [string](Get-Value $_ 'appRoleId')
             [pscustomobject]@{
                 Id            = [string](Get-Value $_ 'id')

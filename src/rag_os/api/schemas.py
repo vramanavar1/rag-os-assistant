@@ -114,6 +114,31 @@ class ConfigWrite(BaseModel):
     yaml: str = Field(max_length=2_000_000)
 
 
+class DirectoryWriteRequest(BaseModel):
+    """The desired state for one person's access.
+
+    `roles` omitted (null) means "leave role assignments alone"; an empty list means "revoke every direct
+    assignment". The two are deliberately different, because an attributes-only write must not strip a
+    person's roles just because the field was not sent.
+
+    Values are validated against the access policy's master lists server-side. The bounds here only keep a
+    malformed request cheap to reject.
+    """
+
+    attributes: dict[str, str | None] = Field(
+        default_factory=dict, max_length=20,
+        description="policy attribute name -> value, or null to clear it")
+    roles: list[str] | None = Field(
+        default=None, max_length=50,
+        description="the complete set of DIRECT app-role assignments wanted; null leaves them unchanged")
+    revoke_sessions: bool = Field(
+        default=False,
+        description="also end this person's sign-in sessions, which signs them out of the whole tenant")
+    confirm: str = Field(
+        default="", max_length=256,
+        description="the target's user principal name, required when granting an administrator role")
+
+
 class ExplainRequest(BaseModel):
     attributes: dict[str, list[str] | int | str] = Field(default_factory=dict)
     roles: list[str] = Field(default_factory=list)

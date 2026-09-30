@@ -249,6 +249,15 @@ if ($Config.EntraTenantId) { $appEnv.ENTRA_TENANT_ID = $Config.EntraTenantId }
 if ($Config.EntraAudience) { $appEnv.ENTRA_AUDIENCE = $Config.EntraAudience }
 if ($Config.EntraClientId) { $appEnv.ENTRA_CLIENT_ID = $Config.EntraClientId }
 if ($Config.EntraApiScope) { $appEnv.ENTRA_API_SCOPE = $Config.EntraApiScope }
+# Settings (Security) writes app-role assignments, which hang off the ENTERPRISE APPLICATION's object id - not the
+# client id. Set-EntraAppRegistration.ps1 records it; passed through whenever it is known, so enabling DIRECTORY
+# later needs no second trip through this step. -AllowMissing: a deployment that does not administer people has no
+# reason to have run that script's later half.
+# $o rather than Get-Output, because this one is genuinely optional: a deployment that does not administer
+# people has no reason to have it, and Get-Output throws on a missing value by design.
+if ($o.ContainsKey('entraServicePrincipalObjectId') -and $o.entraServicePrincipalObjectId) {
+    $appEnv.ENTRA_SERVICE_PRINCIPAL_OBJECT_ID = $o.entraServicePrincipalObjectId
+}
 if (-not $Config.EntraTenantId -and -not $Config.DevAuthEnabled) {
     Write-Warn 'No Entra settings and DevAuthEnabled is $false: nobody will be able to sign in. See Deployment.md section 9 - Signing people in with Microsoft Entra ID.'
 }

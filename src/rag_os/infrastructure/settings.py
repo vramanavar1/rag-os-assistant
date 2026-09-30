@@ -11,7 +11,7 @@ import re
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Used to tell an App ID URI whose last segment is an app id (api://<guid>, api://<tid>/<guid>) from one
@@ -108,6 +108,17 @@ class Settings(BaseSettings):
     entra_api_scope: str | None = None  # api://<app-id>/access_as_user - what the browser asks for
     embed_origins: str = "http://localhost:8080"
 
+    # --- directory administration (Settings (Security): assigning attributes and roles to a person)
+    # "none" is the default because this holds tenant-wide Graph write permissions: it is opt-in per
+    # deployment, never something a fresh environment quietly acquires.
+    directory: Literal["none", "graph", "fake"] = "none"
+    # The enterprise application's OBJECT id, which is not the app (client) id. App-role assignments hang off
+    # it. ./infra/scripts/Set-EntraAppRegistration.ps1 records it in infra/env/<env>.outputs.json.
+    entra_service_principal_object_id: str | None = None
+    # The app id that OWNS the directory extensions, without which their property names cannot be composed.
+    # Normally the same as entra_audience, but that may be a non-GUID form, so it can be set explicitly.
+    entra_extension_app_id: str | None = None
+
     # --- ingestion
     ingest_max_concurrency: int = 4
     ingest_embed_batch: int = 32
@@ -136,6 +147,20 @@ class Settings(BaseSettings):
     @classmethod
     def _default_ingest_url(cls, v: str | None) -> str | None:
         return v or None
+
+    @model_validator(mode="after")
+    def _no_fake_directory_outside_tests(self) -> Settings:
+        """DIRECTORY=fake reports every grant as a success and writes nowhere.
+
+        A stub index returns no results, which is obvious. A stub directory says "Priya is now an
+        administrator" when nothing happened, which is worse than an outage because nobody goes looking.
+        """
+        if self.directory == "fake" and self.app_env != "test":
+            raise ValueError(
+                f"DIRECTORY=fake is only permitted when APP_ENV=test (got {self.app_env!r}): it accepts every "
+                f"write and performs none, so access grants would silently do nothing."
+            )
+        return self
 
     @property
     def tei_ingest(self) -> str | None:
@@ -181,6 +206,13 @@ class Settings(BaseSettings):
         if _GUID_RE.fullmatch(bare):
             forms += [bare, f"api://{bare}"]
         return tuple(dict.fromkeys(forms))  # order preserved, duplicates dropped
+
+    @property
+    def extension_app_id(self) -> str | None:
+        """The app id whose directory extensions this deployment reads, as a bare GUID."""
+        if self.entra_extension_app_id:
+            return self.entra_extension_app_id.strip()
+        return next((a for a in self.entra_audiences if _GUID_RE.fullmatch(a)), None)
 
     @property
     def auth_mode(self) -> str:

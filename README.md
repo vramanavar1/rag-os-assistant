@@ -22,7 +22,9 @@ no per-token embedding cost.
     * [What RAG-OS reads from a document](#what-rag-os-reads-from-a-document)
     * [When a document stays unclassified](#when-a-document-stays-unclassified)
 10. [Using the product](#10-using-the-product)
-11. [Security model](#11-security-model)
+11. [User query handling scenarios](#11-user-query-handling-scenarios)
+    * [Conflict handling: two sources that disagree](#conflict-handling-two-sources-that-disagree)
+12. [Security model](#12-security-model)
     * [Where a caller's attributes come from](#where-a-callers-attributes-come-from)
     * [Granting someone a role](#granting-someone-a-role)
     * [Why `config/dev/principals.yaml` exists](#why-configdevprincipalsyaml-exists)
@@ -32,11 +34,12 @@ no per-token embedding cost.
     * [Every key you can configure](#every-key-you-can-configure)
     * [Defining access by role](#defining-access-by-role)
     * [Best practices, and the minimum you need](#best-practices-and-the-minimum-you-need)
-12. [Observability](#12-observability)
-13. [Scaling and operations](#13-scaling-and-operations)
-14. [Testing](#14-testing)
-15. [Troubleshooting / FAQ](#15-troubleshooting--faq)
-16. [Roadmap, contributing, licences](#16-roadmap-contributing-licences)
+13. [Entra user attributes and claims](#13-entra-user-attributes-and-claims)
+14. [Observability](#14-observability)
+15. [Scaling and operations](#15-scaling-and-operations)
+16. [Testing](#16-testing)
+17. [Troubleshooting / FAQ](#17-troubleshooting--faq)
+18. [Roadmap, contributing, licences](#18-roadmap-contributing-licences)
 
 ---
 
@@ -68,7 +71,7 @@ no per-token embedding cost.
 5. A **priority lane** keeps interactive uploads ahead of bulk backfills.
 6. **Operator controls** pause or throttle ingestion from the admin page.
 
-The load test (see [Testing](#14-testing)) measures the effect directly.
+The load test (see [Testing](#16-testing)) measures the effect directly.
 
 **Clean Architecture** (dependencies point inward): `domain` (pure models and rules) ← `application` (ports, services, use
 cases) ← `infrastructure` (adapters chosen by **factory registries**) and `api` / `worker` / `cli` (drivers).
@@ -416,7 +419,94 @@ ingest that died in between left both versions live and retrievable.
 * **CLI:** `rag-os discover --source <id>` (run where a local folder is mounted), `rag-os status`,
   `rag-os explain --attr department=HR --attr region=UK`, `rag-os ask "…" --as hr-emea`, `rag-os bootstrap`, `rag-os purge`.
 
-## 11. Security model
+## 11. User query handling scenarios
+
+What the assistant does when the documents it can see do not agree, and how to try it. Each scenario is a real
+pair of documents in this repository, a real query, and the behaviour to expect.
+
+### Conflict handling: two sources that disagree
+
+An assistant that silently picks one of two contradictory policies is worse than one that finds nothing: the
+answer is confident, cited, and wrong for half its readers. RAG-OS is told to surface the disagreement instead —
+`ANSWER_SYSTEM` in `src/rag_os/application/services/prompts.py`:
+
+> If context blocks conflict, say so and prefer the one with the most recent effective date if shown.
+
+Two sample handbooks disagree on purpose, each its own source so the citations name different systems of record:
+
+| Source | Document | Says | Effective |
+|---|---|---|---|
+| `scenario-global-handbook` | `hr/global/policies/parental-leave-standard.md` | 18 weeks paid parental leave | 2025-01-01 |
+| `scenario-uk-handbook` | `hr/uk/policies/parental-leave-uk.md` | **26 weeks**, superseding the standard for the UK | 2026-04-01 |
+
+Both are manual sources, so nothing ingests them until you ask:
+
+```powershell
+./tasks.ps1 up
+docker compose exec api rag-os discover --source scenario-global-handbook
+docker compose exec api rag-os discover --source scenario-uk-handbook
+```
+
+**The effective date comes from the document.** A `---` fenced front-matter block at the top of a `.md` or
+`.txt` file supplies it, and is stripped before the text is chunked, so it never reaches an embedding or a
+citation snippet:
+
+```text
+---
+effective_date: 2026-04-01
+---
+# United Kingdom Parental Leave Handbook
+```
+
+It must be ISO-8601 (`YYYY-MM-DD`). A date the system cannot order is worse than none, because the model would
+be asked to prefer the most recent of two things it cannot compare — so anything else is ignored.
+
+#### Case 1 — the conflict is surfaced, not resolved silently
+
+Ask as **Priya (`hr-emea`)**, who is in the UK:
+
+```powershell
+uv run rag-os ask "How much paid parental leave do I get?" --as hr-emea
+```
+
+Region matching expands the *caller's* location upward — UK reaches EMEA and Global — so both handbooks are in
+her scope, and the model receives two numbered blocks each headed with its effective date.
+
+**Ideal behaviour.** The answer states that the two documents disagree, cites **both**, and prefers the UK
+handbook as the later of the two — something like *"The UK handbook gives 26 weeks [2], superseding the group
+standard of 18 weeks [1]; the two documents disagree, and the UK handbook is the more recent."* What it must
+not do is answer "18 weeks" or "26 weeks" as though the matter were settled.
+
+#### Case 2 — no conflict exists for someone who cannot see both
+
+Ask the identical question as **Marcus (`sales-us`)**:
+
+```powershell
+uv run rag-os ask "How much paid parental leave do I get?" --as sales-us
+```
+
+**Ideal behaviour.** Neither handbook is retrieved — they are HR documents and Marcus is in Sales — so the
+answer is that nothing in the documents available to him covers it. This is the same mechanism seen from the
+other side: **a conflict is surfaced from what the caller can see, never from the corpus as a whole.** It also
+means the fix for an inconvenient conflict is never to widen someone's access.
+
+### What this does and does not do
+
+* The offline demo LLM (`LLM_ANSWER=fake`, the default for `./tasks.ps1 up`) is **extractive**: it returns the
+  first sentence of the top-ranked passage and ignores the system prompt entirely. Set `LLM_ANSWER=claude` or
+  `aoai` in `.env` to see the behaviour above. The automated tests
+  (`tests/integration/test_conflict_scenario.py`) therefore assert everything up to the model — that both
+  documents are retrievable by Priya and by neither of the others, that they survive de-duplication as two
+  distinct blocks, and that both effective dates reach the prompt.
+* **A conflict is prose, not data.** It exists only inside the answer text; there is no field on `Answer` or
+  `Citation` marking it, so nothing downstream can filter, count or alert on conflicting sources.
+* **Only byte-identical passages are recognised as duplicates.** A document that paraphrases another rather
+  than copying it still reads to the model as a second, independent source that happens to agree — which is
+  the failure mode this feature does not cover.
+* **A conflict between two versions of the same document cannot arise**: superseded versions are removed from
+  the index at ingestion. This is about two different documents that both claim to be current.
+
+## 12. Security model
 
 * **Authentication.** A JWT validator with a trusted-issuer table:
   * Microsoft Entra ID: RS256 via JWKS — the only production issuer.
@@ -498,10 +588,10 @@ claim feeds which attribute is configuration, not code — one entry per attribu
   field: acl_department
   match: any_of
   required: true
-  claims: { entra: extension_Department, dev: departments }
+  claims: { entra: extn.department, dev: departments }
 ```
 
-Read that as: the attribute **named** `department` is fed by the `extension_Department` **claim** in an Entra
+Read that as: the attribute **named** `department` is fed by the `extn.department` **claim** in an Entra
 token, and is compared against the `acl_department` **index field** carried on each document. Those are three
 different namespaces — see [How the access policy works](#how-the-access-policy-works). Adding `cost_center` is an
 edit here plus a tag on your documents; there is no code to change.
@@ -628,7 +718,7 @@ usual ways to carry it.
 
 | Approach | What the token contains | What you configure |
 |---|---|---|
-| **Directory extension or optional claim** (what the shipped policy assumes) | `"extension_Department": ["HR"]` — the value itself | Nothing: `claims.entra` already points at it. Best when HR data already flows into the directory. |
+| **Directory extension or optional claim** (what the shipped policy assumes) | `"extn.department": ["HR"]` — the value itself | Nothing: `claims.entra` already points at it. Best when HR data already flows into the directory. |
 | **One security group per value** | `"groups": ["7c9f1b3e-…-0b2d6e21a001"]` — the group's *object id*, never its name | Point `claims.entra` at `groups` and add a `value_map`. Best when groups already model the organisation and joiners/leavers are handled there. |
 
 The second case is why attribute rules accept a `value_map`: without one you would have to tag every document with
@@ -679,7 +769,7 @@ access. Three consequences follow:
 * A caller sees every level **up to and including** their own: clearance 1 sees 0 and 1, never 2.
 * A document with **no** `acl_clearance` is denied rather than treated as public. That is the default-deny rule
   showing up here.
-* A caller whose token carries **no** clearance claim (`extension_Clearance`) is treated as level 0, because the
+* A caller whose token carries **no** clearance claim (`extn.clearance`) is treated as level 0, because the
   attribute is `required: false` — so they see public documents rather than nothing at all.
 
 The claim must arrive as an **integer**. If your identity provider can only send a label, map it in the same policy
@@ -689,7 +779,7 @@ file:
 - name: clearance
   field: acl_clearance
   match: max_level
-  claims: { entra: extension_Clearance, dev: clearance }
+  claims: { entra: extn.clearance, dev: clearance }
   value_map: { Public: "0", Internal: "1", Confidential: "2", Restricted: "3" }
 ```
 
@@ -703,7 +793,7 @@ of understanding the file:
 
 | Layer | Example | Defined in | Describes |
 |---|---|---|---|
-| **Claim** (`claims:`) | `extension_Department`, `groups`, `oid` | **Microsoft Entra** — a directory extension, optional claim or app role | What the identity provider asserts about **the person**. |
+| **Claim** (`claims:`) | `extn.department`, `groups`, `oid` | **Microsoft Entra** — a directory extension, optional claim or app role | What the identity provider asserts about **the person**. |
 | **Attribute** (`name:`) | `department` | This policy file | The internal handle. What the two sides are matched *on*, and the key you tag documents with (`acl.department` in a manifest). |
 | **Index field** (`field:`) | `acl_department` | This policy file, created in Azure AI Search | A column on **every indexed chunk**, listing who may read **that document**. |
 
@@ -714,8 +804,8 @@ of understanding the file:
 So authorization is not "validate the user's claims against a policy file". It is a comparison of two sides:
 
 ```text
-Entra sends   extension_Department: ["HR"]      the person
-      ↓       claims: { entra: extension_Department }
+Entra sends   extn.department: ["HR"]      the person
+      ↓       claims: { entra: extn.department }
 attribute     department = [HR]                  ← the caller's side
       ↕       matched against
 index field   acl_department = ["HR", "*"]       ← the document's side, from tagging
@@ -787,7 +877,7 @@ filter for any set of attributes.
 | `wildcard` | `"*"` | The document value meaning "everyone". Set `null` to disable — but read the `required` rule first. |
 | `required` | `false` | Whether a caller lacking this attribute loses the whole `all_of` branch. |
 | `value_pattern` | `^[A-Za-z0-9][A-Za-z0-9 _.@/-]{0,127}$` | Allow-list for caller values. A value failing it is a **401**, never a sanitised filter — this is what makes filter injection impossible. It also excludes `*`, so a caller can never claim the wildcard. |
-| `claims` | `{}` | Issuer kind → claim name, e.g. `{ entra: extension_Department }`. No entry for an issuer means callers from it never get this attribute. |
+| `claims` | `{}` | Issuer kind → claim name, e.g. `{ entra: extn.department }`. No entry for an issuer means callers from it never get this attribute. |
 | `value_map` | `{}` | Raw claim value → attribute value, case-insensitive. Turns an Entra group object id into `HR`. |
 | `drop_unmapped` | `false` | Discard claim values absent from `value_map`. Needs a non-empty map, or the policy fails to load. |
 | `hierarchy_facet` | `null` | With `match: hierarchical`, the facet whose tree defines ancestors. Without it, values are treated as `/`-separated paths. |
@@ -914,7 +1004,280 @@ department then gets:
 *Figure 8 — How a person's attributes become a search filter. Claims are mapped to attributes, each attribute's
 match rule contributes one clause, and the combined filter is what Azure AI Search enforces.*
 
-## 12. Observability
+## 13. Entra user attributes and claims
+
+Which attribute of the Entra user object feeds each policy attribute, how to create one that does not exist
+yet, and how to put a value on a person. This is the step that decides whether anyone can read anything: a
+caller whose token carries no `department` and no `region` passes authentication and then matches no document,
+because both are `required: true`.
+
+### The short answer
+
+**The fields you see on a user's profile are not what RAG-OS reads.** *Job Information → Department* is the
+built-in `department` property, and Entra **cannot put it in an access token without a claims-mapping policy** —
+it is not in the optional-claims list, so the *Token configuration → Add optional claim* blade never offers it.
+The same is true of *Office Location*.
+
+| Policy attribute | The profile field you would expect | What RAG-OS actually reads | Why not the profile field |
+|---|---|---|---|
+| `department` | Job Information → **Department** (`department`) | directory extension `department`, claim **`extn.department`** | the built-in property needs a claims-mapping policy plus `acceptMappedClaims` or a custom signing key |
+| `region` | Contact Information → **Country or region** (`country`), or Office Location | directory extension `region`, claim **`extn.region`** | there is an optional claim `ctry`, but it emits only when the value is a two-letter code, and the docs do not say which property feeds it |
+| `clearance` | — nothing built in | directory extension `clearance`, claim **`extn.clearance`** | entirely custom; must arrive as an integer |
+| `employee_id` | Object ID | **`oid`** | emitted by default, nothing to configure |
+
+A **directory extension** is used for the first three because it is the only route for custom data that needs no
+claims-mapping policy, no `acceptMappedClaims` and no custom signing key.
+
+### What the provisioning script does for you
+
+`./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev` creates the three directory extensions on the API's own
+app registration and registers them as access-token optional claims. It is idempotent, and it prints the claim
+names it registered. Pass `-SkipUserAttributes` when directory schema is governed separately or you lack the
+directory role — the rest of the registration still reconciles.
+
+Creating the attribute is only half of it. **A value still has to be put on each person**, and that is not
+automated, because it is a statement about a human being.
+
+### Setting a value on a person
+
+There is **no portal UI** for this — not for creating a directory extension, and not for setting one on a user.
+Graph only:
+
+```bash
+# the registered name is extension_<your app id without hyphens>_<name>
+az rest --method patch --url https://graph.microsoft.com/v1.0/users/priya@contoso.com \
+  --body '{"extension_<appid>_department": "HR", "extension_<appid>_region": "UK", "extension_<appid>_clearance": "1"}'
+```
+
+`clearance` must be **a quoted string holding an integer** — `"1"`, not `1`. The extension is declared
+`dataType: String`, and Graph rejects a JSON literal whose type does not match the declaration with a bare 400.
+The rungs are `0` Public, `1` Internal, `2` Confidential, `3` Restricted, as configured under `levels:` in
+`access-policy.yaml`.
+
+Three things about that call that look like failures and are not:
+
+* **A successful PATCH is `204 No Content` with an empty body.** `az rest` prints nothing at all. Silence is
+  success.
+* **Reading the value back needs `$select`.** A plain `GET /users/{id}` returns eleven default properties, and
+  your extension is **absent, not null** — which reads exactly like "the write did not work". Name each one:
+
+  ```bash
+  az rest --method get --url "https://graph.microsoft.com/v1.0/users/priya@contoso.com?\$select=id,extension_<appid>_department,extension_<appid>_region,extension_<appid>_clearance"
+  ```
+
+  Graph Explorer's **beta** endpoint returns extensions without `$select`, so testing there and then scripting
+  against `v1.0` gives two different answers and both are correct.
+* **The token has to be for this API.** An access token is always built from the *resource's* manifest, so a token
+  requested for Microsoft Graph carries no `extn.*` claims however well the attributes are set. Request
+  `api://<client-id>/access_as_user` — which is what the chat UI does, so Account Information is the honest test.
+
+### Checking that it worked
+
+In this order — each step rules out everything before it:
+
+1. **Decode the token.** Sign in, take the access token and paste it into <https://jwt.ms>. Confirm which claim
+   name actually arrived. Microsoft's own documentation gives **two** spellings for a directory-extension claim,
+   `extn.department` and `extension_<appid>_department`; RAG-OS accepts either, but seeing which one your tenant
+   emits settles it.
+2. **`GET /api/me`** — shows the attributes as the policy mapped them.
+3. **Account Information** in the chat UI, which names the claim each value arrived in. If Department is empty
+   there, the claim did not arrive; if it is populated, the chain works end to end.
+
+### Assigning values from the admin console
+
+**Settings (Security)** in the admin console does everything above through a form: look a person up by email,
+pick their department, region and clearance from the master lists, tick the application roles they should hold,
+and save. It writes directly to Microsoft Entra ID through Microsoft Graph.
+
+It is **off by default** and has to be switched on deliberately, because it needs Graph permissions that can
+rewrite any user in the tenant:
+
+```powershell
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev      # records the enterprise application's object id
+./infra/scripts/Set-EntraGraphPermissions.ps1 -Env dev -DryRun
+./infra/scripts/Set-EntraGraphPermissions.ps1 -Env dev
+```
+
+Then set `ExtraAppSettings = @{ DIRECTORY = 'graph' }` and `DevAuthEnabled = $false` in `infra/env/<env>.psd1`,
+and re-run `07-container-apps.ps1`. What an administrator may assign comes from `allowed_values` (department and
+region) and `levels:` (clearance) in `access-policy.yaml` — the API validates against those and never against
+what the browser sent.
+
+#### Graph permissions this application needs
+
+Three different principals are involved, and conflating them is the usual reason this fails. The identity that
+**calls** Graph is the managed identity, not the app registration.
+
+| Principal | Permission | Type | Why | Who can grant it |
+|---|---|---|---|---|
+| Managed identity `id-<prefix>-<env>` | `User.ReadWrite.All` | Graph **application** | Find a person by address, read their directory extensions, write the three attributes, end their sign-in sessions | Privileged Role Administrator or Global Administrator |
+| " | `AppRoleAssignment.ReadWrite.All` | Graph **application** | Read, create and delete this application's own app-role assignments | Privileged Role Administrator or Global Administrator |
+| " | `GroupMember.Read.All` | Graph **application** | Read group membership, so a role held *through a group* shows as non-removable instead of silently missing | Privileged Role Administrator or Global Administrator |
+| Operator running `Set-EntraAppRegistration.ps1` | `Application.ReadWrite.All` | delegated, or the Application Administrator / Cloud Application Administrator / Directory Writers role | Create the three directory extensions and add them to `optionalClaims` | any of those roles |
+| Operator setting a value by hand | a role covering `microsoft.directory/users/extensionProperties/update` | directory role | The `az rest` fallback above | Global Administrator (confirmed). **User Administrator is unverified — test it before delegating** |
+
+Two things stated plainly rather than smoothed over:
+
+* **`User.ReadUpdate.All`** is Microsoft's newer least-privileged permission for `PATCH /users/{id}` and would be
+  preferable. We have not confirmed it also covers the `$filter` lookup or `revokeSignInSessions`, so
+  `User.ReadWrite.All` is the supported configuration, and `User.ReadUpdate.All` plus `User.RevokeSessions.All`
+  is a narrowing to test in your own tenant before relying on it.
+* **Application Administrator is not sufficient to consent to any of these** — and the reason is broader than
+  it looks. It is not that one of them is unusually dangerous; it is that **all three are Microsoft Graph *app
+  roles*** (application permissions), and that entire category is carved out of the Application Administrator,
+  Cloud Application Administrator and AI Administrator roles. Their consent permission is literally
+  `microsoft.directory/servicePrincipals/managePermissionGrantsForAll.microsoft-application-admin`, documented as
+  *"Grant consent for application permissions and delegated permissions on behalf of any user or all users,
+  **except for application permissions for Microsoft Graph and Azure AD Graph**"*. So `-SkipRoleAssignment` does
+  **not** lower the role you need — it only reduces what you are granting.
+* **`Privileged Role Administrator` is the least-privileged role that works**, documented as consenting "for apps
+  requesting any permission, for any API". Global Administrator also works, being a superset. A **custom
+  directory role** carrying the consent permission is the third documented option.
+* **Azure RBAC is the wrong kind of role.** Subscription Owner, Contributor and User Access Administrator grant
+  nothing here — these are Entra **directory** roles, a separate system.
+* **If the role is assigned through PIM, activate it first.** An *eligible* but unactivated role produces exactly
+  the same `403 Authorization_RequestDenied` as having no role at all. Check what is active with:
+
+  ```bash
+  az rest --method get --url "https://graph.microsoft.com/v1.0/me/transitiveMemberOf/microsoft.graph.directoryRole?\$select=displayName"
+  ```
+
+* **Assigning this application's own roles needs far less.** `Set-EntraAppRoleAssignment.ps1` grants `rag.admin`
+  to a person with the *same* Graph call — `POST /servicePrincipals/{id}/appRoleAssignedTo` — and Application
+  Administrator is enough for it, because the resource is *our* service principal rather than Microsoft Graph's.
+  One call, two privilege levels, decided entirely by which service principal is the resource. That is the
+  distinction to keep hold of when someone asks why one script needs more than the other.
+
+#### Seeing what is actually granted
+
+**The blade you would look in first is the wrong one, and it is empty rather than wrong-looking.** Two directory
+objects are involved:
+
+| Object | Recorded in `infra/env/<env>.outputs.json` as | What it holds |
+|---|---|---|
+| The app registration people sign in through | `entraServicePrincipalObjectId` | The `rag.*` app roles that **people** are assigned. It calls no API itself, so its *API permissions* blade will never list the three above. |
+| The managed identity `id-<prefix>-<env>` | `identityPrincipalId` | The three Graph permissions. This is the thing that calls Graph, and it has **no app registration at all**. |
+
+So an empty *API permissions* list on the app registration is the expected result, not evidence that the grant
+failed.
+
+**In the portal, to look.** *Entra ID → Enterprise applications* → change **Application type** from its default of
+*Enterprise Applications*, which excludes managed identities, to **Managed Identities** → open
+`id-<prefix>-<env>` → **Permissions**.
+
+**The portal cannot grant these.** There is no UI anywhere in it for assigning a Graph *application* permission to
+a managed identity — that Permissions blade is read-only for this purpose. It is why
+`Set-EntraGraphPermissions.ps1` exists, and why a `403` from that script cannot be worked around by clicking; it
+needs somebody holding `Privileged Role Administrator`, per the table above.
+
+**On the command line, authoritatively.**
+
+```powershell
+./infra/scripts/Set-EntraGraphPermissions.ps1 -Env dev -List
+```
+
+It reads from the identity's own side of the assignment, which is the direction that does not have to page through
+every Graph consent in the tenant. Without the repo to hand, the same read is:
+
+```bash
+az rest --method get   --url "https://graph.microsoft.com/v1.0/servicePrincipals/<identityPrincipalId>/appRoleAssignments"
+```
+
+Both list one row per permission. An `appRoleId` shown without a name means the row is an assignment on some other
+API, not on Microsoft Graph.
+
+#### Caveats and limits
+
+**Blast radius**
+
+* `AppRoleAssignment.ReadWrite.All` is **tenant-wide and cannot be scoped**. It permits granting any app role on
+  any service principal in the tenant, Microsoft Graph's own included — so an identity holding it can grant
+  itself Global Administrator. It lands on the same managed identity that already holds this deployment's Search,
+  Blob and PostgreSQL data-plane roles, which makes a compromise of the API a compromise of the tenant. What
+  keeps it narrow is **our code, not Entra**: the adapter sends only its own service principal as the
+  `resourceId`, and only ever uses `appRoleId` values read back from its own registration. If you would rather
+  not grant it, `Set-EntraGraphPermissions.ps1 -SkipRoleAssignment` leaves it out — the attribute half of the
+  page still works, and role assignment stays a terminal job for `Set-EntraAppRoleAssignment.ps1`.
+* **`DEV_AUTH_ENABLED` must be false.** Dev tokens are self-asserted and the access policy trusts them for roles,
+  so with these permissions in hand anyone who can reach the API could grant themselves anything. The API refuses
+  to construct the directory adapter while dev auth is on, rather than warning about it.
+* **An administrator cannot edit their own access** through the page — not their attributes and not their roles.
+  Two administrators can still raise each other, which is why granting an administrator role requires typing the
+  person's user principal name and is logged at WARNING.
+* **`rag.admin` bypasses the document access filter entirely.** Granting it is not "a bit more access", it is all
+  of it.
+* Documents shared with one person through `employee_id` (`grant_any_of` in the policy) are outside every
+  attribute this page controls, so it does not show everything somebody can read.
+* **The audit record contains personal data** — email addresses, clearance levels, before-and-after values — and
+  goes wherever the application's logs go, which in the reference deployment is Application Insights under its
+  retention policy.
+
+**Propagation and timing**
+
+* **Restart the API after granting the Graph permissions.** The managed identity caches its Graph token until it
+  expires, so a container started beforehand keeps presenting a token without them and every write fails with 403
+  for up to an hour. `./infra/scripts/07-container-apps.ps1 -Env <env> -Only rag-api` does it.
+* **A person's own token keeps the old values for 60–90 minutes** (up to 2 hours, or 20–28 hours where Continuous
+  Access Evaluation is on — which makes this worse rather than better, because an attribute change is not one of
+  CAE's revocation triggers). The refresh is silent, so nobody has to sign in again; they have to wait.
+* **Revoking sign-in sessions invalidates *refresh* tokens.** It ends the wait for the next token, but the access
+  token already in that person's browser stays valid until it expires — and it signs them out of Teams, Outlook
+  and everything else in the tenant. It is an opt-in checkbox on the page, off by default.
+* **Graph is eventually consistent.** A read immediately after a write can still return the previous value.
+
+**Graph behaviours that look like bugs**
+
+* Extension names are **case-sensitive when the token service reads them**, though not when a value is set.
+  `Clearance` on one person and `clearance` on another means only one of them gets a claim, with no error either
+  way. The provisioning script pins the casing so this cannot happen by hand.
+* **Graph does not deduplicate app-role assignments.** The same grant posted twice is two rows, and removing one
+  of them leaves the person holding the role. The page writes desired state with a `PUT` and collapses any
+  duplicates it finds.
+* `appRoleAssignedTo` **pages at 100 rows.** Reading only the first page of a busy tenant reports "holds no
+  roles", after which a grant creates a duplicate.
+* **100 extension values per directory object**, across every application. If a definition is deleted before its
+  values are set to `null`, the data becomes permanently undiscoverable *and still counts* toward that 100 — so
+  the decommission order is always null-the-values, then delete the definition.
+* **MSA (personal Microsoft account) users receive no custom extension claims**, so they cannot be given these
+  attributes at all.
+* If a **Claims Mapping Policy** exists on the service principal, it overrides the claims configuration shown in
+  the portal for that application.
+
+**Identity resolution**
+
+* A B2B guest's user principal name contains `#EXT#`, and `#` begins a URL fragment — so a UPN must never be put
+  in a request path, or the call silently addresses a different user, or none. A UPN beginning `$` fails path
+  addressing outright. The adapter resolves an address to an object id once and uses only the id afterwards.
+* `mail` is not `userPrincipalName` (a very common tenant has `mail: first.last@contoso.com` and
+  `userPrincipalName: 12345@contoso.onmicrosoft.com`), and **`mail` is not unique** — two matches is a 409 naming
+  both, never a first row to pick.
+* A **group** address returns 404. Granting a whole department through a group is set up in Entra, not here.
+* A role held **through a group** is shown with the group's name and cannot be removed from this page.
+* A cloud-created directory extension is **single-valued**, so somebody in two departments needs the `groups`
+  route described below.
+
+### Three things that cost people an afternoon
+
+* **Custom security attributes are not this.** Entra has a feature by that name, its own documented example is
+  "add Hourly Salary, visible only to administrators", and it looks exactly right for a clearance level. It
+  **cannot appear in a token at all** — Microsoft lists JWT and SAML claims as explicitly unsupported. It is for
+  Azure RBAC conditions and inventory.
+* **Extension names are case-sensitive when read.** Register `Clearance` on one user and `clearance` on another
+  and only one of them gets a claim.
+* **A cloud-created directory extension is single-valued.** Somebody who belongs to two departments cannot be
+  expressed this way. Use the security-group route instead: point `claims.entra` at `groups` and map each
+  group's object id with `value_map` — [Giving HR or Sales access to hundreds of
+  people](#giving-hr-or-sales-access-to-hundreds-of-people) covers it, including the 200-group overage limit.
+
+### If you would rather use the built-in Department property
+
+It is supported, and it is more work. Create a **claims-mapping policy** on the API's service principal with
+`{"Source":"user","ID":"department","JwtClaimType":"department"}`, set `acceptMappedClaims: true` on the app
+registration (single-tenant) or configure a custom signing key (multitenant), and change `claims.entra` to
+`department` in `access-policy.yaml`. Microsoft warns against `acceptMappedClaims` for multitenant apps, and the
+app id URI must match the application GUID or a verified domain.
+
+## 14. Observability
 
 * Every response carries `X-Correlation-ID`, which is created by nginx or the client. It travels on queue messages,
   so one ID traces a document from upload to indexing.
@@ -925,7 +1288,7 @@ match rule contributes one clause, and the combined filter is what Azure AI Sear
   split by purpose).
 * KQL for traces, token dashboards, failures and alerts: [`docs/kql.md`](docs/kql.md).
 
-## 13. Scaling and operations
+## 15. Scaling and operations
 
 * **Capacity model:**
   * chunks ≈ documents × average chunks per document
@@ -961,7 +1324,7 @@ match rule contributes one clause, and the combined filter is what Azure AI Sear
   * `POST /api/admin/ingestion/retry` requeues documents.
   * The scheduler's reconciliation requeues documents stuck in flight.
 
-## 14. Testing
+## 16. Testing
 
 | Command | Covers |
 |---|---|
@@ -970,7 +1333,7 @@ match rule contributes one clause, and the combined filter is what Azure AI Sear
 | `./tasks.ps1 smoke -BaseUrl <url>` | Deployed checks through the public URL: <ul><li>health and readiness (profile guard)</li><li>security headers</li><li>principal A vs B access</li><li>facet trimming</li><li>token usage</li><li>upload → INDEXED</li><li>admin report and role checks</li><li>internal API not public</li></ul> |
 | `./tasks.ps1 synthetic -Docs 10000`, then `./tasks.ps1 loadtest -BaseUrl <url>` | Retrieval p50/p95 at a fixed request rate, **before and during** a bulk backfill. PASS if p95(during) ≤ 1.25 × p95(baseline). Also reports ingestion throughput for the capacity model. |
 
-## 15. Troubleshooting / FAQ
+## 17. Troubleshooting / FAQ
 
 **Start here when the knowledge base will not answer.** From the container app's *Monitoring → Console*
 (`rag-api`, container `api`):
@@ -998,7 +1361,7 @@ including how to read each field: [Deployment.md](Deployment.md#rag-os-doctor---
 | `uv` TLS errors | Set `UV_NATIVE_TLS=1` (tasks.ps1 does). |
 | Local folder source cannot sync from the admin page | Local folders must be discovered where they are mounted: `rag-os discover --source <id>`. |
 
-## 16. Roadmap, contributing, licences
+## 18. Roadmap, contributing, licences
 
 **Roadmap:**
 * **Connectors:** SharePoint via the Azure AI Search indexed SharePoint knowledge source (with ACL sync), then Google Drive and SFTP.

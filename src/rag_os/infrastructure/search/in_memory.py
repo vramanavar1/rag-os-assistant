@@ -37,6 +37,7 @@ def _hit(doc: dict[str, Any], score: float) -> SearchHit:
         path=doc.get("path") or "",
         page=doc.get("page"),
         source_id=doc.get("source_id") or "",
+        effective_date=doc.get("effective_date"),
         score=score,
         reranker_score=None,
         facets={},

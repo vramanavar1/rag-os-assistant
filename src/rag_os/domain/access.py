@@ -37,6 +37,26 @@ class AttributeLevel(BaseModel):
     description: str = ""
 
 
+class AllowedValue(BaseModel):
+    """One value an administrator may assign for an attribute, e.g. department HR.
+
+    The master list for the attributes Settings (Security) writes onto a person. It lives here, in the
+    admin-only policy file, rather than pointing at a facet vocabulary: facets.yaml is editable by a
+    taxonomy_editor (see EDITABLE in api/routers/admin_config.py), so a pointer would put the set of grantable
+    security values - and, through facet synonyms, what an existing value canonicalises to - inside a weaker
+    permission than the one needed to grant it.
+
+    Not used for a max_level attribute: `levels` is already that attribute's master list, and it carries the
+    number each rung means.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    label: str = ""  # falls back to the value itself
+    description: str = ""  # what assigning it means, shown beside the picker
+
+
 class AppRole(BaseModel):
     """An application role as defined on the Entra app registration, which is where permission is granted.
 
@@ -70,6 +90,9 @@ class AttributeRule(BaseModel):
     hierarchy_facet: str | None = None  # facet whose tree defines ancestors (else "/"-separated paths)
     description: str = ""
     levels: list[AttributeLevel] = Field(default_factory=list)  # max_level only: what each rung means
+    # The values an administrator may assign for this attribute. Empty means this attribute is not assignable
+    # from Settings (Security) - not that anything goes.
+    allowed_values: list[AllowedValue] = Field(default_factory=list)
 
     _value_lookup: dict[str, str] = PrivateAttr(default_factory=dict)  # lower-cased keys of value_map
 
@@ -116,6 +139,49 @@ class AttributeRule(BaseModel):
                 )
             lookup[key] = mapped
         self._value_lookup = lookup
+        return self
+
+    @model_validator(mode="after")
+    def _check_allowed_values(self) -> AttributeRule:
+        """The master list is what an administrator may write onto a person, so every entry must be a value
+        that actually works. Runs after _check_value_map because the round trip below needs the lookup.
+        """
+        if not self.allowed_values:
+            return self
+        pattern = re.compile(self.value_pattern)
+        seen: dict[str, str] = {}
+        for entry in self.allowed_values:
+            v = entry.value
+            key = v.casefold()
+            if key in seen:
+                raise ValueError(
+                    f"attribute {self.name!r}: duplicate allowed_values entry {v!r} (already have {seen[key]!r}); "
+                    f"document tags are matched case-sensitively, so at most one of them grants anything"
+                )
+            seen[key] = v
+            if self.wildcard is not None and v == self.wildcard:
+                raise ValueError(
+                    f"attribute {self.name!r}: the wildcard {v!r} cannot be an allowed_values entry - assigning it "
+                    f"to a person would match every document, which is the admin role's job and not a picker option"
+                )
+            # Duplicated from _DELIM in application/services/access_policy.py, which the domain must not import.
+            # A value containing it does not narrow access; it makes every query that caller runs fail.
+            if "|" in v:
+                raise ValueError(
+                    f"attribute {self.name!r}: allowed_values entry {v!r} contains the filter delimiter '|'"
+                )
+            if not pattern.fullmatch(v):
+                raise ValueError(
+                    f"attribute {self.name!r}: allowed_values entry {v!r} does not match value_pattern"
+                )
+            # The round trip. Under a value_map + drop_unmapped configuration (the documented way to drive
+            # `department` from Entra groups) a name like "HR" is discarded on the way IN, so writing it to the
+            # directory would succeed, report success, and never reach a token. Nothing downstream can see that.
+            if self.map_value(v) != v:
+                raise ValueError(
+                    f"attribute {self.name!r}: allowed_values entry {v!r} does not survive value_map - this claim "
+                    f"is mapped on the way in, so assigning {v!r} directly would never reach a token"
+                )
         return self
 
     def map_value(self, raw: str) -> str | None:
@@ -181,6 +247,13 @@ class AccessPolicy(BaseModel):
             values = [lvl.value for lvl in a.levels]
             if len(values) != len(set(values)):
                 raise ValueError(f"attribute '{a.name}' has duplicate level values")
+            # The mirror image: a ladder IS the master list for max_level, and it carries each rung's number.
+            # Two lists on one attribute would drift, and whichever the UI read would decide who reads what.
+            if a.allowed_values and a.match == MatchKind.MAX_LEVEL:
+                raise ValueError(
+                    f"attribute '{a.name}' has allowed_values but match is max_level; use levels, which is "
+                    f"already its master list"
+                )
         # The catalogue and the mapping describe the same app registration, so they must not drift: a role
         # granted by a value nobody defined would be invisible on the account page and impossible to assign.
         if self.app_roles:
@@ -222,3 +295,20 @@ class Principal(BaseModel):
     @property
     def is_admin(self) -> bool:
         return "admin" in self.roles
+
+    @property
+    def directory_object_id(self) -> str | None:
+        """This caller's Entra object id, or None when the token cannot identify a directory object.
+
+        NOT `subject`. ClaimsMapper prefers the `sub` claim, and for Entra `sub` is a pairwise identifier
+        scoped to one application - it exists nowhere in the directory. So any check that compares this caller
+        against a Graph object ("you may not edit your own clearance") must use this and must refuse when it is
+        None: comparing `subject` would never match, and the check would pass for everyone.
+
+        None for the dev issuer by construction. A dev token asserts whatever a developer typed, roles
+        included, so it must not be able to reach the directory at all.
+        """
+        if self.issuer_kind != "entra":
+            return None
+        oid = self.raw_claims.get("oid")
+        return str(oid) if oid else None

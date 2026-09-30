@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from rag_os import __doc__ as pkg_doc
 from rag_os.api.errors import install_error_handlers
 from rag_os.api.middleware import CorrelationMiddleware
-from rag_os.api.routers import admin_config, admin_ingestion, chat, dev, health, uploads
+from rag_os.api.routers import admin_config, admin_directory, admin_ingestion, chat, dev, health, uploads
 from rag_os.composition import Container
 from rag_os.infrastructure.settings import Settings, get_settings
 from rag_os.infrastructure.telemetry import setup_telemetry
@@ -82,7 +82,8 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     )
     app.add_middleware(CorrelationMiddleware)
     install_error_handlers(app)
-    for r in (health.router, chat.router, uploads.router, admin_ingestion.router, admin_config.router):
+    for r in (health.router, chat.router, uploads.router, admin_ingestion.router, admin_config.router,
+              admin_directory.router):
         app.include_router(r)
     if settings.dev_auth_enabled:
         app.include_router(dev.router)

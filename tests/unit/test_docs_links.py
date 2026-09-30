@@ -232,3 +232,64 @@ def test_step_07s_expected_output_does_not_claim_the_embedder_pools_always_exist
     assert "rag-embed-query" in expectation, "the self-hosted case still has to be stated"
     assert "not\ndeployed" in expectation or "not deployed" in expectation, (
         "it must say the pools are deliberately absent on a remote profile")
+
+
+# ---------------------------------------------------------------- README.html
+# Everything above reads Markdown. README.html is the same document in another format, with its own hand-built
+# table of contents and its own anchors, and nothing checked it - so renumbering a section silently broke every
+# link into the ones after it. That is exactly what inserting "User query handling scenarios" as section 11
+# required, across six sections and both files.
+
+HTML = REPO / "README.html"
+
+
+def test_every_link_inside_readme_html_resolves() -> None:
+    text = HTML.read_text(encoding="utf-8")
+    ids = set(re.findall(r'\sid="([^"]+)"', text))
+    refs = set(re.findall(r'href="#([^"]+)"', text))
+    assert refs, "no internal links found - this test would pass vacuously"
+    dangling = sorted(refs - ids)
+    assert not dangling, (
+        "these anchors point at nothing in README.html:\n  " + "\n  ".join(dangling) +
+        "\nUsually a section was renumbered and its incoming links were not.")
+
+
+def test_readme_html_section_numbers_match_their_anchors() -> None:
+    """The badge and the id are written by hand on the same line, and a renumbering that updates one and not
+    the other reads correctly while linking wrongly."""
+    text = HTML.read_text(encoding="utf-8")
+    wrong = [f"id={anchor} shows {shown}"
+             for anchor, shown in re.findall(r'<h2 id="(\d+)-[^"]*"><span class="n">(\d+)</span>', text)
+             if anchor != shown]
+    assert not wrong, "section number and anchor disagree: " + "; ".join(wrong)
+
+
+def test_both_readmes_have_the_same_sections_in_the_same_order() -> None:
+    """They are hand-maintained copies of one document. Nothing has ever checked that they still agree, which
+    is how a section ends up in one and not the other - and how the numbering drifts apart."""
+    md = (REPO / "README.md").read_text(encoding="utf-8")
+    html = HTML.read_text(encoding="utf-8")
+    md_sections = re.findall(r"^## (\d+)\. ", md, re.M)
+    html_sections = [n for n, _ in re.findall(r'<h2 id="(\d+)-[^"]*"><span class="n">(\d+)</span>', html)]
+    assert md_sections == html_sections, (
+        f"README.md has sections {md_sections} and README.html has {html_sections}. "
+        "They are the same document in two formats and must carry the same sections, numbered alike.")
+    assert md_sections == [str(i) for i in range(1, len(md_sections) + 1)], (
+        f"section numbers must run 1..n with no gaps; got {md_sections}")
+
+
+def test_both_readmes_say_where_to_verify_the_graph_permissions() -> None:
+    """The three Graph permissions sit on the managed identity, and the blade an operator reaches for first is the
+    app registration's - where they are absent by design, which reads exactly like a failed grant. The portal also
+    cannot grant them at all. Both facts have to be written down, in both formats, or the question gets asked
+    again."""
+    md = (REPO / "README.md").read_text(encoding="utf-8")
+    html = HTML.read_text(encoding="utf-8")
+    assert "#### Seeing what is actually granted" in md
+    assert 'id="graph-permissions-verify"' in html, "README.html needs the subsection and its anchor"
+    assert '<a href="#graph-permissions-verify">' in html, "and a nav entry pointing at it"
+    for name, text in (("README.md", md), ("README.html", html)):
+        assert "Managed Identities" in text, (
+            f"{name} must name the Application type filter value; the default hides managed identities, which is "
+            "the step that makes the list look empty")
+        assert "-List" in text, f"{name} must give the command-line check that is authoritative"

@@ -6,7 +6,7 @@ Every adapter is created by a factory (see rag_os.infrastructure.registry), sele
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import IO, Any, NamedTuple, Protocol, runtime_checkable
@@ -522,3 +522,99 @@ class Retriever(ABC):
 
 
 AsyncByteIterator = AsyncIterator[bytes]
+
+
+# --------------------------------------------------------------------------- identity directory
+
+
+@dataclass(frozen=True)
+class DirectoryUser:
+    """A person in the identity provider, as much of them as administering access requires.
+
+    `attributes` is keyed by POLICY attribute name - "department", not
+    "extension_<appid>_department". Translating to whatever the provider calls it is the adapter's job, so
+    nothing above the adapter boundary has to know that a directory extension exists. A key that is absent
+    means no value is set, which the provider reports differently from an empty one.
+    """
+
+    object_id: str
+    user_principal_name: str
+    display_name: str
+    mail: str | None
+    account_enabled: bool  # so an administrator is not granting access to somebody who has left
+    user_type: str  # Member | Guest - a guest's access is worth seeing before granting more of it
+    attributes: dict[str, str]
+
+
+@dataclass(frozen=True)
+class RoleAssignment:
+    """One application role a person holds, and how they hold it.
+
+    `via_group` is the whole reason this is not just a list of strings. An app role can be assigned to a group,
+    and the holder's token carries it exactly as if it were assigned to them directly - so a role that cannot
+    be revoked per-person still has to be SHOWN per-person, or an administrator removes the direct assignment,
+    sees the row disappear, and the person is still an administrator.
+
+    `duplicates` exists because Microsoft Graph does not deduplicate assignments: the same grant posted twice
+    becomes two rows. Revoking has to clear all of them.
+    """
+
+    role_value: str  # as it appears in the token's roles claim, e.g. rag.admin
+    principal_type: str = "User"
+    via_group: str | None = None  # display name of the group it comes from; None = assigned directly
+    duplicates: int = 1
+
+    @property
+    def removable(self) -> bool:
+        return self.via_group is None
+
+
+class DirectoryAdmin(ABC):
+    """Reads and writes the identity-provider records that decide what a person may read.
+
+    An ABC rather than a Protocol on purpose: mypy is configured over domain/ and application/ only, so an
+    adapter that drifts from this interface is not type-checked. An ABC at least turns a missing method into a
+    TypeError when the adapter is constructed instead of an AttributeError mid-request.
+
+    Every method takes an object id, never an email, with the single exception of find_user. Resolving an
+    address to an object id exactly once and using only the id afterwards is a correctness requirement, not
+    tidiness: a B2B guest's user principal name contains "#EXT#", and "#" begins a URL fragment, so a UPN
+    placed in a request path is silently truncated and the write lands on a different user - or none.
+    """
+
+    @abstractmethod
+    async def find_user(self, email: str) -> DirectoryUser:
+        """The one person with this address. Raises NotFound if there is none, Conflict if there are several."""
+
+    @abstractmethod
+    async def set_attributes(self, object_id: str, values: Mapping[str, str | None]) -> None:
+        """Set attributes by POLICY attribute name. None clears one.
+
+        Values are strings even when the attribute is numeric, because every RAG-OS directory extension is
+        declared as a string (see $script:RagOsUserAttributes in infra/scripts/common.ps1) and Graph rejects a
+        JSON literal whose type does not match the declaration. Typing it this way makes clearance=1 - the
+        400 that trap produces - unrepresentable rather than merely documented.
+        """
+
+    @abstractmethod
+    async def list_roles(self, object_id: str) -> list[RoleAssignment]:
+        """Every application role this person holds, direct and group-derived."""
+
+    @abstractmethod
+    async def grant_role(self, object_id: str, role_value: str) -> None: ...
+
+    @abstractmethod
+    async def revoke_role(self, object_id: str, role_value: str) -> int:
+        """Remove every direct assignment of this role. Returns how many there were (0 is not an error)."""
+
+    @abstractmethod
+    async def revoke_sessions(self, object_id: str) -> None:
+        """Invalidate this person's refresh tokens, so their next token carries the new values.
+
+        It does NOT invalidate an access token they are already holding, and it signs them out of every other
+        application in the tenant. Both facts belong in front of whoever asks for it.
+        """
+
+    async def aclose(self) -> None:
+        """Release the HTTP session and credential. Adapters holding neither need not override this."""
+        return None

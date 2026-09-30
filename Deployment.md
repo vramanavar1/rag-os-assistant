@@ -61,10 +61,11 @@ References to **section** N mean a numbered section of this guide.
     * [9.1 One app registration, both sides](#91-one-app-registration-both-sides)
     * [Which `aud` the token carries](#which-aud-the-token-carries)
     * [9.2 Carry the attributes](#92-carry-the-attributes)
-    * [9.3 Admin role](#93-admin-role)
-    * [9.4 Point RAG-OS at the tenant](#94-point-rag-os-at-the-tenant)
-    * [9.5 Check it end to end](#95-check-it-end-to-end)
-    * [9.6 Embedding the assistant in another page](#96-embedding-the-assistant-in-another-page)
+    * [9.3 Assigning attributes and roles from the admin console](#93-assigning-attributes-and-roles-from-the-admin-console-optional)
+    * [9.4 Admin role](#94-admin-role)
+    * [9.5 Point RAG-OS at the tenant](#95-point-rag-os-at-the-tenant)
+    * [9.6 Check it end to end](#96-check-it-end-to-end)
+    * [9.7 Embedding the assistant in another page](#97-embedding-the-assistant-in-another-page)
 10. [Operations](#10-operations)
     * [Ingestion from a local folder (admin machine)](#ingestion-from-a-local-folder-admin-machine)
     * [Status, retries, throttling](#status-retries-throttling)
@@ -137,7 +138,7 @@ rather than half-deploying.
 |---|---|
 | `provision-all.ps1` | The orchestrator above. |
 | `Set-EntraAppRoleAssignment.ps1` | Grant, list and revoke application roles for a person or a group. `-ListRoles` shows which roles exist on the app registration; `-List` shows who holds them; `-Help` explains every parameter. |
-| `Set-EntraAppRegistration.ps1` | The sign-in scope, the application roles, the token version and the SPA redirect URI. Run by `provision-all.ps1` at the two points above; run it by hand to grant somebody a role later ([section 9.3](#93-admin-role)). |
+| `Set-EntraAppRegistration.ps1` | The sign-in scope, the application roles, the token version and the SPA redirect URI. Run by `provision-all.ps1` at the two points above; run it by hand to grant somebody a role later ([section 9.3](#94-admin-role)). |
 | `Write-OutputSheet.ps1` | Regenerates `output.txt`, the wiring sheet ([section 4](#4-key-vault-secrets)). Step 08 runs it for you. |
 | `99-teardown.ps1` | Deletes the resource group and purges what it can. Asks first unless `-Force` ([section 11](#11-update-rollback-teardown)). |
 | `Test-Connectivity.ps1` | Every network hop the deployment depends on, plus copy-paste tests for the container-to-container hops that can only be reached from inside ([step 08](#step-08--08-bootstrapps1)). Step 08 runs it as a pre-flight. |
@@ -1194,6 +1195,9 @@ Neither role has anything to do with embeddings — those come from the self-hos
 | `DEV_MAX_TOKEN_LIFETIME_S` | `3600` | default | A | Dev tokens with a longer lifetime are rejected. |
 | `ENTRA_TENANT_ID` / `ENTRA_AUDIENCE` | – | psd1 if set | A | Entra (RS256) issuer: tenant, and the `aud` the API requires. |
 | `ENTRA_CLIENT_ID` / `ENTRA_API_SCOPE` | – | psd1 if set | A | Published in `/api/public-config` so the chat UI can start MSAL. |
+| `DIRECTORY` | `none` | `ExtraAppSettings` | A | `graph` enables Settings (Security), which writes user attributes and app-role assignments to Entra through Microsoft Graph. Requires `DEV_AUTH_ENABLED=false` and the Graph permissions in 9.3 — the API refuses to start the adapter otherwise. `fake` is test-only and is rejected unless `APP_ENV=test`. |
+| `ENTRA_SERVICE_PRINCIPAL_OBJECT_ID` | – | outputs file | A | The **enterprise application's** object id, which is not the client id. App-role assignments hang off it. Recorded by `Set-EntraAppRegistration.ps1`. Required when `DIRECTORY=graph`. |
+| `ENTRA_EXTENSION_APP_ID` | derived from `ENTRA_AUDIENCE` | psd1 if set | A | The app id that owns the directory extensions; their property names embed it. Only needed when `ENTRA_AUDIENCE` is not a bare app id (e.g. `https://contoso.com/api`), in which case it cannot be derived. |
 | `EMBED_ORIGINS` | `http://localhost:8080` | `EmbedOrigins` | A W J U | Origins allowed to embed the widget (CSP `frame-ancestors`, postMessage check). |
 | **Ingestion** | | | | |
 | `INGEST_MAX_CONCURRENCY` | `4` | `IngestMaxConcurrency` | W J | Documents in flight per replica. x `WorkerMaxReplicas` = global cap. |
@@ -1797,9 +1801,12 @@ The values RAG-OS needs are now:
 
 Choose one of the two approaches:
 
-* *Directory extension or optional claim* — emit `extension_Department`, `extension_Region` and
-  `extension_Clearance` (an integer). Nothing to configure in RAG-OS: the shipped `access-policy.yaml` already
-  points at these claim names.
+* *Directory extension* — **`Set-EntraAppRegistration.ps1` now does this for you**: it creates the three
+  directory extensions (`department`, `region`, `clearance`) on the app registration and registers them as
+  access-token optional claims. What remains is putting a VALUE on each person: either by hand with the Graph
+  call in [Entra user attributes and claims](README.md#13-entra-user-attributes-and-claims) — which also
+  explains why the built-in Department property is not what is read — or from the admin console, by enabling
+  Settings (Security) as described in 9.3 below.
 * *Security groups* — add the `groups` claim to the token, point `claims.entra` at `groups` and map each group's
   **object id** to a value with `value_map`. Apply a **group filter** on the app registration so only the
   `kb-*` groups are emitted: past roughly 150 groups Entra sends `_claim_names` / `_claim_sources` instead of
@@ -1814,11 +1821,87 @@ attributes the same way. A *separate* tenant (Entra External ID / Azure AD B2C) 
 not configurable today: `composition.py` builds one Entra issuer (trusting both of that tenant's issuer
 spellings) from the settings below.
 
-The `clearance` claim (`extension_Clearance`) must arrive as an **integer** (`0` Public … `3` Restricted). If your
+The `clearance` claim (`extn.clearance`) must arrive as an **integer** (`0` Public … `3` Restricted). If your
 directory can only emit a label,
 map it with `value_map` — see [What `clearance: 0, 1, 2` signifies](README.md#what-clearance-0-1-2-signifies).
 
-### 9.3 Admin role
+### 9.3 Assigning attributes and roles from the admin console (optional)
+
+Creating the attributes is scripted; putting a value on each person is not, because it is a statement about a
+human being. **Settings (Security)** in the admin console does that through a form — department, region,
+clearance and the application roles, for a person looked up by email — writing directly to Microsoft Entra ID
+through Microsoft Graph.
+
+It is **off by default**, and switching it on is a decision to take deliberately: it needs Graph permissions that
+can rewrite any user in the tenant. Read [Caveats and limits](README.md#caveats-and-limits) before you run this.
+
+```powershell
+# 1. Record the enterprise application's object id (app-role assignments hang off it, not off the client id).
+./infra/scripts/Set-EntraAppRegistration.ps1 -Env dev
+
+# 2. Grant the managed identity its Graph permissions. Look at the dry run first.
+./infra/scripts/Set-EntraGraphPermissions.ps1 -Env dev -DryRun
+./infra/scripts/Set-EntraGraphPermissions.ps1 -Env dev
+
+# 3. Switch it on, and turn dev auth off. The API refuses to start the adapter while dev auth is enabled.
+#    In infra/env/dev.psd1:
+#      DevAuthEnabled   = $false
+#      ExtraAppSettings = @{ DIRECTORY = 'graph' }
+./infra/scripts/07-container-apps.ps1 -Env dev -Only rag-api
+```
+
+Step 2 is idempotent — re-run it and it reports `already granted` rather than stacking duplicates. It is not part
+of `provision-all.ps1`, because it needs a directory role that a subscription owner does not have and a decision
+that a provisioning run should not make on your behalf. Run it with `-List` to see what the identity holds today,
+`-Remove` to revoke it, and `-SkipRoleAssignment` to leave out `AppRoleAssignment.ReadWrite.All` (the attribute
+half of the page still works; role assignment stays a job for `Set-EntraAppRoleAssignment.ps1`).
+
+**The permissions it grants, all to the managed identity, all Graph *application* permissions:**
+
+| Permission | Why | Who can consent |
+|---|---|---|
+| `User.ReadWrite.All` | Find a person by address, read their directory extensions, write the three attributes, end their sign-in sessions | Privileged Role Administrator or Global Administrator |
+| `AppRoleAssignment.ReadWrite.All` | Read, create and delete this application's own app-role assignments | Privileged Role Administrator or Global Administrator |
+| `GroupMember.Read.All` | Read group membership, so a role held *through a group* shows as non-removable instead of silently missing | Privileged Role Administrator or Global Administrator |
+
+**Application Administrator is not enough** to consent to any of these, and the reason applies to all three
+rather than to one of them: they are all Microsoft Graph **app roles** (application permissions), and Application
+Administrator, Cloud Application Administrator and AI Administrator are all explicitly carved out of that
+category — their consent permission is
+`microsoft.directory/servicePrincipals/managePermissionGrantsForAll.microsoft-application-admin`, "except for
+application permissions for Microsoft Graph and Azure AD Graph". **`-SkipRoleAssignment` therefore does not lower
+the role you need**, only what you grant. `Privileged Role Administrator` is the least-privileged role that works;
+Global Administrator works as a superset; a custom directory role carrying the consent permission is the third
+option. Subscription Owner is Azure RBAC, a different system, and grants nothing here. If the role comes through
+PIM, **activate it** — eligible-but-inactive fails identically to having no role.
+
+Contrast this with 9.4 below, which assigns *this application's* `rag.admin` to a person through the same
+`POST /servicePrincipals/{id}/appRoleAssignedTo` call and needs only Application Administrator. The privilege
+required depends on which service principal is the resource, not on the call.
+
+**To check afterwards that it landed**, run `Set-EntraGraphPermissions.ps1 -Env dev -List`. The portal shows the
+same list read-only under *Entra ID → Enterprise applications* — set the **Application type** filter to *Managed
+Identities*, which the default hides — but it **cannot grant** a Graph application permission to a managed
+identity; no UI for that exists, which is why this script does it. And do not look on the app registration: it
+holds the `rag.*` roles people are assigned, calls no API, and so shows none of these. See
+[Seeing what is actually granted](README.md#seeing-what-is-actually-granted).
+
+`AppRoleAssignment.ReadWrite.All` cannot be scoped to one application: it permits granting any app role on any
+service principal in the tenant, Microsoft Graph's own included. What keeps it narrow is the API's own code, not
+Entra. Weigh that before granting it.
+
+**Three things that will otherwise cost you an afternoon:**
+
+* **Restart the API after step 2.** The managed identity caches its Graph token until it expires, so a container
+  started before the grant keeps presenting a token without these permissions and every write fails with 403 for
+  up to an hour. That is what the `-Only rag-api` in step 3 is for; if you change nothing else, run it anyway.
+* **`ENTRA_SERVICE_PRINCIPAL_OBJECT_ID` comes from the outputs file** that step 1 writes
+  (`infra/env/dev.outputs.json`, key `entraServicePrincipalObjectId`). `07-container-apps.ps1` passes it through.
+  Without it the adapter refuses to construct, naming the setting.
+* **A person's own token keeps the old values for 60–90 minutes** after a change. The refresh is silent, so
+  nobody signs in again — they wait. Confirm with `GET /api/me` and Account Information, not by guessing.
+
+### 9.4 Admin role
 
 Creating the roles and granting one are two separate things, and a deployment with neither signs people in and
 then refuses every upload. Both are scripted:
@@ -1851,7 +1934,7 @@ appears under *App registrations → App roles*. `-Help` prints every parameter 
 role unlocks, and how to tell "not assigned" from "assigned but misspelled", is in
 [Granting someone a role](README.md#granting-someone-a-role).
 
-### 9.4 Point RAG-OS at the tenant
+### 9.5 Point RAG-OS at the tenant
 
 In `infra/env/dev.psd1`, then re-run step 07:
 
@@ -1868,7 +1951,7 @@ match the exposed scope character for character — Entra compares it exactly.
 `07-container-apps.ps1` sets each of these only when it is non-empty, and warns if neither Entra nor dev auth is
 configured — in which case nobody can sign in at all. Keep `DevAuthEnabled = $false`.
 
-### 9.5 Check it end to end
+### 9.6 Check it end to end
 
 Open `https://<chat-ui-fqdn>/`, choose **Sign in with Microsoft**, and confirm you land back on the chat. Then:
 
@@ -1901,7 +1984,7 @@ a question. `rag-os explain` prints the filter those attributes produce.
 | The sign-in panel answers every click with `interaction_in_progress` | MSAL is holding an interaction-in-progress flag in that tab's `sessionStorage` from a redirect that never came back — most often an earlier sign-in that Entra refused. **Close the tab** (the flag dies with it) or clear the site's storage; a private window works for the same reason. `createMsal` calls `handleRedirectPromise()` on every page load to clear it automatically, so a deployment built after that change recovers on reload. |
 | Signed in, but no documents | The attributes are missing or unmapped: `GET /api/me` shows what arrived. |
 
-### 9.6 Embedding the assistant in another page
+### 9.7 Embedding the assistant in another page
 
 The embedded chat does **not** run its own sign-in. The host page supplies an Entra access token for
 `ENTRA_API_SCOPE` — one it already holds for the signed-in user, or one acquired on-behalf-of.

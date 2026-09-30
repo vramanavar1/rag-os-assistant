@@ -123,28 +123,51 @@ function Invoke-AzRest {
         return @{}
     }
 
+    # ---- directory extensions are their own Graph resource, created one at a time. The script predicts the
+    # registered name (extension_<appid>_<name>) so it can name it in optionalClaims; the stub composes the
+    # same thing, because a mismatch there is the bug that would ship silently.
+    if ($Url -match 'extensionProperties') {
+        $defined = (Test-Path $env:STUB_EXTENSIONS) ?
+            @(Get-Content $env:STUB_EXTENSIONS -Raw | ConvertFrom-Json -AsHashtable) : @()
+        if ($Method -eq 'get') { return @{ value = $defined } }
+        Add-Content -LiteralPath $script:PatchLog -Value ('EXTENSION ' + ($Body | ConvertTo-Json -Depth 10 -Compress))
+        $entry = @{}
+        foreach ($k in $Body.Keys) { $entry[$k] = $Body[$k] }
+        $entry['name'] = "extension_$($env:STUB_CLIENT_ID -replace '-', '')_$($Body['name'])"
+        (@($defined + $entry) | ConvertTo-Json -Depth 10 -AsArray) |
+            Set-Content -LiteralPath $env:STUB_EXTENSIONS -Encoding utf8
+        return @{}
+    }
+
     $state = Get-StubState
 
     # ---- `origin` on an appRole is READ-ONLY: Graph rejects any write that carries it back. Modelled because
     # echoing what was read is the obvious implementation, and without this the stub would accept it happily.
-    foreach ($role in @(Get-Value $Body 'appRoles')) {
+    # Where-Object, because @($null) is a ONE-element array holding $null in PowerShell, not an empty one -
+    # so a body without this property would otherwise iterate once with $role = $null.
+    foreach ($role in @(Get-Value $Body 'appRoles') | Where-Object { $_ }) {
         if ($null -ne (Get-Value $role 'origin')) { throw $env:STUB_GRAPH_ORIGIN_400 }
     }
 
     # ---- Graph's validation, and the reason this stub exists. Pre-authorisations are checked against the
     # permissions ALREADY PERSISTED on the application - not against the scopes in this same body.
     $persisted = @(@(Get-Value $state 'api.oauth2PermissionScopes') | ForEach-Object { [string](Get-Value $_ 'id') })
-    foreach ($entry in @(Get-Value $Body 'api.preAuthorizedApplications')) {
-        foreach ($permissionId in @(Get-Value $entry 'delegatedPermissionIds')) {
+    foreach ($entry in @(Get-Value $Body 'api.preAuthorizedApplications') | Where-Object { $_ }) {
+        foreach ($permissionId in @(Get-Value $entry 'delegatedPermissionIds') | Where-Object { $_ }) {
             if ($persisted -notcontains $permissionId) { throw $env:STUB_GRAPH_400 }
         }
     }
     # ---- optional: refuse the pre-authorisation write even when it is valid, to exercise the degraded path.
-    if ($env:STUB_FAIL_PREAUTH -eq '1' -and @(Get-Value $Body 'api.preAuthorizedApplications').Count -gt 0) {
+    if ($env:STUB_FAIL_PREAUTH -eq '1' -and
+        @(@(Get-Value $Body 'api.preAuthorizedApplications') | Where-Object { $_ }).Count -gt 0) {
         throw $env:STUB_GRAPH_400
     }
 
-    Add-Content -LiteralPath $script:PatchLog -Value ($Body | ConvertTo-Json -Depth 30 -Compress)
+    # Logged apart from the reconcile writes: the patch-count assertions below are about the scope /
+    # pre-authorisation two-write dance, and an optional-claims write is a different concern that would
+    # otherwise silently change every one of those numbers.
+    $tag = ($Body.Keys -contains 'optionalClaims' -and $Body.Keys.Count -eq 1) ? 'CLAIMS ' : ''
+    Add-Content -LiteralPath $script:PatchLog -Value ($tag + ($Body | ConvertTo-Json -Depth 30 -Compress))
     # Graph replaces a top-level property wholesale rather than merging into it - modelled, because that is the
     # other way this area goes wrong.
     foreach ($key in $Body.Keys) { $state[$key] = $Body[$key] }
@@ -210,6 +233,7 @@ def run_script(state: dict, *, args: str = "", fail_preauth: bool = False, no_ap
            "STUB_FQDN": FQDN, "STUB_GRAPH_400": GRAPH_400, "STUB_GRAPH_ORIGIN_400": GRAPH_ORIGIN_400,
            "STUB_ASSIGNMENTS": str(work / "assignments.json"), "STUB_ME": "my-object-id",
            "STUB_PRINCIPAL_NAME": "me@example.com",
+           "STUB_EXTENSIONS": str(work / "extensions.json"), "STUB_CLIENT_ID": APP,
            "STUB_NO_SP": "1" if no_sp else "", "STUB_DENY_ASSIGN": "1" if deny_assign else "",
            "STUB_FAIL_PREAUTH": "1" if fail_preauth else "",
            "STUB_NO_APP": "1" if no_app else ""}
@@ -217,11 +241,14 @@ def run_script(state: dict, *, args: str = "", fail_preauth: bool = False, no_ap
                           capture_output=True, text=True, timeout=180, check=False, env=env, cwd=str(REPO))
     lines = [line for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     patches = [json.loads(line) for line in lines
-               if not line.startswith("ASSIGN ") and not line.startswith("REVOKE ")]
+               if not line.startswith(("ASSIGN ", "REVOKE ", "EXTENSION ", "CLAIMS "))]
+    optional_claims = [json.loads(line[len("CLAIMS "):]) for line in lines if line.startswith("CLAIMS ")]
+    extensions = [json.loads(line[len("EXTENSION "):]) for line in lines if line.startswith("EXTENSION ")]
     assignments = [json.loads(line[len("ASSIGN "):]) for line in lines if line.startswith("ASSIGN ")]
     revokes = [line[len("REVOKE "):] for line in lines if line.startswith("REVOKE ")]
     return {"out": proc.stdout + proc.stderr, "exit": proc.returncode, "patches": patches,
-            "assignments": assignments, "revokes": revokes,
+            "assignments": assignments, "revokes": revokes, "extensions": extensions,
+            "optional_claims": optional_claims,
             "app": json.loads(state_path.read_text(encoding="utf-8")), "work": work}
 
 
@@ -757,3 +784,65 @@ def test_an_already_exposed_scope_needs_only_one_write(env_files: None) -> None:
     assert len(result["patches"]) == 1, "only the pre-authorisation was missing - that is one write"
     assert pre_auth_ids(result["patches"][0]) == ["already-there"]
 
+
+# ---------------------------------------------------------------- user attributes
+# Without these, sign-in succeeds and every caller arrives with no department and no region. Both are
+# required: true, so they read nothing at all - and there is no error anywhere saying why. The registration
+# was correct and the tenant was silent; that is the failure this step exists to prevent.
+
+
+@needs_pwsh
+def test_the_three_user_attributes_are_created_as_directory_extensions(env_files: None) -> None:
+    result = run_script(app_state(), args="")
+    assert result["exit"] == 0, result["out"]
+    created = {e["name"] for e in result["extensions"]}
+    assert created == {"department", "region", "clearance"}, created
+    for e in result["extensions"]:
+        assert e["targetObjects"] == ["User"], "an extension has to target the user object to carry a claim"
+
+
+@needs_pwsh
+def test_the_extensions_are_emitted_as_access_token_claims(env_files: None) -> None:
+    """Creating the attribute is half of it. Without the optional claim the value sits on the user object and
+    never reaches a token, which looks identical from the application's side."""
+    result = run_script(app_state(), args="")
+    assert len(result["optional_claims"]) == 1, result["out"]
+    names = {c["name"] for c in result["optional_claims"][0]["optionalClaims"]["accessToken"]}
+    assert names == {f"extension_{APP.replace('-', '')}_{n}" for n in ("department", "region", "clearance")}, names
+
+
+@needs_pwsh
+def test_the_claims_registered_match_what_the_access_policy_reads(env_files: None) -> None:
+    """Two halves of one setup, in two languages: the script creates the attributes, and access-policy.yaml
+    names the claims. A mismatch means a caller with a department set still reads nothing."""
+    import re as _re
+
+    policy = (REPO / "config" / "access-policy" / "access-policy.yaml").read_text(encoding="utf-8")
+    wanted = {m.group(1) for m in _re.finditer(r"entra:\s*extn\.([a-z_]+)", policy)}
+    assert wanted, "the policy no longer reads any extn.* claim; re-point this test"
+    created = {e["name"] for e in run_script(app_state(), args="")["extensions"]}
+    assert created == wanted, (
+        f"the script creates {sorted(created)} but access-policy.yaml reads {sorted(wanted)}")
+
+
+@needs_pwsh
+def test_a_re_run_creates_nothing_a_second_time(env_files: None) -> None:
+    """Idempotent like every other step: an attribute that exists is left alone."""
+    work = Path(tempfile.mkdtemp())
+    first = run_script(app_state(), args="", work=work)
+    assert len(first["extensions"]) == 3, first["out"]
+    second = run_script(app_state(), args="", work=work)
+    assert second["exit"] == 0, second["out"]
+    assert second["extensions"] == [], "the extensions already existed"
+    assert "already defined" in flat(second["out"])
+
+
+@needs_pwsh
+def test_skipping_the_attributes_still_reconciles_the_registration(env_files: None) -> None:
+    """For a tenant where directory schema is governed separately, or an operator without the directory role -
+    the rest of the registration must still complete, and the consequence must be stated."""
+    result = run_script(app_state(), args="-SkipUserAttributes")
+    assert result["exit"] == 0, result["out"]
+    assert result["extensions"] == [] and result["optional_claims"] == []
+    assert result["patches"], "the scope and roles must still be written"
+    assert "no department or region" in flat(result["out"]), "the cost of skipping has to be said out loud"

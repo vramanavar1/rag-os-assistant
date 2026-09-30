@@ -16,6 +16,7 @@ from typing import Any
 
 from rag_os.application.ports import (
     ConfigRepository,
+    DirectoryAdmin,
     EmbeddingProvider,
     LlmProvider,
     MessageQueue,
@@ -26,6 +27,7 @@ from rag_os.application.ports import (
 from rag_os.application.services.access_policy import AccessPolicyEngine
 from rag_os.application.services.chunker import TokenChunker
 from rag_os.application.services.claims import ClaimsMapper
+from rag_os.application.services.directory_admin import DirectoryAdminService, extension_names
 from rag_os.application.services.index_schema import IndexDocumentMapper, build_schema
 from rag_os.application.services.profile_guard import ProfileGuard
 from rag_os.application.services.tagging import TagResolver
@@ -37,11 +39,13 @@ from rag_os.application.use_cases.scheduler import Reconcile, SchedulerTick
 from rag_os.domain.access import AccessPolicy
 from rag_os.domain.classification import FacetSchema, PathRules
 from rag_os.domain.embedding import EmbeddingProfile
+from rag_os.domain.errors import ConfigError
 from rag_os.domain.ingestion import SourcesFile
 from rag_os.infrastructure.auth.jwt_validator import IssuerConfig, JwtValidator
 from rag_os.infrastructure.registry import (
     CLASSIFIERS,
     CONFIG_REPOS,
+    DIRECTORIES,
     EMBEDDERS,
     LLMS,
     QUEUES,
@@ -106,6 +110,9 @@ class Container:
         self.__dict__.pop("answer", None)
         self.__dict__.pop("processor", None)
         self.__dict__.pop("discover", None)
+        # Both read the policy: the service for its master lists, the adapter for the extension names it writes.
+        self.__dict__.pop("directory_admin", None)
+        self.__dict__.pop("directory", None)
 
     async def reload_config(self, *, ensure_index: bool = True) -> bool:
         """Reload YAML config if any ETag changed. New policy attributes/facets are added to the index in place."""
@@ -265,6 +272,45 @@ class Container:
     @cached_property
     def source_factory(self) -> SourceFactory:
         return SourceFactory(self.secrets, self.settings)
+
+    @cached_property
+    def directory(self) -> DirectoryAdmin | None:
+        """The identity directory, or None when this deployment does not administer one.
+
+        Lazy, and off by default, because a real one holds Graph permissions that can rewrite any user in the
+        tenant. Two refusals are deliberately hard rather than warnings:
+
+        * DEV_AUTH_ENABLED. The dev issuer is trusted for roles (see role_sources in the access policy) and its
+          signing key has a shipped default, so anyone who can reach the API can mint an admin token. Reading
+          documents with one is a development convenience; writing the directory with one is a tenant-wide
+          escalation. The two features must not be enabled together.
+        * Missing ids. Constructing the adapter without the extension app id or the service-principal object id
+          would fail later, per request, as an opaque 500.
+        """
+        s = self.settings
+        if s.directory == "none":
+            return None
+        if s.dev_auth_enabled:
+            raise ConfigError(
+                "DIRECTORY and DEV_AUTH_ENABLED cannot both be on. Dev tokens are self-asserted and trusted for "
+                "roles, so with directory write permissions in hand anyone who can reach this API could grant "
+                "themselves any role and rewrite any user in the tenant. Set DEV_AUTH_ENABLED=false."
+            )
+        d: DirectoryAdmin = DIRECTORIES.create(
+            s.directory,
+            extension_app_id=s.extension_app_id,
+            service_principal_object_id=s.entra_service_principal_object_id,
+            attribute_names=extension_names(self.domain.policy),
+            app_role_values=[r.value for r in self.domain.policy.app_roles],
+        )
+        self._closables.append(d)
+        return d
+
+    @cached_property
+    def directory_admin(self) -> DirectoryAdminService:
+        """The rules. Built even without a directory, so the page can show its master lists and say why it is
+        read-only rather than returning a bare 501 with nothing in it."""
+        return DirectoryAdminService(self.directory, self.domain.policy, self.domain.facets)
 
     # ------------------------------------------------------------------ use cases
 

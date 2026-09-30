@@ -282,6 +282,7 @@ class AzureSearchIndex(SearchIndex):
                         path=r.get("path") or "",
                         page=r.get("page"),
                         source_id=r.get("source_id") or "",
+                        effective_date=r.get("effective_date"),
                         score=float(r.get("@search.score") or 0.0),
                         reranker_score=r.get("@search.reranker_score"),
                     )

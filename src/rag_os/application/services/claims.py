@@ -8,10 +8,38 @@ cannot make someone an admin in a deployment that does not trust the dev issuer.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from rag_os.domain.access import AccessPolicy, Principal
 from rag_os.domain.errors import AuthenticationFailed
+
+_MISSING = object()
+# A directory extension is REGISTERED as extension_{appId-without-hyphens}_{name}, and Microsoft's
+# optional-claims page says the JWT carries it as extn.{name} - then shows extension_{appid}_{name} in its own
+# worked example a few paragraphs later. The page contradicts itself, and the long form embeds the tenant's own
+# application id, so it can never be a checked-in default.
+#
+# Rather than make every operator guess, a configured `extn.<name>` also matches the long form. The symptom
+# this avoids is the worst kind: everything configured correctly, no error anywhere, and no documents.
+_EXTN_PREFIX = "extn."
+_LONG_FORM = re.compile(r"^extension_[0-9a-fA-F]{32}_(?P<name>.+)$")
+
+
+def _claim_value(claims: dict[str, Any], name: str) -> Any:
+    """The claim's value, or _MISSING. Exact match wins; `extn.x` also accepts extension_<appid>_x."""
+    if name in claims:
+        return claims[name]
+    if not name.startswith(_EXTN_PREFIX):
+        return _MISSING
+    suffix = name[len(_EXTN_PREFIX):].casefold()
+    for key, value in claims.items():
+        m = _LONG_FORM.match(key)
+        # Case-insensitive on the suffix: Entra treats extension names as case-sensitive when reading them,
+        # so a tenant that registered `Clearance` would otherwise never match a config saying `clearance`.
+        if m and m.group("name").casefold() == suffix:
+            return value
+    return _MISSING
 
 
 class ClaimsMapper:
@@ -22,10 +50,10 @@ class ClaimsMapper:
         attrs: dict[str, list[str] | int] = {}
         for rule in self.policy.attributes:
             claim = rule.claims.get(issuer_kind)
-            if not claim or claim not in claims:
+            if not claim:
                 continue
-            raw = claims[claim]
-            if raw is None:
+            raw = _claim_value(claims, claim)
+            if raw is _MISSING or raw is None:
                 continue
             if rule.is_numeric:
                 if isinstance(raw, list):

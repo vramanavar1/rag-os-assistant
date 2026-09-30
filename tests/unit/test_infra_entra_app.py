@@ -592,3 +592,34 @@ def test_a_scope_resource_that_is_not_an_identifier_uri_fails() -> None:
 @needs_pwsh
 def test_a_scope_setting_with_no_scope_name_fails() -> None:
     assert checks(app=ps_app(), scope=f"api://{APP}")["EntraApiScope names a scope"] == "FAIL"
+
+
+def test_the_documented_entra_claim_names_match_the_access_policy() -> None:
+    """Four artefacts named a claim that Microsoft Entra does not emit, and nothing noticed.
+
+    `access-policy.yaml`, both READMEs, `Deployment.md` and two SVG diagrams all said
+    `extension_Department` / `extension_Region` / `extension_Clearance`. No Entra route produces those names -
+    a directory extension arrives as `extn.<name>` or as `extension_<appid>_<name>` - so every real caller
+    arrived with no department and no region and, both being required, could read nothing.
+
+    The role catalogue already gets this treatment (test_the_documented_role_values_match_the_access_policy);
+    the claim names were the other half of the same setup and had no guard at all.
+    """
+    policy = (REPO / "config" / "access-policy" / "access-policy.yaml").read_text(encoding="utf-8")
+    declared = {m.group(1) for m in re.finditer(r"entra:\s*(extn\.[a-z_]+)", policy)}
+    assert declared, "the policy declares no extn.* claim; re-point this test"
+
+    stale = re.compile(r"extension_(?:Department|Region|Clearance)\b")
+    for rel in ("README.md", "README.html", "Deployment.md", "config/access-policy/access-policy.yaml",
+                "docs/examples/access-policy.minimal.yaml", "docs/diagrams/identity.svg",
+                "docs/diagrams/access-filter.svg"):
+        text = (REPO / rel).read_text(encoding="utf-8")
+        found = sorted(set(stale.findall(text)))
+        assert not found, (
+            f"{rel} still names {found}, which Entra never emits. A directory extension arrives as "
+            "extn.<name> (or extension_<appid>_<name>), and the shipped policy reads the former.")
+
+    # ...and every claim the policy reads must be mentioned where an administrator is told to configure it.
+    docs = (REPO / "README.md").read_text(encoding="utf-8")
+    missing = sorted(c for c in declared if c not in docs)
+    assert not missing, f"README.md does not document the claim(s) the policy reads: {missing}"

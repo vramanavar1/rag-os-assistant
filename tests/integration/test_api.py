@@ -1009,3 +1009,147 @@ async def test_the_account_endpoint_needs_no_role(client: TestClient) -> None:
     out of reach of everyone it is for."""
     assert client.get("/api/me/account", headers=dev_token(client, "support-de")).status_code == 200
     assert client.get("/api/me/account").status_code == 401, "but it is not anonymous"
+
+
+# ---------------------------------------------------------------- Settings (Security) over HTTP
+# The rules are tested exhaustively in tests/unit/test_directory_admin.py. These pin the HTTP contract: who may
+# call it, that the ETag round-trips through real headers, and that a half-applied write is not an error status.
+
+
+def _as_entra_admin(app: object, oid: str) -> None:
+    """Sign the caller in as an Entra administrator.
+
+    A dev token cannot be used for these endpoints by design - it is self-asserted and trusted for roles, so
+    with directory write permissions in hand it would be a tenant-wide escalation - and the test client has no
+    way to mint a real Entra token. Overriding the principal dependency is the only way to exercise the write
+    path over HTTP at all.
+    """
+    from rag_os.api.deps import get_principal
+    from rag_os.domain.access import Principal
+
+    def principal_override() -> Principal:
+        return Principal(subject="pairwise-sub", issuer_kind="entra", display_name="Ada", roles={"admin"},
+                         raw_claims={"sub": "pairwise-sub", "oid": oid})
+
+    app.dependency_overrides[get_principal] = principal_override  # type: ignore[attr-defined]
+
+
+def _with_fake_directory(container: Container) -> object:
+    from rag_os.application.services.directory_admin import DirectoryAdminService
+    from rag_os.infrastructure.directory.fake import FakeDirectory, FakeUser
+
+    d = FakeDirectory()
+    d.seed(FakeUser(object_id="admin-oid", user_principal_name="ada@contoso.com"))
+    d.seed(FakeUser(object_id="target-oid", user_principal_name="priya@contoso.com", mail="priya@contoso.com",
+                    attributes={"department": "HR"}))
+    container.__dict__["directory_admin"] = DirectoryAdminService(d, container.domain.policy,
+                                                                 container.domain.facets)
+    return d
+
+
+async def test_the_directory_endpoints_require_the_admin_role(client: TestClient) -> None:
+    sme = dev_token(client, "sme-reviewer")
+    assert client.get("/api/admin/directory", headers=sme).status_code == 403
+    assert client.get("/api/admin/directory/users/x@y.com", headers=sme).status_code == 403
+    assert client.put("/api/admin/directory/users/x@y.com", headers=sme, json={}).status_code == 403
+    assert client.get("/api/admin/directory").status_code == 401
+
+
+async def test_the_capability_is_served_even_with_no_directory_configured(client: TestClient) -> None:
+    """The page must be able to say what to switch on, which a bare 501 does not."""
+    body = client.get("/api/admin/directory", headers=dev_token(client, "admin")).json()
+    assert body["enabled"] is False
+    assert {a["name"] for a in body["attributes"]} == {"department", "region", "clearance"}
+    assert body["propagation_note"], "the token-staleness sentence comes from the API, never the browser"
+
+
+async def test_a_dev_token_cannot_write_the_directory(client: TestClient, container: Container) -> None:
+    """Self-asserted roles plus Graph write permissions is a tenant-wide escalation, so this is refused at the
+    service rather than merely discouraged in documentation."""
+    _with_fake_directory(container)
+    h = dev_token(client, "admin")
+    # Reading is allowed - it describes somebody else, not the caller - so the etag is obtainable and the
+    # refusal below is about the write itself rather than a missing header.
+    got = client.get("/api/admin/directory/users/priya@contoso.com", headers=h)
+    assert got.status_code == 200, got.text
+    r = client.put("/api/admin/directory/users/priya@contoso.com",
+                   headers={**h, "If-Match": got.headers["ETag"]}, json={"roles": []})
+    assert r.status_code == 403, r.text
+    assert "Entra sign-in" in r.json()["title"]
+
+
+async def test_reading_a_person_returns_an_etag_that_the_write_requires(
+    client: TestClient, container: Container
+) -> None:
+    _with_fake_directory(container)
+    _as_entra_admin(client.app, "admin-oid")
+    got = client.get("/api/admin/directory/users/priya@contoso.com")
+    assert got.status_code == 200, got.text
+    etag = got.headers["ETag"]
+    assert etag and got.json()["attributes"]["department"] == "HR"
+
+    without = client.put("/api/admin/directory/users/priya@contoso.com", json={"roles": ["rag.reviewer"]})
+    assert without.status_code == 422, "a write with no If-Match must be refused"
+    assert "If-Match" in without.json()["title"]
+
+    ok = client.put("/api/admin/directory/users/priya@contoso.com", headers={"If-Match": etag},
+                    json={"attributes": {"region": "UK"}, "roles": ["rag.reviewer"]})
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["ok"] is True and body["attributes"]["region"] == "UK"
+    assert body["roles"] == [{"value": "rag.reviewer", "via_group": None, "removable": True, "duplicates": 1}]
+    assert ok.headers["ETag"] != etag, "the caller needs the new etag to write again"
+
+
+async def test_a_stale_etag_is_a_conflict_over_http(client: TestClient, container: Container) -> None:
+    _with_fake_directory(container)
+    _as_entra_admin(client.app, "admin-oid")
+    stale = client.get("/api/admin/directory/users/priya@contoso.com").headers["ETag"]
+    client.put("/api/admin/directory/users/priya@contoso.com", headers={"If-Match": stale},
+               json={"roles": ["rag.reviewer"]})
+    r = client.put("/api/admin/directory/users/priya@contoso.com", headers={"If-Match": stale}, json={"roles": []})
+    assert r.status_code == 409, r.text
+    assert r.json()["etag"], "the fresh etag must reach the client so it can reload and retry"
+
+
+async def test_an_admin_cannot_edit_their_own_access_over_http(
+    client: TestClient, container: Container
+) -> None:
+    _with_fake_directory(container)
+    _as_entra_admin(client.app, "admin-oid")
+    etag = client.get("/api/admin/directory/users/ada@contoso.com").headers["ETag"]
+    r = client.put("/api/admin/directory/users/ada@contoso.com", headers={"If-Match": etag},
+                   json={"attributes": {"clearance": "3"}})
+    assert r.status_code == 403, r.text
+    assert "your own" in r.json()["title"]
+
+
+async def test_a_partial_write_returns_two_hundred_with_a_report(
+    client: TestClient, container: Container
+) -> None:
+    """Deliberately not a 5xx. An error body carries a message and nothing else, and what an administrator needs
+    after a half-applied write is the list of steps that already reached the directory."""
+    d = _with_fake_directory(container)
+    _as_entra_admin(client.app, "admin-oid")
+    etag = client.get("/api/admin/directory/users/priya@contoso.com").headers["ETag"]
+    d.fail_on["grant_role"] = "Graph said no"  # type: ignore[attr-defined]
+    r = client.put("/api/admin/directory/users/priya@contoso.com", headers={"If-Match": etag},
+                   json={"attributes": {"region": "UK"}, "roles": ["rag.reviewer"]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is False
+    assert any("set region" in line for line in body["applied"]), body["applied"]
+    assert body["failed"] and "Graph said no" in body["failed"][0]
+    assert body["attributes"]["region"] == "UK", "the response states what really landed"
+
+
+async def test_a_value_outside_the_master_list_is_refused_over_http(
+    client: TestClient, container: Container
+) -> None:
+    _with_fake_directory(container)
+    _as_entra_admin(client.app, "admin-oid")
+    etag = client.get("/api/admin/directory/users/priya@contoso.com").headers["ETag"]
+    r = client.put("/api/admin/directory/users/priya@contoso.com", headers={"If-Match": etag},
+                   json={"attributes": {"department": "Executive"}})
+    assert r.status_code == 422, r.text
+    assert "not an allowed value" in r.json()["title"]

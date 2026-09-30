@@ -588,3 +588,62 @@ def test_text_without_blank_lines_is_bounded() -> None:
     _, secs = parse(TextParser(), data, "big.log")
     assert len(secs) > 1
     assert all(len(s.text) <= 16_100 for s in secs)
+
+
+# ---------------------------------------------------------------- front matter
+# A document states its own effective date, which the answer prompt uses to prefer the newer of two that
+# disagree. Before this, no parser emitted the key ProcessItem reads, so the rule could never fire.
+
+
+def _parse_text(body: bytes, name: str = "policy.md"):  # type: ignore[no-untyped-def]
+    doc = TextParser().parse(io.BytesIO(body), name)
+    sections = list(doc.sections)  # metadata is written while the sections stream, so consume first
+    return doc, sections
+
+
+def test_front_matter_supplies_the_effective_date() -> None:
+    doc, sections = _parse_text(b"---\neffective_date: 2026-04-01\n---\n# Leave\n\nTwenty-six weeks.\n")
+    assert doc.metadata["effective_date"] == "2026-04-01"
+    assert doc.title == "Leave", "the fence must not become the title"
+    assert sections and sections[0].text == "Twenty-six weeks."
+
+
+def test_front_matter_is_stripped_from_the_text() -> None:
+    """It is metadata. Left in the body it would be embedded, chunked, and quoted back in a citation snippet."""
+    _, sections = _parse_text(b"---\neffective_date: 2026-04-01\n---\n# Leave\n\nBody.\n")
+    joined = "\n".join(s.text for s in sections)
+    assert "effective_date" not in joined and "---" not in joined
+
+
+@pytest.mark.parametrize("value", [b"1 April 2026", b"2026/04/01", b"tomorrow", b"", b"2026-13-45x"])
+def test_a_date_that_is_not_iso_is_ignored(value: bytes) -> None:
+    """The field is sortable in the index and is rendered into the prompt, so a value that cannot be ordered
+    is worse than none: the model would be asked to prefer the most recent of two things it cannot compare."""
+    doc, _ = _parse_text(b"---\neffective_date: " + value + b"\n---\n# T\n\nBody.\n")
+    assert "effective_date" not in doc.metadata
+
+
+def test_only_known_keys_are_taken_from_a_document() -> None:
+    """Front matter is untrusted input, and it lands in the same dict as the parser's own stats - so a
+    document could otherwise overwrite `lines` or `encoding`, or inject anything it liked."""
+    doc, _ = _parse_text(b"---\neffective_date: 2026-04-01\nowner: HR\nlines: 99999\n---\n# T\n\nBody.\n")
+    assert doc.metadata["effective_date"] == "2026-04-01"
+    assert "owner" not in doc.metadata
+    assert doc.metadata["lines"] != 99999, "a document must not be able to rewrite parser statistics"
+
+
+def test_a_document_without_front_matter_is_unchanged() -> None:
+    """The overwhelmingly common case, and the one a regression here would break silently."""
+    doc, sections = _parse_text(b"# Password Policy\n\nMinimum length is 14 characters.\n")
+    assert doc.title == "Password Policy" and "effective_date" not in doc.metadata
+    assert [s.text for s in sections] == ["Minimum length is 14 characters."]
+
+
+def test_an_unterminated_fence_does_not_swallow_the_document() -> None:
+    """`---` is also a Markdown horizontal rule, so an opening fence with no closing one is a real shape. It
+    must cost at most the scan window, never the body."""
+    body = b"---\n" + b"\n".join(b"line %d" % i for i in range(60)) + b"\n"
+    doc, sections = _parse_text(body)
+    assert "effective_date" not in doc.metadata
+    assert sections, "the document must still produce content"
+    assert "line 59" in "\n".join(s.text for s in sections)

@@ -65,6 +65,8 @@ class SearchHit(BaseModel):
     path: str
     page: int | None
     source_id: str
+    # When the document states one. Shown to the model so it can prefer the newer of two that disagree.
+    effective_date: str | None = None
     score: float
     reranker_score: float | None = None
     facets: dict[str, list[str]] = Field(default_factory=dict)

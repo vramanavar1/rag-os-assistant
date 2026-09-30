@@ -43,11 +43,19 @@ _CITE = re.compile(r"\[(\d{1,3})\]")
 
 
 def build_context(hits: list[SearchHit], max_chars_per_block: int = 3500) -> str:
+    """Numbered blocks, each headed by where it came from.
+
+    The effective date is rendered only when the document states one - which is what the system prompt's
+    "if shown" is about. Without it here, the rule telling the model to prefer the most recent of two
+    conflicting blocks could never fire: the field was written to the index and never read back.
+    """
     blocks = []
     for i, h in enumerate(hits, start=1):
         loc = f" (page {h.page})" if h.page else ""
         heading = f" - {h.heading}" if h.heading else ""
-        blocks.append(f"[{i}] {h.title}{heading}{loc} | {h.path}\n{h.content[:max_chars_per_block].strip()}")
+        dated = f" (effective {h.effective_date})" if h.effective_date else ""
+        blocks.append(
+            f"[{i}] {h.title}{heading}{loc}{dated} | {h.path}\n{h.content[:max_chars_per_block].strip()}")
     return "\n\n".join(blocks)
 
 

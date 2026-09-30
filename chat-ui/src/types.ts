@@ -310,3 +310,67 @@ export interface ExplainResult {
   bypass: boolean;
   attributes_used: unknown;
 }
+
+/**
+ * Settings (Security): GET/PUT /api/admin/directory. Every list here is assembled server-side from the access
+ * policy, so the page never carries a copy of what may be assigned.
+ */
+export interface DirectoryValue {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export interface DirectoryAttributeSpec {
+  name: string;
+  label: string;
+  description: string;
+  required: boolean;
+  /** Whether an existing value may be removed; a required attribute cannot be. */
+  clearable: boolean;
+  values: DirectoryValue[];
+}
+
+export interface DirectoryRoleSpec {
+  value: string;
+  display_name: string;
+  description: string;
+  /** True for a role that also bypasses the document access filter; the API demands confirmation for it. */
+  needs_confirmation: boolean;
+}
+
+export interface DirectoryCapability {
+  enabled: boolean;
+  attributes: DirectoryAttributeSpec[];
+  app_roles: DirectoryRoleSpec[];
+  warnings: string[];
+  propagation_note: string;
+}
+
+export interface DirectoryRoleHeld {
+  value: string;
+  /** Set when the role comes from a group. Those cannot be removed from here. */
+  via_group: string | null;
+  removable: boolean;
+  duplicates: number;
+}
+
+export interface DirectoryUserState {
+  object_id: string;
+  user_principal_name: string;
+  display_name: string;
+  mail: string | null;
+  account_enabled: boolean;
+  user_type: string;
+  attributes: Record<string, string | null>;
+  roles: DirectoryRoleHeld[];
+  etag: string;
+  propagation_note: string;
+}
+
+/** The PUT response: a partial write reports ok:false with what landed rather than failing the request. */
+export interface DirectoryWriteResult extends DirectoryUserState {
+  ok: boolean;
+  applied: string[];
+  failed: string[];
+}

@@ -11,7 +11,7 @@
 attributes:
   - name: department
     field: acl_department
-    claims: { entra: extension_Department, dev: departments }
+    claims: { entra: extn.department, dev: departments }
     # Defaults you are accepting by omission:
     #   match: any_of          caller holds any value the document allows
     #   wildcard: "*"          a document tagged "*" is readable by everyone

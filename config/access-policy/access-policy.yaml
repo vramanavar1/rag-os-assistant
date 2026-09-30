@@ -2,7 +2,7 @@
 #
 # THREE DIFFERENT NAMES APPEAR BELOW. Mixing them up is the usual source of confusion:
 #
-#   claims:  what the identity provider sends about THE PERSON, e.g. extension_Department, groups, oid.
+#   claims:  what the identity provider sends about THE PERSON, e.g. extn.department, groups, oid.
 #            These are configured in Entra, not here. Nothing named acl_* is ever a claim.
 #   name:    this policy's internal handle for the attribute, e.g. department. It is what the caller's side
 #            and the document's side are matched ON, and the key you use when tagging (acl.<name>).
@@ -29,7 +29,7 @@ attributes:
     match: any_of            # user has ANY value the document allows; document "*" = everyone
     wildcard: "*"
     required: true           # a caller without a department sees nothing
-    claims: { entra: extension_Department, dev: departments }
+    claims: { entra: extn.department, dev: departments }
     # Granting a whole department = one Entra group, not one entry per person. If you use security groups
     # instead of the directory extension above, point the entra claim at `groups` and map each group's
     # OBJECT ID to a value here (matching is case-insensitive), so documents stay tagged "HR", not a GUID.
@@ -40,6 +40,18 @@ attributes:
     #     "8ad02c4f-3e5b-4b2d-a07c-1c3e7f32b002": Sales
     #   drop_unmapped: true
     description: Organisational unit(s) of the caller.
+    # What Settings (Security) may assign. This list is the boundary of that page: the API validates against it
+    # and never against what the browser posted. It lives HERE rather than pointing at the department facet
+    # because facets.yaml is editable by a taxonomy_editor, and the set of grantable security values must not be
+    # editable by a weaker role than the one that grants them. Keep it in step with the facet vocabulary all the
+    # same - a department no document is tagged with is a grant that reads nothing.
+    allowed_values:
+      - { value: HR, label: Human Resources, description: "Employment, benefits, leave, payroll policy." }
+      - { value: Finance, label: Finance, description: "Budgets, expenses, invoices, rate cards." }
+      - { value: Sales, label: Sales, description: "Pricing, contracts, customer offers." }
+      - { value: IT, label: Information Technology, description: "Systems, security, access, devices." }
+      - { value: Legal, label: Legal, description: "Contracts, regulations, privacy." }
+      - { value: Support, label: Customer Support, description: "Product help, troubleshooting, FAQs." }
 
   - name: region
     field: acl_region
@@ -47,14 +59,26 @@ attributes:
     hierarchy_facet: region
     wildcard: "*"
     required: true
-    claims: { entra: extension_Region, dev: regions }
+    claims: { entra: extn.region, dev: regions }
     description: Where the caller is (their location in the region tree).
+    # Every value here must exist in the `region` facet tree above, because a caller's region is expanded to its
+    # ancestors through that tree. A value the tree does not know about does not error - it just stops
+    # expanding, so the caller reaches that one region and none of its parents. A test pins the two together.
+    allowed_values:
+      - { value: Global, label: Global, description: "Reaches Global documents only - the root, not everything below it." }
+      - { value: EMEA, label: "Europe, Middle East & Africa", description: "Also reaches Global." }
+      - { value: UK, label: United Kingdom, description: "Also reaches EMEA and Global." }
+      - { value: DE, label: Germany, description: "Also reaches EMEA and Global." }
+      - { value: AMER, label: Americas, description: "Also reaches Global." }
+      - { value: US, label: United States, description: "Also reaches AMER and Global." }
+      - { value: APAC, label: Asia Pacific, description: "Also reaches Global." }
+      - { value: IN, label: India, description: "Also reaches APAC and Global." }
 
   - name: clearance
     field: acl_clearance
     match: max_level         # a document is readable when its level <= the caller's level
     required: false          # missing -> treated as 0 (public only)
-    claims: { entra: extension_Clearance, dev: clearance }
+    claims: { entra: extn.clearance, dev: clearance }
     description: How sensitive a document may be before this caller stops being able to read it.
     # The rungs. These are DATA, not a comment, because Account Information shows a caller what their number
     # means, and because max_level is generic - a deployment may run 0-5 and name them differently. Adding a

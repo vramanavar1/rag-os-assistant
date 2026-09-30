@@ -19,9 +19,14 @@ def config_dir(tmp_path: Path) -> Path:
     dst = tmp_path / "config"
     shutil.copytree(REPO / "config", dst)
     src_yaml = dst / "sources" / "sources.yaml"
-    src_yaml.write_text(src_yaml.read_text(encoding="utf-8").replace(
-        "root: ./samples/corpus", f"root: {(tmp_path / 'corpus').as_posix()}"), encoding="utf-8")
-    shutil.copytree(REPO / "samples" / "corpus", tmp_path / "corpus")
+    text = src_yaml.read_text(encoding="utf-8")
+    # Every local_folder root is repointed at a copy, so a test that edits a corpus cannot change the repo -
+    # test_pipeline deletes a file and rewrites manifest.csv to exercise change detection.
+    for rel in ("corpus", "scenarios/global-handbook", "scenarios/uk-handbook"):
+        copy = tmp_path / rel
+        shutil.copytree(REPO / "samples" / rel, copy)
+        text = text.replace(f"root: ./samples/{rel}", f"root: {copy.as_posix()}")
+    src_yaml.write_text(text, encoding="utf-8")
     return dst
 
 
