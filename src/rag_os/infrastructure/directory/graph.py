@@ -50,6 +50,30 @@ _PAGE_GUARD = 100  # pages, not rows: a runaway nextLink loop must end
 _UNSAFE_IN_FILTER = re.compile(r"[\x00-\x1f\x7f]")
 _HEX32 = re.compile(r"^[0-9a-fA-F]{32}$")
 
+# Which Graph permission governs which call. A 403 names one of these rather than listing the whole set, because
+# "it is one of these four" costs a round trip to the tenant to narrow down - and the permissions are not
+# interchangeable in the way their names suggest: AppRoleAssignment.ReadWrite.All writes an assignment but cannot
+# read one, which is a read of the service principal.
+_PERMISSION_BY_CALL: tuple[tuple[str, str, str], ...] = (
+    ("POST", "/appRoleAssignedTo", "AppRoleAssignment.ReadWrite.All (plus Application.Read.All)"),
+    ("DELETE", "/appRoleAssignedTo", "AppRoleAssignment.ReadWrite.All (plus Application.Read.All)"),
+    ("GET", "/appRoleAssignedTo", "Application.Read.All - NOT AppRoleAssignment.ReadWrite.All, which only writes"),
+    ("GET", "/transitiveMemberOf", "GroupMember.Read.All (User.Read.All and Directory.Read.All also satisfy it)"),
+    ("POST", "/revokeSignInSessions", "User.ReadWrite.All"),
+    ("GET", "/servicePrincipals/", "Application.Read.All"),
+    ("PATCH", "/users/", "User.ReadWrite.All"),
+    ("GET", "/users", "User.ReadWrite.All (User.Read.All is enough for the lookup alone)"),
+)
+
+
+def _permission_for(method: str, url: str) -> str:
+    """The permission a refused call needs, or a fallback naming the whole set."""
+    for verb, fragment, permission in _PERMISSION_BY_CALL:
+        if method.upper() == verb and fragment in url:
+            return permission
+    return ("one of User.ReadWrite.All, AppRoleAssignment.ReadWrite.All, Application.Read.All or "
+            "GroupMember.Read.All")
+
 
 @DIRECTORIES.register("graph", description="Microsoft Entra ID via Microsoft Graph (keyless, managed identity).")
 class GraphDirectory(DirectoryAdmin):
@@ -134,7 +158,7 @@ class GraphDirectory(DirectoryAdmin):
             if res.status_code in _RETRY_STATUS and attempt < _RETRY_ATTEMPTS:
                 await asyncio.sleep(self._backoff(res, attempt))
                 continue
-            return self._decode(res)
+            return self._decode(res, method, url)
         raise DependencyUnavailable(f"Microsoft Graph did not respond: {last}")
 
     @staticmethod
@@ -146,7 +170,7 @@ class GraphDirectory(DirectoryAdmin):
         except ValueError:
             return min(2.0 * attempt, _MAX_RETRY_AFTER_S)
 
-    def _decode(self, res: httpx.Response) -> Any:
+    def _decode(self, res: httpx.Response, method: str = "GET", url: str = "") -> Any:
         if res.status_code == 404:
             raise NotFound("Microsoft Graph returned 404 for that directory object")
         if res.status_code >= 400:
@@ -158,14 +182,15 @@ class GraphDirectory(DirectoryAdmin):
                 detail = res.text[:200]
             log.warning("graph call failed", extra={"status": res.status_code, "graph_error": detail})
             if res.status_code in (401, 403):
+                # Name the ONE call and the ONE permission. Listing all four sent three separate debugging rounds
+                # to re-check permissions that were already granted.
+                path = str(httpx.URL(url).path) if url.startswith("http") else url.split("?", 1)[0]
                 raise DependencyUnavailable(
-                    "Microsoft Graph refused this application's credentials. Check that the managed identity "
-                    "holds User.ReadWrite.All, AppRoleAssignment.ReadWrite.All, Application.Read.All and "
-                    "GroupMember.Read.All, and that the API revision was restarted after they were granted. "
-                    "Application.Read.All is the one most often missing: reading an app-role assignment is a "
-                    "read of the service principal, which AppRoleAssignment.ReadWrite.All does not cover. "
-                    "./infra/scripts/Set-EntraGraphPermissions.ps1 -Env <env> -List shows what is held. "
-                    f"Graph said: {detail}"
+                    f"Microsoft Graph refused {method} {path}. That call needs "
+                    f"{_permission_for(method, url)}. Check what the managed identity actually holds with "
+                    "./infra/scripts/Set-EntraGraphPermissions.ps1 -Env <env> -List, grant anything missing with "
+                    "the same script, and restart the API revision afterwards - its Graph token is cached until "
+                    f"it expires. Graph said: {detail}"
                 )
             raise DependencyUnavailable(f"Microsoft Graph rejected the request ({res.status_code}): {detail}")
         # A write is 204 with an empty body. There is nothing to parse, and parsing it would be an error.

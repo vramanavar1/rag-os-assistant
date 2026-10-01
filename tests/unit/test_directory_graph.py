@@ -371,13 +371,34 @@ async def test_a_group_role_the_caller_is_not_a_member_of_is_not_reported() -> N
 
 
 @pytest.mark.anyio
-async def test_a_refusal_names_the_permissions_and_the_restart() -> None:
-    """403 here almost always means either the permissions were never consented or the revision was not
-    restarted after they were - the managed identity's Graph token is cached to expiry."""
+async def test_a_refusal_names_the_one_call_and_the_one_permission() -> None:
+    """A 403 that lists every permission the application uses is barely better than none: it was answered three
+    separate times by re-checking permissions that were already granted. The adapter knows the method and the URL
+    at the point of refusal, so it names them and the single permission that governs that call."""
     g = Graph({("PATCH", f"/users/{OID}"): httpx.Response(403, json={"error": {"message": "Insufficient privileges"}})})
     with pytest.raises(DependencyUnavailable) as e:
         await directory(g).set_attributes(OID, {"department": "HR"})
-    assert "AppRoleAssignment.ReadWrite.All" in str(e.value) and "restarted" in str(e.value)
+    said = str(e.value)
+    assert "PATCH" in said and "/users/" in said, f"name the call that was refused: {said}"
+    assert "User.ReadWrite.All" in said, "and the permission that governs it"
+    assert "AppRoleAssignment.ReadWrite.All" not in said, (
+        f"a PATCH on a user has nothing to do with app-role assignments; listing it sends the reader to "
+        f"re-check a permission that is not involved: {said}")
+    assert "restart" in said, "the cached Graph token is the other half of the usual cause"
+
+
+@pytest.mark.anyio
+async def test_a_refused_role_read_blames_the_read_permission_not_the_write_one() -> None:
+    """The distinction that cost a full debugging round: AppRoleAssignment.ReadWrite.All creates and deletes an
+    assignment but cannot read one, because reading it is a read of the service principal."""
+    g = Graph({("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"):
+               httpx.Response(403, json={"error": {"message": "Insufficient privileges"}})})
+    with pytest.raises(DependencyUnavailable) as e:
+        await directory(g).list_roles(OID)
+    said = str(e.value)
+    assert "Application.Read.All" in said, f"the read is governed by Application.Read.All: {said}"
+    assert "only writes" in said or "NOT AppRoleAssignment" in said, (
+        f"say why the write permission does not cover it, or the reader grants it again: {said}")
 
 
 @pytest.mark.anyio
