@@ -1111,12 +1111,22 @@ Three different principals are involved, and conflating them is the usual reason
 | Principal | Permission | Type | Why | Who can grant it |
 |---|---|---|---|---|
 | Managed identity `id-<prefix>-<env>` | `User.ReadWrite.All` | Graph **application** | Find a person by address, read their directory extensions, write the three attributes, end their sign-in sessions | Privileged Role Administrator or Global Administrator |
-| " | `AppRoleAssignment.ReadWrite.All` | Graph **application** | Read, create and delete this application's own app-role assignments | Privileged Role Administrator or Global Administrator |
+| " | `AppRoleAssignment.ReadWrite.All` | Graph **application** | **Create and delete** this application's own app-role assignments. It does *not* permit reading them | Privileged Role Administrator or Global Administrator |
+| " | `Application.Read.All` | Graph **application** | **Read** this app's own service principal: its `appRoles` catalogue, and who currently holds them. Read-only, and easy to miss — see the note below | Privileged Role Administrator or Global Administrator |
 | " | `GroupMember.Read.All` | Graph **application** | Read group membership, so a role held *through a group* shows as non-removable instead of silently missing | Privileged Role Administrator or Global Administrator |
 | Operator running `Set-EntraAppRegistration.ps1` | `Application.ReadWrite.All` | delegated, or the Application Administrator / Cloud Application Administrator / Directory Writers role | Create the three directory extensions and add them to `optionalClaims` | any of those roles |
 | Operator setting a value by hand | a role covering `microsoft.directory/users/extensionProperties/update` | directory role | The `az rest` fallback above | Global Administrator (confirmed). **User Administrator is unverified — test it before delegating** |
 
-Two things stated plainly rather than smoothed over:
+Things stated plainly rather than smoothed over:
+
+* **`AppRoleAssignment.ReadWrite.All` does not let you *read* an app-role assignment.** It covers the write —
+  `POST` and `DELETE` on `appRoleAssignedTo` — and nothing else. Both
+  `GET /servicePrincipals/{id}/appRoleAssignedTo` and `GET /servicePrincipals/{id}?$select=appRoles` are reads of
+  the **service principal**, whose least-privileged permission is `Application.Read.All`; Microsoft documents
+  *creating* an assignment as needing **both**. Granting only the write permission produces
+  `403 Insufficient privileges to complete the operation` on the first lookup — which reads exactly like the write
+  permission is missing, and sends you to re-check the one that is already there. `Application.Read.All` is
+  read-only, so it is the cheaper half of the pair to justify.
 
 * **`User.ReadUpdate.All`** is Microsoft's newer least-privileged permission for `PATCH /users/{id}` and would be
   preferable. We have not confirmed it also covers the `$filter` lookup or `revokeSignInSessions`, so

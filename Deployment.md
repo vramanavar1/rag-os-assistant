@@ -1861,7 +1861,8 @@ half of the page still works; role assignment stays a job for `Set-EntraAppRoleA
 | Permission | Why | Who can consent |
 |---|---|---|
 | `User.ReadWrite.All` | Find a person by address, read their directory extensions, write the three attributes, end their sign-in sessions | Privileged Role Administrator or Global Administrator |
-| `AppRoleAssignment.ReadWrite.All` | Read, create and delete this application's own app-role assignments | Privileged Role Administrator or Global Administrator |
+| `AppRoleAssignment.ReadWrite.All` | **Create and delete** this application's own app-role assignments. Does *not* permit reading them | Privileged Role Administrator or Global Administrator |
+| `Application.Read.All` | **Read** this app's own service principal: its `appRoles` and who holds them. Read-only, and the one most often missed | Privileged Role Administrator or Global Administrator |
 | `GroupMember.Read.All` | Read group membership, so a role held *through a group* shows as non-removable instead of silently missing | Privileged Role Administrator or Global Administrator |
 
 **Application Administrator is not enough** to consent to any of these, and the reason applies to all three
@@ -1878,6 +1879,13 @@ PIM, **activate it** — eligible-but-inactive fails identically to having no ro
 Contrast this with 9.4 below, which assigns *this application's* `rag.admin` to a person through the same
 `POST /servicePrincipals/{id}/appRoleAssignedTo` call and needs only Application Administrator. The privilege
 required depends on which service principal is the resource, not on the call.
+
+**`AppRoleAssignment.ReadWrite.All` does not permit *reading* an assignment** — only `POST` and `DELETE`.
+Reading `appRoleAssignedTo`, and reading the `appRoles` catalogue, are reads of the service principal and need
+`Application.Read.All`; Microsoft documents *creating* an assignment as needing both. Granting only the write
+permission gives you `403 Insufficient privileges to complete the operation` on the first lookup, which looks
+exactly like the write permission is missing. Both are in the catalogue this script grants, so a plain re-run fixes
+a deployment that predates it.
 
 **To check afterwards that it landed**, run `Set-EntraGraphPermissions.ps1 -Env dev -List`. The portal shows the
 same list read-only under *Entra ID → Enterprise applications* — set the **Application type** filter to *Managed

@@ -100,8 +100,11 @@ class DirectoryAdminService:
     def directory(self) -> DirectoryAdmin:
         if self._directory is None:
             raise NotSupported(
-                "Directory administration is not configured for this deployment. Set DIRECTORY=graph, with "
-                "ENTRA_SERVICE_PRINCIPAL_OBJECT_ID and the Graph permissions in the README, to enable it."
+                "Directory administration is not configured for this deployment. Set DIRECTORY=graph in "
+                "ExtraAppSettings in infra/env/<env>.psd1 and re-run 07-container-apps.ps1. It also requires "
+                "DEV_AUTH_ENABLED=false, which the API enforces by refusing to start the adapter, and the Graph "
+                "permissions granted by Set-EntraGraphPermissions.ps1. The full runbook is Deployment.md section "
+                "9.3. ENTRA_SERVICE_PRINCIPAL_OBJECT_ID needs no action: step 07 passes it from the outputs file."
             )
         return self._directory
 

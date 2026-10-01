@@ -487,8 +487,19 @@ def test_the_page_still_describes_itself_with_no_directory_configured() -> None:
 
 @pytest.mark.anyio
 async def test_reading_a_person_without_a_directory_says_what_to_configure() -> None:
-    with pytest.raises(NotSupported, match="DIRECTORY=graph"):
+    """Naming the setting is not enough on its own: an operator who read the earlier version of this message still
+    had to ask where DIRECTORY goes, because in this deployment model nobody edits a container env var by hand."""
+    with pytest.raises(NotSupported, match="DIRECTORY=graph") as excinfo:
         await _container().directory_admin.describe("priya@contoso.com")
+    detail = str(excinfo.value)
+    assert ".psd1" in detail, "say which file the setting lives in"
+    assert "07-container-apps.ps1" in detail, "and what pushes it to the running app"
+    assert "DEV_AUTH_ENABLED" in detail, "a hard refusal at construction, so it belongs in the same breath"
+    assert "9.3" in detail, "point at the runbook rather than restating half of it"
+    # The regression this guards: ENTRA_SERVICE_PRINCIPAL_OBJECT_ID used to be phrased as something to set, and
+    # step 07 already passes it from the outputs file. Mentioning it is fine; instructing it wastes an afternoon.
+    assert not re.search(r"(?:[Ss]et|[Aa]dd|with)\s+ENTRA_SERVICE_PRINCIPAL_OBJECT_ID", detail), (
+        f"step 07 supplies this; do not instruct the operator to set it: {detail}")
 
 
 def test_directory_writes_and_dev_tokens_cannot_be_enabled_together() -> None:

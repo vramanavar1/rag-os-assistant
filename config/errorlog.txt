@@ -1,12 +1,10 @@
-==> [11:46:58] Writing to Microsoft Graph
-Exception: C:\VSquareThoughts\rag-os-assistant\infra\scripts\common.ps1:331
+PS C:\VSquareThoughts\rag-os-assistant> ./infra/scripts/07-container-apps.ps1 -Env dev
+
+RAG-OS | 07 Container Apps | env=dev | rg=rg-ragos-dev | westus
+
+==> [17:00:07] Checking the database schema matches this checkout
+Test-SchemaUpToDate: C:\VSquareThoughts\rag-os-assistant\infra\scripts\07-container-apps.ps1:53
 Line |
- 331 |          throw $message
-     |          ~~~~~~~~~~~~~~
-     | az command failed (exit 1): az rest --method patch --url
-     | https://graph.microsoft.com/v1.0/applications/24b3044c-3d82-49a5-9902-01d91b871d73 --body
-     | @C:\Users\vrama\AppData\Local\Temp\tmpaw1hxa.tmp --headers Content-Type=application/json ERROR: Bad
-     | Request({"error":{"code":"InvalidValue","message":"Property api.preAuthorizedApplications.delegatedPermissionIds has a
-     | Permission Id that cannot be found in the AppPermissions sets.","details":[{"code":"InvalidValue","message":"Property
-     | api.preAuthorizedApplications.delegatedPermissionIds has a Permission Id that cannot be found in the AppPermissions
-     | sets.","target":"api.preAuthorizedApplications.delegatedPermissionIds","blockedWord":"","prefix":"","suffix":""}],"innerError":{"date":"2026-09-27T06:17:00","request-id":"ce43d043-dd74-4a62-936a-2062dea7b6cd","client-request-id":"ce43d043-dd74-4a62-936a-2062dea7b6cd"}}})
+  53 |  …   if (-not (Test-SchemaUpToDate -BaseUrl (Get-ChatUiUrl -Config $Conf …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | The property 'schema' cannot be found on this object. Verify that the property exists.

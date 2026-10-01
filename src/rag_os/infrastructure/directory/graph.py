@@ -160,8 +160,12 @@ class GraphDirectory(DirectoryAdmin):
             if res.status_code in (401, 403):
                 raise DependencyUnavailable(
                     "Microsoft Graph refused this application's credentials. Check that the managed identity "
-                    "holds User.ReadWrite.All, AppRoleAssignment.ReadWrite.All and GroupMember.Read.All, and "
-                    f"that the API revision was restarted after they were granted. Graph said: {detail}"
+                    "holds User.ReadWrite.All, AppRoleAssignment.ReadWrite.All, Application.Read.All and "
+                    "GroupMember.Read.All, and that the API revision was restarted after they were granted. "
+                    "Application.Read.All is the one most often missing: reading an app-role assignment is a "
+                    "read of the service principal, which AppRoleAssignment.ReadWrite.All does not cover. "
+                    "./infra/scripts/Set-EntraGraphPermissions.ps1 -Env <env> -List shows what is held. "
+                    f"Graph said: {detail}"
                 )
             raise DependencyUnavailable(f"Microsoft Graph rejected the request ({res.status_code}): {detail}")
         # A write is 204 with an empty body. There is nothing to parse, and parsing it would be an error.
@@ -186,6 +190,9 @@ class GraphDirectory(DirectoryAdmin):
     @staticmethod
     def _filter_literal(value: str) -> str:
         """A value safe to interpolate inside an OData string literal in a URL.
+
+        For Edm.String properties only - userPrincipalName and mail, which is its one caller. Quoting an
+        Edm.Guid property such as appRoleAssignment.principalId is a 400; see _all_assignments.
 
         Two separate escapes, and both are needed. odata_quote doubles the quote so the value cannot end the
         literal early and inject an operator. Percent-encoding then protects it from the URL itself - which
@@ -251,29 +258,48 @@ class GraphDirectory(DirectoryAdmin):
 
     async def list_roles(self, object_id: str) -> list[RoleAssignment]:
         await self._ensure_roles()
+        rows = await self._all_assignments()
         direct: dict[str, int] = {}
-        for row in await self._assignments_for(object_id):
+        for row in self._assignments_for(rows, object_id):
             value = self._role_values.get(str(row.get("appRoleId")))
             if value:
                 direct[value] = direct.get(value, 0) + 1
         out = [RoleAssignment(role_value=v, duplicates=n) for v, n in sorted(direct.items())]
-        out += [r for r in await self._group_roles(object_id) if r.role_value not in direct]
+        out += [r for r in await self._group_roles(rows, object_id) if r.role_value not in direct]
         return out
 
-    async def _assignments_for(self, object_id: str) -> list[dict[str, Any]]:
-        return await self._paged(
-            f"/servicePrincipals/{self._sp_id}/appRoleAssignedTo"
-            f"?$filter=principalId eq '{self._filter_literal(object_id)}'"
-        )
+    async def _all_assignments(self) -> list[dict[str, Any]]:
+        """Every app-role assignment on OUR service principal, read whole and narrowed in Python.
 
-    async def _group_roles(self, object_id: str) -> list[RoleAssignment]:
+        Unfiltered on purpose. appRoleAssignedTo does not support $filter on principalId in either literal form,
+        and the two failures look unrelated, so both are worth naming:
+
+            principalId eq '<guid>'   ->  400 "A binary operator with incompatible types was detected. Found
+                                         operand types 'Edm.Guid' and 'Edm.String'" - the property is Edm.Guid,
+                                         and quoting makes the literal a string.
+            principalId eq <guid>     ->  400 "Links to EntitlementGrant are not supported between specified
+                                         entities" - so removing the quotes is not the fix either.
+
+        Microsoft's guidance is to read the collection and filter client-side, which is what this does. The
+        reference page lists $filter as supported here; it is wrong about these properties.
+        """
+        return await self._paged(f"/servicePrincipals/{self._sp_id}/appRoleAssignedTo")
+
+    @staticmethod
+    def _assignments_for(rows: Iterable[dict[str, Any]], object_id: str) -> list[dict[str, Any]]:
+        """The rows belonging to one principal. Pure, because the narrowing moved here from the server and an
+        over-matching comparison would report every person as holding everyone else's roles."""
+        return [r for r in rows if str(r.get("principalId")) == object_id]
+
+    async def _group_roles(self, rows: list[dict[str, Any]], object_id: str) -> list[RoleAssignment]:
         """Roles this person holds because a GROUP holds them.
 
         A group-assigned app role reaches the token exactly as a direct one does, so leaving these out would
         show "not held" for somebody who is an administrator - and deleting the direct assignment an
         administrator then creates would not take it away.
+
+        Takes the rows its caller already read: this used to fetch the same collection a second time.
         """
-        rows = await self._paged(f"/servicePrincipals/{self._sp_id}/appRoleAssignedTo")
         by_group = {
             str(r.get("principalId")): str(r.get("principalDisplayName") or "a group")
             for r in rows
@@ -342,7 +368,7 @@ class GraphDirectory(DirectoryAdmin):
 
     async def revoke_role(self, object_id: str, role_value: str) -> int:
         role_id = await self._role_id(role_value)
-        rows = await self._assignments_for(object_id)
+        rows = self._assignments_for(await self._all_assignments(), object_id)
         # Every match, not the first: Graph does not deduplicate, so one grant posted twice is two rows and
         # removing one of them leaves the person holding the role.
         targets = [str(r["id"]) for r in rows if str(r.get("appRoleId")) == role_id and r.get("id")]

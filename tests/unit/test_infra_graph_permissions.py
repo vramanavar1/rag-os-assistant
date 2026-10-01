@@ -39,6 +39,7 @@ GRAPH_ROLES = {
     "User.ReadWrite.All": "role-user-rw",
     "AppRoleAssignment.ReadWrite.All": "role-appraa-rw",
     "GroupMember.Read.All": "role-groupmember-r",
+    "Application.Read.All": "role-application-r",
     "RoleManagement.ReadWrite.Directory": "role-rolemgmt-rw",  # present, and deliberately never asked for
 }
 
@@ -167,13 +168,22 @@ def flat(text: str) -> str:
 # ---------------------------------------------------------------- granting
 
 
+
+def catalogue() -> set[str]:
+    """The permission values in common.ps1's $script:RagOsGraphPermissions, so the count and the cross-artefact
+    check share one source and adding a permission needs no edit here."""
+    block = COMMON.read_text(encoding="utf-8").split("$script:RagOsGraphPermissions = @(", 1)
+    assert len(block) == 2, "the PowerShell permission catalogue moved; re-point this test"
+    return set(re.findall(r"Value\s*=\s*'([^']+)'", block[1].split("\n)", 1)[0]))
+
 @needs_pwsh
 def test_each_permission_is_granted_once_against_graphs_service_principal(env_files: None) -> None:
     result = run()
     assert result["exit"] == 0, result["out"]
     granted = {g["appRoleId"] for g in result["grants"]}
     assert granted == {GRAPH_ROLES[v] for v in
-                       ("User.ReadWrite.All", "AppRoleAssignment.ReadWrite.All", "GroupMember.Read.All")}
+                       ("User.ReadWrite.All", "AppRoleAssignment.ReadWrite.All", "Application.Read.All",
+                        "GroupMember.Read.All")}
     for g in result["grants"]:
         assert g["principalId"] == MI, "the grantee is the managed identity, not the app registration"
         assert g["resourceId"] == GRAPH_SP, "a consent hangs off the resource exposing the permission"
@@ -189,16 +199,20 @@ def test_nothing_beyond_the_catalogue_is_ever_granted(env_files: None) -> None:
 @needs_pwsh
 def test_a_re_run_grants_nothing_a_second_time(env_files: None) -> None:
     """The regression that matters. The stub pages, so a reader that stopped at page one would find none of the
-    existing grants and post every one of them again - and Graph would accept all three, because it does not
-    deduplicate. Two runs would leave six assignments."""
+    existing grants and post every one of them again - and Graph would accept them all, because it does not
+    deduplicate. Two runs would leave double.
+
+    The expected count comes from the catalogue rather than a literal: adding a permission to common.ps1 should
+    not fail this test, which is about idempotency and not about how many permissions there are."""
+    wanted = len(catalogue())
     work = Path(tempfile.mkdtemp())
     first = run(work=work)
-    assert len(first["grants"]) == 3, first["out"]
+    assert len(first["grants"]) == wanted, first["out"]
     second = run(work=work)
     assert second["exit"] == 0, second["out"]
     assert second["grants"] == [], "a second run must write nothing"
     assert "already granted" in flat(second["out"])
-    assert len(second["assignments"]) == 3, "and must not have stacked duplicates"
+    assert len(second["assignments"]) == wanted, "and must not have stacked duplicates"
 
 
 @needs_pwsh
@@ -331,7 +345,12 @@ def test_the_permission_catalogue_matches_what_the_api_requires() -> None:
     assert len(block) == 2, "the PowerShell permission catalogue moved; re-point this test"
 
     granted = set(re.findall(r"Value\s*=\s*'([^']+)'", block[1].split("\n)", 1)[0]))
-    assert granted == {"User.ReadWrite.All", "AppRoleAssignment.ReadWrite.All", "GroupMember.Read.All"}, granted
+    # Application.Read.All is here because AppRoleAssignment.ReadWrite.All covers WRITING an app-role assignment
+    # and not reading one: GET appRoleAssignedTo and GET ?$select=appRoles are reads of the service principal.
+    # Omitting it shipped a deployment that 403'd on the first lookup with "Insufficient privileges", which reads
+    # like the write permission is missing.
+    assert granted == {"User.ReadWrite.All", "AppRoleAssignment.ReadWrite.All", "Application.Read.All",
+                       "GroupMember.Read.All"}, granted
 
     adapter = (REPO / "src" / "rag_os" / "infrastructure" / "directory" / "graph.py").read_text(encoding="utf-8")
     for permission in granted:

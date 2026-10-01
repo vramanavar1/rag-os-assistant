@@ -1445,14 +1445,26 @@ az rest --method patch --url https://graph.microsoft.com/v1.0/users/priya@contos
     <thead><tr><th style="width:22%">Principal</th><th>Permission</th><th>Why</th><th>Who can grant it</th></tr></thead>
     <tbody>
       <tr><td>Managed identity <code>id-&lt;prefix&gt;-&lt;env&gt;</code></td><td><code>User.ReadWrite.All</code> <em>(Graph application)</em></td><td>Find a person by address, read their directory extensions, write the three attributes, end their sign-in sessions</td><td>Privileged Role Administrator or Global Administrator</td></tr>
-      <tr><td>&#8220;</td><td><code>AppRoleAssignment.ReadWrite.All</code> <em>(Graph application)</em></td><td>Read, create and delete this application's own app-role assignments</td><td>Privileged Role Administrator or Global Administrator</td></tr>
+      <tr><td>&#8220;</td><td><code>AppRoleAssignment.ReadWrite.All</code> <em>(Graph application)</em></td><td><strong>Create and delete</strong> this application's own app-role assignments. It does <em>not</em> permit reading them</td><td>Privileged Role Administrator or Global Administrator</td></tr>
+      <tr><td>&#8220;</td><td><code>Application.Read.All</code> <em>(Graph application)</em></td><td><strong>Read</strong> this app's own service principal: its <code>appRoles</code> catalogue, and who currently holds them. Read-only, and easy to miss &mdash; see the note below</td><td>Privileged Role Administrator or Global Administrator</td></tr>
       <tr><td>&#8220;</td><td><code>GroupMember.Read.All</code> <em>(Graph application)</em></td><td>Read group membership, so a role held <em>through a group</em> shows as non-removable instead of silently missing</td><td>Privileged Role Administrator or Global Administrator</td></tr>
       <tr><td>Operator running <code>Set-EntraAppRegistration.ps1</code></td><td><code>Application.ReadWrite.All</code> <em>(delegated)</em></td><td>Create the three directory extensions and add them to <code>optionalClaims</code></td><td>Application Administrator, Cloud Application Administrator or Directory Writers</td></tr>
       <tr><td>Operator setting a value by hand</td><td><code>microsoft.directory/users/extensionProperties/update</code></td><td>The <code>az rest</code> fallback above</td><td>Global Administrator (confirmed). <strong>User Administrator is unverified &mdash; test it before delegating</strong></td></tr>
     </tbody>
   </table></div>
-  <p>Two things stated plainly rather than smoothed over:</p>
+  <p>Things stated plainly rather than smoothed over:</p>
   <ul>
+    <li><strong><code>AppRoleAssignment.ReadWrite.All</code> does not let you <em>read</em> an app-role
+      assignment.</strong> It covers the write &mdash; <code>POST</code> and <code>DELETE</code> on
+      <code>appRoleAssignedTo</code> &mdash; and nothing else. Both
+      <code>GET /servicePrincipals/{id}/appRoleAssignedTo</code> and
+      <code>GET /servicePrincipals/{id}?$select=appRoles</code> are reads of the <strong>service
+      principal</strong>, whose least-privileged permission is <code>Application.Read.All</code>; Microsoft
+      documents <em>creating</em> an assignment as needing <strong>both</strong>. Granting only the write
+      permission produces <code>403 Insufficient privileges to complete the operation</code> on the first lookup
+      &mdash; which reads exactly like the write permission is missing, and sends you to re-check the one that is
+      already there. <code>Application.Read.All</code> is read-only, so it is the cheaper half of the pair to
+      justify.</li>
     <li><strong><code>User.ReadUpdate.All</code></strong> is Microsoft's newer least-privileged permission for
       <code>PATCH /users/{id}</code> and would be preferable. We have not confirmed it also covers the
       <code>$filter</code> lookup or <code>revokeSignInSessions</code>, so <code>User.ReadWrite.All</code> is the

@@ -999,7 +999,16 @@ $script:RagOsGraphPermissions = @(
         Why = 'Find a person by address, read their directory extensions, write the three attributes, and end their sign-in sessions.'
     }
     @{ Value = 'AppRoleAssignment.ReadWrite.All'
-        Why = "Read, create and delete this application's own app-role assignments. Tenant-wide and unscopable - see the note above."
+        Why = "Create and delete this application's own app-role assignments. Tenant-wide and unscopable - see the note above."
+    }
+    # Not optional, and not obvious: AppRoleAssignment.ReadWrite.All covers WRITING an assignment but not READING
+    # one. GET /servicePrincipals/{id}/appRoleAssignedTo and GET /servicePrincipals/{id}?$select=appRoles are reads
+    # of the service principal, whose least-privileged permission is Application.Read.All - and Microsoft documents
+    # CREATING an assignment as needing both. Without it the page fails on lookup with
+    # 'Insufficient privileges to complete the operation', which reads exactly like a missing grant of the write
+    # permission and sends you to re-check the one that is already there.
+    @{ Value = 'Application.Read.All'
+        Why = 'Read this app''s own service principal: its appRoles catalogue and who currently holds them. Read-only.'
     }
     @{ Value = 'GroupMember.Read.All'
         Why = 'Read group membership, so a role held THROUGH a group is shown as non-removable instead of silently missing.'
@@ -1166,9 +1175,25 @@ function Test-SchemaUpToDate {
         Write-Info '  Skipping the pre-flight - a first deploy has nothing to be behind.'
         return $true
     }
-    $current = $body.checks.schema.current
+    # Get-Value, not $body.checks.schema.current: readyz omits the schema block in two ordinary cases (below), and
+    # Set-StrictMode -Version Latest turns reading the missing property into a TERMINATING error - which killed the
+    # deploy here, one line above the guard written to handle it.
+    $current = Get-Value $body 'checks.schema.current'
     if (-not $current) {
-        Write-Info 'The running API does not report its schema revision (an older image); skipping the pre-flight.'
+        # Absent for two reasons that need opposite responses. health.py sets checks.schema only in the `else` of
+        # its state_db check, so an API that cannot reach its database reports no revision either - and calling
+        # that "an older image" would send the reader hunting the wrong problem.
+        $stateDb = Get-Value $body 'checks.state_db'
+        if ($stateDb -eq 'ok') {
+            Write-Info 'The running API does not report its schema revision (an older image); skipping the pre-flight.'
+        }
+        else {
+            $reported = if ($stateDb) { $stateDb } else { 'nothing' }
+            Write-Warn 'SCHEMA PRE-FLIGHT SKIPPED, and not because the image is old: the running API could not'
+            Write-Info "  reach its database, so it reports no schema revision. readyz said state_db: $reported."
+            Write-Info '  Nothing here checked whether the schema matches this build. If the database is down,'
+            Write-Info '  fix that before deploying rather than reading this as a clean result.'
+        }
         return $true
     }
     if ($current -eq $head) {

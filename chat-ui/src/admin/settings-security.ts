@@ -80,8 +80,8 @@ export const settingsSecurityView: View = async (ctx: ViewContext) => {
       ? null
       : h('div', { class: 'notice notice-warning' },
           'Directory administration is not configured for this deployment, so nothing here can be saved. ' +
-          'The values below are what the access policy would allow. See the README section on Entra user ' +
-          'attributes for the settings and permissions that switch it on.'),
+          'The values below are what the access policy would allow. Deployment.md section 9.3 is the runbook ' +
+          'that switches it on: the DIRECTORY setting, and the Graph permissions it needs.'),
     ...cap.warnings.map((w) => h('div', { class: 'notice notice-warning' }, w)),
     lookupForm,
     panel,

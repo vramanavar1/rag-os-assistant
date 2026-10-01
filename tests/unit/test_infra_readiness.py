@@ -724,3 +724,93 @@ def test_a_self_hosted_profile_still_requires_a_pinned_revision() -> None:
     finally:
         for f in files:
             f.unlink(missing_ok=True)
+
+
+# --------------------------------------------------------------------------------------- schema pre-flight
+# Test-SchemaUpToDate promises, in its own docstring, to return $true for "every case it cannot determine". It did
+# not: it read $body.checks.schema.current raw, and Set-StrictMode -Version Latest makes a missing property a
+# TERMINATING error, so the guard one line below - the one written for "an older image does not report its schema"
+# - was unreachable and step 07 died on the deploy it was meant to wave through. Nothing executed this function
+# before; test_infra_script_calls.py only greps the script for its name, which is how a dead guard shipped.
+
+def run_schema_check(body: str) -> dict:
+    """Run Test-SchemaUpToDate with Invoke-WebRequest stubbed to return `body` as the readyz payload.
+
+    `__HEAD__` is substituted with the checkout's real migration head, so these cases keep meaning the same thing
+    after the next migration instead of pinning a revision id that goes stale.
+    """
+    work = Path(tempfile.mkdtemp())
+    out, script, payload = work / "out.json", work / "probe.ps1", work / "body.txt"
+    payload.write_text(body, encoding="utf-8")
+    script.write_text(f""". '{COMMON.as_posix()}'
+$script:head = Get-MigrationHead -RepoRoot '{REPO.as_posix()}'
+$script:stub = (Get-Content -LiteralPath '{payload.as_posix()}' -Raw) -replace '__HEAD__', $script:head
+function Invoke-WebRequest {{
+    param([string]$Uri, [int]$TimeoutSec, [switch]$SkipHttpErrorCheck)
+    [pscustomobject]@{{ Content = $script:stub }}
+}}
+$all = @(Test-SchemaUpToDate -BaseUrl 'http://stub' -RepoRoot '{REPO.as_posix()}' -Env dev 6>&1)
+$lines = @($all | Where-Object {{ $_ -is [System.Management.Automation.InformationRecord] }} | ForEach-Object {{ "$_" }})
+$verdict = @($all | Where-Object {{ $_ -is [bool] }})
+ConvertTo-Json -Depth 5 -InputObject @{{ verdict = [bool]$verdict[-1]; lines = $lines }} |
+    Set-Content -LiteralPath '{out.as_posix()}' -Encoding utf8NoBOM
+""", encoding="utf-8")
+    done = subprocess.run([str(PWSH), "-NoProfile", "-NonInteractive", "-File", str(script)],
+                          capture_output=True, text=True, cwd=REPO, timeout=120)
+    if done.returncode != 0:
+        raise AssertionError(f"Test-SchemaUpToDate threw instead of returning a verdict "
+                            f"(exit {done.returncode})\n{done.stdout}\n{done.stderr}")
+    return json.loads(out.read_text(encoding="utf-8"))
+
+
+def said(got: dict) -> str:
+    return " ".join(got["lines"])
+
+
+@needs_pwsh
+def test_an_api_too_old_to_report_its_schema_is_waved_through() -> None:
+    """The exact failure reported from a real deploy: the running image predated checks.schema, and strict mode
+    turned the absent property into 'The property schema cannot be found on this object' - killing step 07."""
+    got = run_schema_check('{"status": "ready", "checks": {"state_db": "ok", "llm_answer": "claude"}}')
+    assert got["verdict"] is True, "an unknown revision must not block a deploy; that is the documented contract"
+    assert "older image" in said(got), said(got)
+
+
+@needs_pwsh
+def test_a_database_the_api_cannot_reach_is_not_reported_as_an_old_image() -> None:
+    """health.py sets checks.schema only in the `else` of its state_db check, so an unreachable database also
+    yields no revision. Sharing the 'older image' message would send the reader hunting the wrong problem."""
+    got = run_schema_check('{"status": "not_ready", "checks": {"state_db": "error: OperationalError"}}')
+    assert got["verdict"] is True, "still not a blocker - but it must say why it could not tell"
+    assert "older image" not in said(got), f"wrong diagnosis; the database is down: {said(got)}"
+    assert "OperationalError" in said(got), "name what readyz actually reported"
+    assert "SKIPPED" in said(got), "must not read as a clean bill of health"
+
+
+@needs_pwsh
+def test_a_schema_at_the_head_this_checkout_expects_passes() -> None:
+    got = run_schema_check('{"status": "ready", "checks": {"state_db": "ok", "schema": {"current": "__HEAD__"}}}')
+    assert got["verdict"] is True
+    assert "[ok]" in said(got), said(got)
+
+
+@needs_pwsh
+def test_a_schema_behind_this_checkout_blocks_and_names_the_fix() -> None:
+    got = run_schema_check('{"status": "ready", "checks": {"state_db": "ok", "schema": {"current": "0000deadbeef"}}}')
+    assert got["verdict"] is False, "this is the outage the pre-flight exists to prevent"
+    assert "0000deadbeef" in said(got), "show what the database is at"
+    assert "08-bootstrap.ps1" in said(got), "and how to fix it"
+
+
+@needs_pwsh
+def test_a_payload_with_no_checks_at_all_does_not_crash() -> None:
+    """A much older image, or a proxy answering on the API's behalf."""
+    got = run_schema_check('{"status": "ready"}')
+    assert got["verdict"] is True
+
+
+@needs_pwsh
+def test_a_body_that_is_not_json_does_not_crash() -> None:
+    """The chat UI proxies /api, so a misconfigured route returns its HTML error page rather than JSON."""
+    got = run_schema_check("<html><body>502 Bad Gateway</body></html>")
+    assert got["verdict"] is True

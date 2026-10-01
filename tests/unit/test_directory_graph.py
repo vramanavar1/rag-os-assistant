@@ -44,7 +44,15 @@ class Graph:
     def transport(self) -> httpx.MockTransport:
         def handler(request: httpx.Request) -> httpx.Response:
             self.seen.append(request)
-            key = (request.method, self._path(request))
+            path = self._path(request)
+            # Routes are keyed on (method, path), so a query string used to go entirely unexamined - which is how
+            # a $filter real Graph rejects shipped and passed every test here. appRoleAssignedTo does not support
+            # $filter on principalId/appRoleId/resourceId in EITHER literal form, so refuse it the way Graph does.
+            if path.endswith("/appRoleAssignedTo") and b"$filter" in request.url.query:
+                return httpx.Response(400, json={"error": {"code": "Request_BadRequest", "message": (
+                    "Invalid filter clause: A binary operator with incompatible types was detected. Found "
+                    "operand types 'Edm.Guid' and 'Edm.String' for operator kind 'Equal'.")}})
+            key = (request.method, path)
             body = self.routes.get(key, ...)
             if body is ...:
                 return httpx.Response(204)
@@ -247,9 +255,9 @@ async def test_role_assignments_beyond_the_first_page_are_not_lost() -> None:
     visible one leaves the person still holding the role."""
     page2 = "https://graph.microsoft.com/v1.0/servicePrincipals/sp-object-id/appRoleAssignedTo?$skiptoken=x"
     g = Graph({("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): [
-        {"value": [{"id": "a1", "appRoleId": "role-sme-guid", "principalType": "User"}], "@odata.nextLink": page2},
-        {"value": [{"id": "a2", "appRoleId": "role-admin-guid", "principalType": "User"}]},
-        {"value": []},  # the group sweep
+        {"value": [{"id": "a1", "appRoleId": "role-sme-guid", "principalType": "User", "principalId": OID}],
+         "@odata.nextLink": page2},
+        {"value": [{"id": "a2", "appRoleId": "role-admin-guid", "principalType": "User", "principalId": OID}]},
     ]})
     roles = await directory(g).list_roles(OID)
     assert sorted(r.role_value for r in roles) == ["rag.admin", "rag.sme"], "page two was dropped"
@@ -258,25 +266,61 @@ async def test_role_assignments_beyond_the_first_page_are_not_lost() -> None:
 @pytest.mark.anyio
 async def test_a_repeated_assignment_is_reported_as_a_duplicate() -> None:
     """Graph does not deduplicate, so this state is reachable and has to be visible."""
-    g = Graph({("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): [
-        {"value": [{"id": "a1", "appRoleId": "role-sme-guid"}, {"id": "a2", "appRoleId": "role-sme-guid"}]},
-        {"value": []},
-    ]})
+    g = Graph({("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): {"value": [
+        {"id": "a1", "appRoleId": "role-sme-guid", "principalId": OID},
+        {"id": "a2", "appRoleId": "role-sme-guid", "principalId": OID},
+    ]}})
     roles = await directory(g).list_roles(OID)
     assert [(r.role_value, r.duplicates) for r in roles] == [("rag.sme", 2)]
 
 
 @pytest.mark.anyio
 async def test_revoking_a_role_removes_every_duplicate_assignment() -> None:
+    # Somebody else's rag.sme sits in the same collection. The narrowing is client-side now, so a revoke that
+    # ignored principalId would strip a role from a person the administrator never named.
     g = Graph({("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): {"value": [
-        {"id": "a1", "appRoleId": "role-sme-guid"},
-        {"id": "a2", "appRoleId": "role-sme-guid"},
-        {"id": "a3", "appRoleId": "role-admin-guid"},
+        {"id": "a1", "appRoleId": "role-sme-guid", "principalId": OID},
+        {"id": "a2", "appRoleId": "role-sme-guid", "principalId": OID},
+        {"id": "a3", "appRoleId": "role-admin-guid", "principalId": OID},
+        {"id": "b1", "appRoleId": "role-sme-guid", "principalId": "someone-else"},
     ]}})
     removed = await directory(g).revoke_role(OID, "rag.sme")
     assert removed == 2
-    deleted = [p.rsplit("/", 1)[-1] for p in g.paths() if p.endswith(("a1", "a2", "a3"))]
-    assert sorted(deleted) == ["a1", "a2"], "both duplicates go, and the other role is untouched"
+    deleted = [p.rsplit("/", 1)[-1] for p in g.paths() if p.endswith(("a1", "a2", "a3", "b1"))]
+    assert sorted(deleted) == ["a1", "a2"], "both duplicates go; the other role and the other person are untouched"
+
+
+@pytest.mark.anyio
+async def test_another_persons_assignment_is_not_attributed_to_this_one() -> None:
+    """The narrowing by principalId moved from Graph into Python, because appRoleAssignedTo rejects a $filter on
+    that property in either literal form. A comparison that over-matched would report every person as holding
+    everyone else's roles - rag.admin included, which bypasses the document filter entirely. That failure is
+    silent and grants access, so it gets its own test rather than riding on the duplicate one."""
+    g = Graph({("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): {"value": [
+        {"id": "a1", "appRoleId": "role-sme-guid", "principalType": "User", "principalId": OID},
+        {"id": "b1", "appRoleId": "role-admin-guid", "principalType": "User", "principalId": "someone-else"},
+        {"id": "b2", "appRoleId": "role-sme-guid", "principalType": "User", "principalId": None},
+    ]}})
+    roles = await directory(g).list_roles(OID)
+    assert [(r.role_value, r.duplicates) for r in roles] == [("rag.sme", 1)], (
+        "only the looked-up principal's row counts; a row for somebody else, or one with no principalId at all, "
+        "must not be attributed to them")
+
+
+@pytest.mark.anyio
+async def test_a_lookup_reads_the_assignment_collection_once() -> None:
+    """It used to read it twice - once through the broken $filter and once unfiltered for the group sweep. The
+    collection is every assignment on our service principal, so a second full read is pure cost on a large
+    tenant, and nothing else would notice it had come back."""
+    g = Graph({
+        ("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): {"value": [
+            {"id": "g1", "appRoleId": "role-admin-guid", "principalType": "Group",
+             "principalId": "group-oid", "principalDisplayName": "HR Leads"}]},
+        ("GET", f"/users/{OID}/transitiveMemberOf/microsoft.graph.group"): {"value": [{"id": "group-oid"}]},
+    })
+    await directory(g).list_roles(OID)
+    reads = [pth for pth in g.paths() if pth.endswith("/appRoleAssignedTo")]
+    assert len(reads) == 1, f"the collection was read {len(reads)} times: {reads}"
 
 
 @pytest.mark.anyio
@@ -305,7 +349,7 @@ async def test_a_role_held_through_a_group_is_reported_and_marked_unremovable() 
     assignments = {"value": [{"id": "g1", "appRoleId": "role-admin-guid", "principalType": "Group",
                               "principalId": "group-oid", "principalDisplayName": "HR Leads"}]}
     g = Graph({
-        ("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): [{"value": []}, assignments],
+        ("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): assignments,
         ("GET", f"/users/{OID}/transitiveMemberOf/microsoft.graph.group"): {"value": [{"id": "group-oid"}]},
     })
     roles = await directory(g).list_roles(OID)
@@ -317,7 +361,7 @@ async def test_a_group_role_the_caller_is_not_a_member_of_is_not_reported() -> N
     assignments = {"value": [{"id": "g1", "appRoleId": "role-admin-guid", "principalType": "Group",
                               "principalId": "someone-elses-group", "principalDisplayName": "Finance"}]}
     g = Graph({
-        ("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): [{"value": []}, assignments],
+        ("GET", f"/servicePrincipals/{SP_ID}/appRoleAssignedTo"): assignments,
         ("GET", f"/users/{OID}/transitiveMemberOf/microsoft.graph.group"): {"value": [{"id": "mine"}]},
     })
     assert await directory(g).list_roles(OID) == []
