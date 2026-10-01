@@ -34,7 +34,12 @@ function valueSelect(id: string, spec: DirectoryCapability['attributes'][number]
   // Offered only where the API says the attribute may be emptied - a required attribute cleared leaves the
   // person able to read nothing at all, so the server refuses it and the option should not be there to pick.
   if (spec.clearable && current) options.push(h('option', { value: 'CLEAR' }, 'Clear the value'));
-  return h('select', { id, class: 'select' }, ...options) as HTMLSelectElement;
+  const select = h('select', { id, class: 'select' }, ...options) as HTMLSelectElement;
+  // An attribute the policy gives no values for would otherwise render as a dropdown holding only "Not set" -
+  // indistinguishable from a broken page, and the reason (the policy in the config store) is nowhere on screen.
+  // Disabled rather than hidden: the field still has to show, because its absence is the confusing part.
+  if (!spec.values.length) select.disabled = true;
+  return select;
 }
 
 export const settingsSecurityView: View = async (ctx: ViewContext) => {
@@ -110,6 +115,8 @@ export const settingsSecurityView: View = async (ctx: ViewContext) => {
     const roleBoxes = new Map<string, HTMLInputElement>();
     const held = new Map(state.roles.map((r) => [r.value, r]));
 
+    // One field per writable attribute, always - never conditional on the person already having a value. Somebody
+    // with nothing set is the normal case on this page, and is exactly who needs the field.
     const attributeFields = cap.attributes.map((spec) => {
       const id = `sec-attr-${spec.name}`;
       const select = valueSelect(id, spec, state.attributes[spec.name] ?? null);
@@ -117,8 +124,19 @@ export const settingsSecurityView: View = async (ctx: ViewContext) => {
       return h('div', { class: 'field' },
         h('label', { for: id }, spec.label + (spec.required ? ' (required)' : '')),
         select,
+        spec.values.length
+          ? null
+          : h('div', { class: 'notice notice-warning' },
+              `The access policy in use lists no allowed_values for ${spec.label}, so there is nothing to ` +
+              'assign. Add them under Config in this console - that edits the policy the API actually reads, ' +
+              'which can be older than the copy in a repository checkout.'),
         spec.description ? h('p', { class: 'hint' }, spec.description) : null);
     });
+    if (!attributeFields.length) {
+      attributeFields.push(h('div', { class: 'notice notice-warning' },
+        'No writable attributes are configured. Only an attribute the access policy reads from a directory ' +
+        'extension can be assigned here; see Config in this console.'));
+    }
 
     const confirmInput = h('input', {
       type: 'text', id: 'sec-confirm', autocomplete: 'off', spellcheck: 'false',
@@ -222,7 +240,9 @@ export const settingsSecurityView: View = async (ctx: ViewContext) => {
         class: 'stack',
         onsubmit: (ev: SubmitEvent) => { ev.preventDefault(); void save(); },
       },
-      card('Signed-in identity',
+      // Not "Signed-in identity": this is the person being looked up, and on a page whose job is changing
+      // somebody else's access, labelling it as the administrator's own identity is worse than no label.
+      card('Person being changed',
         h('dl', { class: 'kv' },
           h('dt', null, 'Name'), h('dd', null, state.display_name || '—'),
           h('dt', null, 'User principal name'), h('dd', null, state.user_principal_name),
@@ -233,8 +253,17 @@ export const settingsSecurityView: View = async (ctx: ViewContext) => {
         ? null
         : h('div', { class: 'notice notice-warning' },
             'This account is disabled, so granting it access has no immediate effect.'),
-      card('What they can read', ...attributeFields),
-      card('What they can do', ...roleRows, confirmField),
+      // One card, four labelled fields. The attributes and the roles used to sit in separate cards titled by what
+      // they achieve; naming the fields themselves is plainer, and the grouping added nothing.
+      card('Access',
+        ...attributeFields,
+        // fieldset/legend rather than a bare label: it is the established grouping for a set of checkboxes here
+        // (controls.ts does the same for paused sources), and it is what a screen reader needs to announce the
+        // group name before the individual roles.
+        h('fieldset', null,
+          h('legend', null, 'Roles'),
+          h('div', { class: 'check-grid' }, ...roleRows)),
+        confirmField),
       card('After saving',
         h('p', { class: 'hint' }, state.propagation_note),
         h('div', { class: 'check' }, sessionsBox,

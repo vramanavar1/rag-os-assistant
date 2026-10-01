@@ -178,7 +178,16 @@ class DirectoryAdminService:
                         f"until the facet defines them."
                     )
             if not rule.levels and not rule.allowed_values:
-                out.append(f"{rule.name}: no allowed_values in the access policy, so it cannot be assigned here.")
+                # Names the config store on purpose. The policy this reads is the one in the store, which on a
+                # deployed environment is a blob that 08-bootstrap.ps1 seeds and then never overwrites - so a repo
+                # checkout that has allowed_values is no evidence the running policy does, and the symptom is an
+                # empty dropdown with nothing to explain it.
+                out.append(
+                    f"{rule.name}: the access policy in use defines no allowed_values, so no value can be "
+                    f"assigned. Add them under the '{rule.name}' attribute. Note this is the policy in the "
+                    f"configuration store, which may be older than the one in your checkout - edit it through "
+                    f"Config in this console, which writes the copy actually being read."
+                )
         return out
 
     # ---------------------------------------------------------------- reading a person

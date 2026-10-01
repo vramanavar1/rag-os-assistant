@@ -120,3 +120,32 @@ def test_the_view_does_not_reach_into_the_chat_bundle() -> None:
         assert rel not in text, f"{VIEW} imports {rel}"
     for other in ("account.ts", "dialog.ts", "uploads-list.ts"):
         assert "settings-security" not in source(other), f"{other} must not import the admin-only page"
+
+
+def test_every_writable_attribute_gets_a_field_even_when_it_has_no_value() -> None:
+    """A person with nothing set is the normal case here, and is exactly who needs the field. So the fields are
+    built from the API's attribute list, never gated on the person already having a value - a `state.attributes`
+    test around the field would hide the control from the only people it is for."""
+    code = without_comments(source(VIEW))
+    build = code.split("const attributeFields", 1)
+    assert len(build) == 2, "the attribute fields moved; re-point this test"
+    assert "cap.attributes.map(" in build[1], (
+        "the fields must come from the API's writable-attribute list, one each, unconditionally")
+    head = build[1][: build[1].index("selects.set")]
+    assert "state.attributes[spec.name] ?? null" in head, (
+        "the person's current value selects an option; it must not decide whether the field exists")
+    for gate in ("if (state.attributes", "state.attributes[spec.name] &&", ".filter("):
+        assert gate not in head, f"the field list is gated on the current value by {gate!r}"
+
+
+def test_an_attribute_with_no_configured_values_explains_why() -> None:
+    """The symptom that started this: a dropdown holding only "Not set", with the reason (the policy in the
+    config store, which is not the repo checkout) nowhere on screen. An empty master list has to say so."""
+    code = without_comments(source(VIEW))
+    assert "spec.values.length" in code, "the empty master list must be a case the page handles"
+    assert "allowed_values" in code, "name the policy key, so the reader knows what to add"
+    assert "Config" in code, "and where to add it - the console edits the copy the API actually reads"
+    assert re.search(r"if \(!spec\.values\.length\)\s*select\.disabled = true", code), (
+        "a select with nothing to choose must be disabled, not merely empty")
+    assert "No writable attributes are configured" in code, (
+        "an empty attribute list must say so rather than rendering an empty card")

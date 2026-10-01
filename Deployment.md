@@ -1242,14 +1242,37 @@ All configuration lives in `config/` in the repository and is uploaded to the `c
 | `config/dev/principals.yaml` | Demo identities for `rag-os ask --as <id>` and the dev token endpoint. Only read when `DEV_AUTH_ENABLED=true`, so it is inert in production — but it is uploaded with everything else, so keep it free of anything real. |
 
 ### Edit and publish
+
+> **An image deploy does not carry config changes.** `06`/`07` ship containers; `config/**` lives in the blob
+> container, which step 08 **seeds once and then never overwrites** — deliberately, because the admin console
+> writes those same blobs and a blanket overwrite destroys an administrator's edits. A deployment can therefore
+> run a policy far older than its image and look perfectly healthy. This is not theoretical: Settings (Security)
+> shipped against a policy predating `app_roles:`, the `extn.*` claims and `allowed_values:`, and rendered no
+> attributes and no roles while every probe stayed green.
+>
+> Steps 07 and 08 now compare `config/**.yaml` with the container by content and **name any file that differs**.
+> It is a warning, never a failure: an administrator editing the policy through the console creates drift on
+> purpose, and failing the deploy would block every later one until somebody overwrote their work.
+
+**Order matters: deploy the image first, then publish the config.** `AttributeRule` is declared
+`extra="forbid"`, so a policy using a field a older image does not know is *invalid* to that image. Publishing
+through the console is safe either way — it validates the YAML against the running build and answers `422` rather
+than storing something unreadable. A blob upload skips that check, which is the one way to leave a live
+deployment with a policy it cannot parse.
+
 ```powershell
 # 1. edit the files in config/ and commit them
-# 2. publish them. Step 08 only SEEDS files that are missing, because the admin API writes these same
-#    blobs - so replacing what is already there is an explicit choice, here or with 08 -OverwriteConfig.
-az storage blob upload-batch --account-name stragosdevxxxxx --destination config `
-  --source ./config --auth-mode login --overwrite true
+# 2. deploy the images that understand them (06 then 07), and only then publish
 
-# 3. reload without a restart (admin token required)
+# 3. publish - preferred: Config in the admin console, which validates before writing.
+#    Or push just the files whose content differs, leaving every other blob (and every console edit) alone:
+./infra/scripts/08-bootstrap.ps1 -Env dev -PushChanged
+
+#    -OverwriteConfig replaces EVERY config blob with the repository copy, discarding console edits.
+#    Only *.yaml / *.yml are uploaded; anything else under config/ is reported and skipped, so local
+#    scratch (error logs, notes) is never shipped into the deployment.
+
+# 4. reload without a restart (admin token required)
 curl -X POST https://<chat-ui-fqdn>/api/admin/config/reload -H "Authorization: Bearer $env:RAG_OS_ADMIN_TOKEN"
 ```
 Adding a **new access attribute** or a new facet field changes the index schema: attributes can often be added in place,

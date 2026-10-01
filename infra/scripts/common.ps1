@@ -1912,6 +1912,83 @@ function Get-ShortHash {
     return (-join ($bytes | ForEach-Object { $_.ToString('x2') })).Substring(0, $Length)
 }
 
+function Get-ConfigFileDigest {
+    <#
+    .SYNOPSIS  SHA256 of a config file's MEANING, not its bytes.
+    .DESCRIPTION
+        Strips a UTF-8 BOM and normalises CRLF to LF before hashing. Without that, a Windows checkout compared
+        against a blob the admin API rewrote reports every file as drifted - and a warning that fires every time is
+        one people learn to scroll past, which is the failure this whole check exists to avoid. YAML does not care
+        about either, so neither does this.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        $bytes = $bytes[3..($bytes.Length - 1)]
+    }
+    $text = [Text.Encoding]::UTF8.GetString($bytes).Replace("`r`n", "`n")
+    $hash = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text))
+    return (-join ($hash | ForEach-Object { $_.ToString('x2') }))
+}
+
+
+function Compare-ConfigWithContainer {
+    <#
+    .SYNOPSIS
+        Compare the repository's config/**.yaml against the copies the running system actually reads.
+    .DESCRIPTION
+        config/** SEEDS the container; after that the deployment owns it, and 08-bootstrap.ps1 never replaces a
+        blob that already exists (a blanket overwrite silently destroyed admin edits made through the console).
+        That rule is right, but it used to report only THAT a file was kept - so a file nobody had touched and a
+        file whose repository copy had gained three new features printed the same line, and "your config change
+        never shipped" was indistinguishable from "nothing to do". This is what tells them apart.
+
+        Content is compared, not timestamps or etags: the console and this script write the same blob by different
+        routes, so only the bytes mean anything - normalised, per Get-ConfigFileDigest.
+
+        Only *.yaml / *.yml are treated as configuration. Everything else found under config/ is returned with
+        status 'NotConfig' so the caller can refuse to upload it: config/ accumulates local scratch (error logs,
+        notes) that is gitignored but that a recursive file walk would happily ship into the deployment.
+
+        Read-only. Returns one row per file: Blob, Path, Status in Missing|Identical|Differs|NotConfig.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$StorageAccount,
+        [Parameter(Mandatory)][string]$ConfigDir,
+        [string]$Container = 'config'
+    )
+    $rows = @()
+    if (-not (Test-Path -LiteralPath $ConfigDir)) { return $rows }
+    $present = @(Get-AzTsvValues @('storage', 'blob', 'list', '--account-name', $StorageAccount,
+            '-c', $Container, '--auth-mode', 'login', '--query', '[].name'))
+    $prefix = (Resolve-Path -LiteralPath $ConfigDir).Path.TrimEnd('\', '/')
+    $temp = Join-Path ([IO.Path]::GetTempPath()) "rag-os-configdiff-$([guid]::NewGuid().ToString('N'))"
+    $null = New-Item -ItemType Directory -Force -Path $temp
+    try {
+        foreach ($file in @(Get-ChildItem -LiteralPath $ConfigDir -Recurse -File)) {
+            $rel = $file.FullName.Substring($prefix.Length).TrimStart('\', '/').Replace('\', '/')
+            if ($file.Extension -notin @('.yaml', '.yml')) {
+                $rows += [pscustomobject]@{ Blob = $rel; Path = $file.FullName; Status = 'NotConfig' }
+                continue
+            }
+            if ($present -notcontains $rel) {
+                $rows += [pscustomobject]@{ Blob = $rel; Path = $file.FullName; Status = 'Missing' }
+                continue
+            }
+            $dest = Join-Path $temp ($rel -replace '[\\/]', '_')
+            $null = Invoke-Az @('storage', 'blob', 'download', '--account-name', $StorageAccount, '-c', $Container,
+                '-n', $rel, '-f', $dest, '--auth-mode', 'login', '--no-progress', '-o', 'none')
+            $same = (Get-ConfigFileDigest -Path $file.FullName) -eq (Get-ConfigFileDigest -Path $dest)
+            $rows += [pscustomobject]@{
+                Blob = $rel; Path = $file.FullName; Status = $same ? 'Identical' : 'Differs'
+            }
+        }
+    }
+    finally { Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue }
+    return $rows
+}
+
+
 function Import-RagOsConfig {
     <#
     .SYNOPSIS  Loads infra/env/<Env>.psd1 over the defaults in dev.sample.psd1 and derives resource names.

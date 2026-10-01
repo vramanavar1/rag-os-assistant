@@ -6,9 +6,12 @@
 .DESCRIPTION
     0. Runs Test-Connectivity.ps1 -Preflight first: the job talks to PostgreSQL, Search and Blob itself, so an
        unreachable one of those is a guaranteed 30-minute failure. -SkipConnectivityCheck bypasses it.
-    1. Seeds the config container from config/** keeping relative paths (sources/sources.yaml,
+    1. Seeds the config container from config/**.yaml keeping relative paths (sources/sources.yaml,
        access-policy/access-policy.yaml, classification/facets.yaml, embedding/profiles.yaml, ...). Files that are
-       already in the container are left alone - admins edit them through the API - unless -OverwriteConfig.
+       already in the container are left alone - admins edit them through the API - but their CONTENT is compared
+       with this checkout and any that differ are named, because a config change that never shipped used to look
+       exactly like nothing to do. -PushChanged uploads just those; -OverwriteConfig replaces everything.
+       Anything under config/ that is not *.yaml / *.yml is reported and NOT uploaded.
     2. Starts the rag-bootstrap job (database migrations, index from the embedding profile, policy + facets) and waits.
     3. Starts rag-scheduler once so the first discovery does not wait for the next cron tick.
     4. Waits for https://<chat-ui>/api/readyz and prints the URLs.
@@ -23,6 +26,10 @@ param(
     # Replace config blobs that already exist with the repository copies. Without it they are left alone,
     # because the admin API writes those same blobs and its edits are the newer truth.
     [switch]$OverwriteConfig,
+    # Upload only the config files whose CONTENT differs from this checkout, leaving every other blob
+    # untouched. The middle ground between never-overwrite and -OverwriteConfig, which replaces
+    # everything and so discards unrelated edits made through the admin console.
+    [switch]$PushChanged,
     [switch]$SkipScheduler,
     # The pre-flight only reads; skip it if a hop is known-bad and you want the job attempted regardless.
     [switch]$SkipConnectivityCheck,
@@ -61,31 +68,61 @@ if (-not $SkipUpload) {
         # and facets through the admin API, which writes these very blobs (with an etag guard that a blanket
         # upload-batch bypasses). A blind --overwrite therefore reverted their work on every re-run, silently.
         # So: upload what is missing, and never replace what is already there unless asked.
-        $present = @(Get-AzTsvValues @('storage', 'blob', 'list', '--account-name', $storage, '-c', 'config', '--auth-mode', 'login', '--query', '[].name'))
-        $local = @(Get-ChildItem -LiteralPath $configDir -Recurse -File)
-        $prefix = (Resolve-Path -LiteralPath $configDir).Path.TrimEnd('\', '/')
-        $new = @()
-        $kept = @()
-        foreach ($file in $local) {
-            $rel = $file.FullName.Substring($prefix.Length).TrimStart('\', '/').Replace('\', '/')
-            if ($present -contains $rel) { $kept += $rel } else { $new += @{ Path = $file.FullName; Blob = $rel } }
-        }
+        #
+        # What this USED to get wrong: it reported only THAT a file was kept. A file nobody had touched and a file
+        # whose repository copy had gained three new features printed the same line, so a config change that never
+        # shipped looked exactly like nothing to do. Now the contents are compared.
+        $rows = @(Compare-ConfigWithContainer -StorageAccount $storage -ConfigDir $configDir)
+        $new = @($rows | Where-Object { $_.Status -eq 'Missing' })
+        $identical = @($rows | Where-Object { $_.Status -eq 'Identical' })
+        $drifted = @($rows | Where-Object { $_.Status -eq 'Differs' })
+        $notConfig = @($rows | Where-Object { $_.Status -eq 'NotConfig' })
+
         foreach ($item in $new) {
             $null = Invoke-Az @('storage', 'blob', 'upload', '--account-name', $storage, '-c', 'config', '-n', $item.Blob,
                 '-f', $item.Path, '--auth-mode', 'login', '--no-progress', '-o', 'none')
             Write-Ok "config/$($item.Blob) (uploaded)"
         }
-        if ($kept.Count -gt 0 -and -not $OverwriteConfig) {
-            Write-Info "$($kept.Count) config file(s) already in the container were left alone: $($kept -join ', ')"
-            Write-Info 'Anything an admin changed through the UI lives there. Pass -OverwriteConfig to replace them with the repository copies.'
+        if ($identical.Count -gt 0) {
+            Write-Ok "$($identical.Count) config file(s) already match this checkout: $(($identical.Blob) -join ', ')"
         }
-        elseif ($kept.Count -gt 0) {
-            Write-Warn "-OverwriteConfig: replacing $($kept.Count) existing config file(s) with the repository copies. Admin edits made through the UI will be lost."
-            $null = Invoke-Az @('storage', 'blob', 'upload-batch', '--account-name', $storage, '--destination', 'config',
-                '--source', $configDir, '--auth-mode', 'login', '--overwrite', 'true', '--no-progress', '-o', 'none')
-            foreach ($rel in $kept) { Write-Ok "config/$rel (overwritten)" }
+        # config/ collects local scratch - error logs, notes - that is gitignored but that a recursive file walk
+        # would happily ship into the deployment's configuration store. Name them instead.
+        if ($notConfig.Count -gt 0) {
+            Write-Warn "$($notConfig.Count) file(s) under config/ are not YAML and were NOT uploaded: $(($notConfig.Blob) -join ', ')"
+            Write-Info '  Only *.yaml and *.yml are configuration. Move anything else out of config/.'
         }
-        if ($new.Count -eq 0 -and $kept.Count -gt 0 -and -not $OverwriteConfig) { Write-Ok 'config container already seeded (nothing uploaded)' }
+        if ($drifted.Count -gt 0 -and $PushChanged) {
+            Write-Warn "-PushChanged: replacing $($drifted.Count) config file(s) that differ from this checkout."
+            Write-Info '  Deploy the matching image FIRST. A blob push does not go through the API, so it skips the'
+            Write-Info '  validation the console does, and a policy using fields an older image does not know is'
+            Write-Info '  rejected by that image when it reads it.'
+            foreach ($item in $drifted) {
+                $null = Invoke-Az @('storage', 'blob', 'upload', '--account-name', $storage, '-c', 'config', '-n', $item.Blob,
+                    '-f', $item.Path, '--auth-mode', 'login', '--overwrite', 'true', '--no-progress', '-o', 'none')
+                Write-Ok "config/$($item.Blob) (pushed)"
+            }
+        }
+        elseif ($drifted.Count -gt 0 -and -not $OverwriteConfig) {
+            Write-Warn "$($drifted.Count) config file(s) DIFFER from this checkout and were left alone:"
+            foreach ($item in $drifted) { Write-Info "    $($item.Blob)" }
+            Write-Info '  The deployment is running the OLDER copy, so a change you made in the repository has not'
+            Write-Info '  shipped. Either edit it through Config in the admin console (validated, and the etag guard'
+            Write-Info '  protects concurrent edits), or push just these files:'
+            Write-Info "    ./infra/scripts/08-bootstrap.ps1 -Env $($Config.EnvName) -PushChanged"
+        }
+        if ($OverwriteConfig -and ($drifted.Count + $identical.Count) -gt 0) {
+            $existing = @($drifted) + @($identical)
+            Write-Warn "-OverwriteConfig: replacing $($existing.Count) existing config file(s) with the repository copies. Admin edits made through the UI will be lost."
+            foreach ($item in $existing) {
+                $null = Invoke-Az @('storage', 'blob', 'upload', '--account-name', $storage, '-c', 'config', '-n', $item.Blob,
+                    '-f', $item.Path, '--auth-mode', 'login', '--overwrite', 'true', '--no-progress', '-o', 'none')
+                Write-Ok "config/$($item.Blob) (overwritten)"
+            }
+        }
+        if ($new.Count -eq 0 -and $drifted.Count -eq 0 -and $identical.Count -gt 0) {
+            Write-Ok 'config container matches this checkout (nothing to upload)'
+        }
         Write-Info "List: az storage blob list --account-name $storage -c config --auth-mode login --query '[].name' -o tsv"
     }
 }

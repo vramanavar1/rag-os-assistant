@@ -115,6 +115,21 @@ def test_a_region_value_missing_from_the_facet_tree_is_warned_about_not_silently
     assert any("Atlantis" in w and "parents" in w for w in warnings), warnings
 
 
+def test_an_attribute_with_no_master_list_says_the_running_policy_is_the_one_that_counts() -> None:
+    """The symptom is an empty dropdown. The cause, on a deployed environment, is that the policy being read lives
+    in the config store - a blob 08-bootstrap.ps1 seeds and then never overwrites - so a checkout carrying
+    allowed_values is no evidence the running policy carries them. The warning has to say that, or the reader
+    checks the file in front of them, sees the values, and goes looking somewhere else entirely."""
+    attrs = [dict(a) for a in POLICY_DICT["attributes"]]
+    attrs[0] = {k: v for k, v in attrs[0].items() if k != "allowed_values"}
+    warnings = service(fake(), attributes=attrs)._warnings()
+    hit = [w for w in warnings if "department" in w]
+    assert hit, f"an attribute with no values must be warned about: {warnings}"
+    assert "allowed_values" in hit[0], "name the key to add"
+    assert "configuration store" in hit[0], (
+        f"the reader has to be told the running policy may differ from their checkout: {hit[0]}")
+
+
 # ---------------------------------------------------------------- who may write
 
 

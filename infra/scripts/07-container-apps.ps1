@@ -26,7 +26,10 @@ param(
     [string[]]$Only,
     # Deploy even when the database has not had this checkout's migrations applied. Only for deliberately
     # putting an image out ahead of its migration; the default refuses, because the accident is silent.
-    [switch]$SkipSchemaCheck
+    [switch]$SkipSchemaCheck,
+    # Skip the post-deploy comparison of config/ against the config container. The check is read-only
+    # and advisory; this is for a run where storage is deliberately unreachable.
+    [switch]$SkipConfigCheck
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 $Config = Initialize-RagOsScript -Env $Env -Title '07 Container Apps'
@@ -398,6 +401,38 @@ Save-Outputs -Config $Config -Values @{
     deployedImages     = $imageRefs
 }
 Write-Ok 'Container Apps deployed.'
+
+# ============================================================================================== config drift
+# This step ships IMAGES. It does not ship config/**, and that asymmetry is silent: the app reads its access
+# policy, sources and facets from the config container (CONFIG_STORE='blob'), which 08-bootstrap.ps1 seeds once
+# and then never overwrites. So a deployment can run a policy years older than the image and look entirely
+# healthy - which is exactly how Settings (Security) came up with no attributes and no roles.
+#
+# A warning, never a failure: an administrator editing the access policy through the console creates drift
+# deliberately, and failing the deploy would then block every later one until somebody overwrote their work.
+if (-not $SkipConfigCheck) {
+    try {
+        $configDir = Join-Path $Config.RepoRoot 'config'
+        $storageName = Get-Value $o 'storageName'
+        if ($storageName -and (Test-Path -LiteralPath $configDir)) {
+            $rows = @(Compare-ConfigWithContainer -StorageAccount $storageName -ConfigDir $configDir)
+            $stale = @($rows | Where-Object { $_.Status -in @('Differs', 'Missing') })
+            if ($stale.Count -gt 0) {
+                Write-Warn "$($stale.Count) config file(s) do not match this checkout - the images are new, the config is not:"
+                foreach ($item in $stale) { Write-Info "    $($item.Blob)  [$($item.Status.ToLowerInvariant())]" }
+                Write-Info '  Nothing above was changed by this step. Push them through Config in the admin console,'
+                Write-Info '  which validates the file against the running build, or:'
+                Write-Info "    ./infra/scripts/08-bootstrap.ps1 -Env $Env -PushChanged"
+            }
+            else { Write-Ok 'config container matches this checkout' }
+        }
+    }
+    catch {
+        # Never fail a successful deploy on a read-only check. Say it did not run rather than implying all is well.
+        Write-Info "Could not compare config/ with the container ($($_.Exception.Message.Split([char]10)[0]))."
+        Write-Info '  The deploy itself succeeded; re-run 08-bootstrap.ps1 to check the configuration separately.'
+    }
+}
 if ($chatFqdn) { Write-Info "Chat UI: https://$chatFqdn" }
 Write-Info "Verify: az containerapp list -g $rg --query '[].{name:name, state:properties.runningStatus, fqdn:properties.configuration.ingress.fqdn}' -o table"
 Write-Info "        az containerapp revision list -g $rg -n rag-api --query '[].{rev:name, active:properties.active, health:properties.healthState, replicas:properties.replicas}' -o table"
