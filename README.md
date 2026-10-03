@@ -13,6 +13,7 @@ no per-token embedding cost.
 2. [Architecture](#2-architecture)
 3. [Deployment topology](#3-deployment-topology)
 4. [How it works](#4-how-it-works)
+    * [Every way a document enters, changes and leaves](#every-way-a-document-enters-changes-and-leaves)
 5. [Technology stack](#5-technology-stack)
 6. [Repository structure](#6-repository-structure)
 7. [Quick start (local)](#7-quick-start-local-about-15-minutes)
@@ -111,10 +112,34 @@ cases) ← `infrastructure` (adapters chosen by **factory registries**) and `api
 
 ![Figure 4 — Document lifecycle](docs/diagrams/document-lifecycle.svg)
 
-*Figure 4 — Document lifecycle.*
+*Figure 4 — Document lifecycle. The bottom band is what an administrator can do to a document: upload it
+privately or shared by tags, correct its tags, approve it, delete it permanently, or reset all data.*
 
 Unchanged documents cost one state lookup: no queue message and no embedding. Tag-only changes (for example a
 manifest edit) merge the new fields into existing chunks without re-embedding.
+
+#### Every way a document enters, changes and leaves
+
+The bottom band of Figure 4, in full. RETAG means the facet and access fields are merged into the chunks already
+in the index: no parse, no embedding, no new version. For deleting and resetting, including the business
+concerns, see [Deleting documents and resetting all data](#deleting-documents-and-resetting-all-data).
+
+| Event | Trigger | What happens | Re-embeds? | Undo |
+|---|---|---|---|---|
+| **Discovered** | A source sync (scheduled, *Sync now*, or `rag-os discover`) | A state row is created (DISCOVERED), then the pipeline runs: parse, chunk, embed, classify, index. | Yes | — |
+| **Uploaded** | The upload form or `POST /api/uploads` | As above, on the priority lane. **Only me** makes it private to the uploader; otherwise its Department, Region and Clearance come from the form's dropdowns. **Refused** if a required tag would be empty, so an upload can never be silently invisible. | Yes | Delete permanently |
+| **Unchanged** | A sync finds the same bytes and the same rule-derived tags | SKIPPED_UNCHANGED: one state lookup, no message, no index write. | No | — |
+| **Tags changed by rules** | A path rule, manifest row or sidecar changes | RETAG: facet and access fields merged into the existing chunks. | No | Change the rule back |
+| **Approved in review** | Review queue → Approve | RETAG with the reviewer's facets; they are frozen, so re-sync and the classifier never overwrite them. ([Why a document is in the queue](#the-review-queue-why-a-document-is-there-and-what-it-changes).) | No | Approve again with other values |
+| **Access tags edited** | Admin > Documents > **Edit access tags** | RETAG. Values only from the vocabulary: the upload form's own dropdowns, enforced by the API too. | No | Edit again |
+| **Failed** | A permanent error (corrupt, unsupported, no text) | FAILED, with the stage, error type and message kept and shown in /admin. | — | Fix the file, then Retry |
+| **Dead-lettered** | A transient error on 5 deliveries | The message waits in the dead-letter queue (Admin > Dead letters). | — | Retry (re-drive) |
+| **Removed at source** | A sync no longer finds the file | DELETED: every chunk removed from the index. The row and stored copy stay until `rag-os purge` (default retention 7 days); nothing runs purge automatically. | — | Put the file back: the next sync re-ingests it |
+| **Deleted permanently** | Admin > Documents > **Delete permanently** (one or selected) | Chunks, stored copy (unless another document has the same bytes), row, status history, queued work, and query traces that mention it are all removed now. A file read in place from a blob source is never touched. | — | Upload: gone for good. Crawled: comes back as a new DISCOVERED document on its source's next sync |
+| **Reset all data** | Admin > Controls > **Danger zone** (type the index name) or `rag-os reset` | Every document, chunk, stored copy, run, queued message and (by default) trace. Kept: configuration, the index schema and profile stamp, people. Ingestion is left **paused**. | — | Resume ingestion to re-ingest crawled sources; uploads must be uploaded again |
+
+Every transition is written to the document's timeline (Admin > Documents > a document), and every administrator
+action is audit-logged (`rag_os.audit`).
 
 ## 5. Technology stack
 
