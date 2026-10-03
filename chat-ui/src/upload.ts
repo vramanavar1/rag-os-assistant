@@ -7,6 +7,7 @@
 import { isAbortError, type ApiClient } from './api';
 import { fmtBytes, h, mount, show } from './dom';
 import { problemBox, statusBadge } from './ui';
+import { clearanceSelect, vocabularySelect } from './tag-controls';
 import { TERMINAL_STATUSES, type DocumentRecord, type Facet, type FacetsResponse, type UploadAccepted, type UploadOptions } from './types';
 
 // Three limits govern an upload and they have to agree: nginx (client_max_body_size 60m, in
@@ -63,7 +64,7 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
   // ---- who can read it. Unticked (the default) = everyone whose Department, Region and Clearance match the
   // document's tags; ticked = only the uploader. Shown once /api/uploads/options says what this caller may do.
   const onlyMe = h('input', { type: 'checkbox', id: `only-me-${idSuffix}` });
-  const clearanceSel = h('select', { id: `clearance-${idSuffix}`, name: 'clearance' });
+  let clearanceSel = h('select', { id: `clearance-${idSuffix}`, name: 'clearance' });
   const clearanceField = h('div', { class: 'field', hidden: true }, h('label', { for: clearanceSel.id }, 'Clearance'), clearanceSel);
   const onlyMeField = h('div', { class: 'check inline', hidden: true }, onlyMe, h('label', { for: onlyMe.id }, 'Only me (private)'));
   const accessHint = h('p', { class: 'hint' });
@@ -91,9 +92,9 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
       onlyMe.checked = o.only_me.default;
       onlyMeField.hidden = !o.only_me.allowed;
       if (o.clearance) {
-        const levels = o.clearance.levels.filter((l) => o.clearance!.min === null || l.value >= o.clearance!.min);
-        mount(clearanceSel, levels.map((l) => h('option', { value: String(l.value) }, `${l.value} · ${l.label}`)));
-        if (o.clearance.default !== null) clearanceSel.value = String(o.clearance.default);
+        const built = clearanceSelect({ id: clearanceSel.id, name: 'clearance', clearance: o.clearance, selected: o.clearance.default, min: o.clearance.min });
+        clearanceSel.replaceWith(built);
+        clearanceSel = built;
         mount(clearanceField.querySelector('label')!, o.clearance.label);
       }
       access.hidden = false;
@@ -196,15 +197,8 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
   }
 
   function pickerFor(name: string, facet: Facet): HTMLElement {
-    const select = h(
-      'select',
-      { id: `facet-${name}-${idSuffix}`, name },
-      h('option', { value: FROM_FOLDER }, 'from folder'),
-      (facet.vocabulary ?? []).map((v) =>
-        // Indent children so a hierarchy reads as one without needing <optgroup> per level.
-        h('option', { value: v.id }, v.parent ? `  ${v.label}` : v.label),
-      ),
-    );
+    // The same control the admin access-tag editor uses (tag-controls.ts), so the two offer identical values.
+    const select = vocabularySelect({ id: `facet-${name}-${idSuffix}`, name, facet, leading: [{ value: FROM_FOLDER, label: 'from folder' }] });
     selects.set(name, select);
     return h('div', { class: 'field' }, h('label', { for: select.id }, facet.label || name), select);
   }

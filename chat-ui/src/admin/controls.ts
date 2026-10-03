@@ -4,6 +4,7 @@ import { h, mount } from '../dom';
 import { problemBox, statusBadge, toast } from '../ui';
 import type { Controls } from '../types';
 import { getSources, pageHeader, type View, type ViewContext } from './common';
+import { dangerZone } from './reset';
 
 export const controlsView: View = async (ctx: ViewContext) => {
   const content = h('div', null, h('p', { class: 'muted' }, 'Loading…'));
@@ -98,5 +99,12 @@ export const controlsView: View = async (ctx: ViewContext) => {
     content,
     h('section', { class: 'card' }, h('div', { class: 'card-head' }, h('h2', null, 'Current state'), stateBadge), h('div', { class: 'form-actions' }, quickBtn)),
     form,
+    dangerZone(ctx, async () => {
+      try {
+        fill(await ctx.api.get<Controls>('/api/admin/ingestion/controls'));
+      } catch {
+        /* the report already says ingestion is paused */
+      }
+    }),
   );
 };

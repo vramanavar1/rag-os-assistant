@@ -177,6 +177,20 @@ async def _purge(retention_days: int, limit: int, apply: bool) -> int:
         await c.aclose()
 
 
+async def _reset(confirm: str, keep_traces: bool) -> int:
+    """Delete all data, keep configuration. Refuses unless --confirm names the active index exactly."""
+    c = _container()
+    try:
+        if confirm.strip() != c.index_name:
+            print(f"Refusing: --confirm must be the active index name, exactly: {c.index_name}")
+            return 2
+        result = await c.reset().run(by="cli", include_traces=not keep_traces)
+        _print(result)
+        return 0 if result.get("ok") else 1
+    finally:
+        await c.aclose()
+
+
 async def _ask(question: str, principal_id: str) -> int:
     from rag_os.api.routers.dev import _principals
 
@@ -219,6 +233,10 @@ def main(argv: list[str] | None = None) -> int:
     pp.add_argument("--limit", type=int, default=1000)
     pp.add_argument("--apply", action="store_true",
                     help="actually delete. Without it this is a dry run, which is the default on purpose.")
+    rp = sub.add_parser("reset", help="DELETE ALL DATA (index chunks, stored copies, documents, history, queue, "
+                                      "traces) and keep configuration. Leaves ingestion paused.")
+    rp.add_argument("--confirm", required=True, help="the active index name, exactly (see `rag-os status`)")
+    rp.add_argument("--keep-traces", action="store_true", help="keep query traces and expectations")
     qp = sub.add_parser("ask")
     qp.add_argument("question")
     qp.add_argument("--as", dest="principal", default="hr-emea")
@@ -265,6 +283,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "purge":
         return asyncio.run(_purge(args.retention_days, args.limit, apply=args.apply))
+    if args.cmd == "reset":
+        return asyncio.run(_reset(args.confirm, args.keep_traces))
     if args.cmd == "ask":
         return asyncio.run(_ask(args.question, args.principal))
     return 2

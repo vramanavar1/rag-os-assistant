@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -25,6 +26,7 @@ from sqlalchemy import (
     Table,
     Text,
     and_,
+    cast,
     delete,
     insert,
     or_,
@@ -214,6 +216,33 @@ class SqlQueryTraceStore(QueryTraceStore):
     def purge(self, older_than: datetime) -> int:
         with self.engine.begin() as c:
             return int(c.execute(delete(query_traces).where(query_traces.c.at < older_than)).rowcount or 0)
+
+    def forget_documents(self, doc_ids: Sequence[str]) -> dict[str, int]:
+        ids = [d for d in dict.fromkeys(doc_ids) if d]
+        if not ids:
+            return {"traces": 0, "expectations": 0}
+        traces = 0
+        with self.engine.begin() as c:
+            # The id appears in the JSON as "doc_id": "<id>"; a 32-hex id never occurs by accident elsewhere.
+            text = cast(query_traces.c.data, Text)
+            for i in range(0, len(ids), 50):
+                cond = or_(*(text.like(f"%{d}%") for d in ids[i:i + 50]))
+                traces += int(c.execute(delete(query_traces).where(cond)).rowcount or 0)
+            updated = 0
+            for r in c.execute(select(query_expectations.c.id, query_expectations.c.required_doc_ids)).mappings():
+                required = list(r["required_doc_ids"] or [])
+                gone = [d for d in required if d in ids]
+                if gone:
+                    c.execute(update(query_expectations).where(query_expectations.c.id == r["id"]).values(
+                        required_doc_ids=[d for d in required if d not in ids], last_result=None,
+                        last_detail=f"required document(s) deleted: {', '.join(gone)}"))
+                    updated += 1
+        return {"traces": traces, "expectations": updated}
+
+    def clear_all(self) -> dict[str, int]:
+        with self.engine.begin() as c:
+            return {"traces": int(c.execute(delete(query_traces)).rowcount or 0),
+                    "expectations": int(c.execute(delete(query_expectations)).rowcount or 0)}
 
     # ------------------------------------------------------------------ expectations
 

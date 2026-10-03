@@ -23,6 +23,7 @@ no per-token embedding cost.
     * [When a document stays unclassified](#when-a-document-stays-unclassified)
     * [The review queue: why a document is there, and what it changes](#the-review-queue-why-a-document-is-there-and-what-it-changes)
 10. [Using the product](#10-using-the-product)
+    * [Deleting documents and resetting all data](#deleting-documents-and-resetting-all-data)
 11. [User query handling scenarios](#11-user-query-handling-scenarios)
     * [Conflict handling: two sources that disagree](#conflict-handling-two-sources-that-disagree)
 12. [Security model](#12-security-model)
@@ -399,9 +400,10 @@ nowhere in the query path, which is why waiting in the queue can never hide a do
     be restricted per role without a release.
 * **Admin > Documents** lists every document with its **Doc ID** (select to copy) and **Access**: who may read
   it ("HR · Global · 1", *Only me*, or a red *"No Department, Region: invisible"* badge).
-* **Correcting a document.** Open a document (or select its red badge): **Edit access tags** re-tags the index in
-  place without re-embedding, and opens by itself when a required tag is missing. **Delete document** removes it
-  from the index; the purge frees its storage later.
+* **Correcting a document.** Open a document (or select its red badge): **Edit access tags** (the upload form's
+  dropdowns) re-tags the index in place without re-embedding, and opens by itself when a required tag is missing.
+  **Delete permanently** removes the document and everything derived from it; see
+  [Deleting documents and resetting all data](#deleting-documents-and-resetting-all-data).
 * **How an upload gets its facets.** Three sources, weakest first:
   1. **the folder it came from.** Choose *choose a folder* (or drop a folder) and the browser sends the path
      relative to the folder you picked, which `path-rules.yaml` reads exactly as it does for a crawl. **Pick the
@@ -491,7 +493,62 @@ ingest that died in between left both versions live and retrievable.
 
 
 * **CLI:** `rag-os discover --source <id>` (run where a local folder is mounted), `rag-os status`,
-  `rag-os explain --attr department=HR --attr region=UK`, `rag-os ask "…" --as hr-emea`, `rag-os bootstrap`, `rag-os purge`.
+  `rag-os explain --attr department=HR --attr region=UK`, `rag-os ask "…" --as hr-emea`, `rag-os bootstrap`, `rag-os purge`,
+  `rag-os reset --confirm <index>`.
+
+### Deleting documents and resetting all data
+
+**Correcting access tags.** Admin > Documents > a document > **Edit access tags** uses the *same dropdowns* as
+the upload form: Department and Region from the vocabulary (plus *Everyone*), and Clearance from the ladder.
+There is no free text, because matching is exact and a typed `hr` never matches `HR`. The API enforces the same
+rule: a value outside the vocabulary is refused, and a synonym or a different case is mapped to the canonical
+value.
+
+**Permanently deleting selected documents.** Tick the documents and press **Delete selected permanently**, or
+use **Delete permanently** in a document's panel (`POST /api/admin/documents/delete`). Removed immediately:
+
+* its index entries (no answer can cite it any more);
+* its stored copy, unless another document holds the same bytes (counted as `blobs_kept_shared`);
+* its status history and queued work;
+* query traces that mention it (they can hold its title and answer text quoting it);
+* its id in any expectation's "must cite" list.
+
+A file read in place from an **Azure Blob source** is the customer's own file and is never deleted
+(`blobs_left_at_source`).
+
+| Where the document came from | After a permanent delete |
+|---|---|
+| **An upload** | Gone for good. There is no other copy. |
+| **A crawled source** (folder, blob) whose file is still there | **Comes back on that source's next sync.** To keep it out, delete or move the file at the source. |
+
+**Resetting all data** (Admin > Controls > *Danger zone*, `POST /api/admin/reset`, or
+`rag-os reset --confirm <index>`). Type the index name to confirm. In order:
+
+1. Ingestion is paused.
+2. The queue is emptied.
+3. The index is emptied (on Azure it is deleted and re-created with the same schema and embedding-profile stamp,
+   which takes seconds at any size).
+4. Every stored copy and export is deleted.
+5. Every document, status event and ingestion run is deleted.
+6. Every query trace and expectation is deleted (untick to keep them).
+
+**Kept:** configuration (sources, access policy, facets, path rules, embedding profile), people and their
+attributes (Entra), and telemetry already in Application Insights. **Ingestion stays paused** until you resume it
+in Controls. Every step can be repeated, so a reset that stopped part-way is finished by running it again. For
+a very large store, prefer `rag-os reset`: the console request passes through a proxy with a ~120 s timeout.
+
+**Business concerns before you press it:**
+
+| Concern | What it means |
+|---|---|
+| **Irreversible** | Uploads have no other copy. Only crawled sources can be re-ingested. |
+| **Cost** | Resuming re-parses and re-embeds every crawled document. With a hosted embedding model (e.g. the `aoai-3-small-1536` profile) that is billed per token, plus indexing time. Budget it before resuming. |
+| **Outage** | Until re-ingestion finishes, every question gets "No grounded answer". It is not an error, so announce it. Expectations that require documents fail until then. |
+| **Audit and legal hold** | Deleting query traces removes the record of who asked what. Untick *include query traces* if retention policy or a legal hold applies. |
+| **Erasure is not total** | Application Insights logs, PostgreSQL point-in-time backups and blob soft-delete (if enabled) keep copies until their own retention ends. A delete here is not, on its own, proof of erasure. |
+| **Who can press it** | Administrators only, typed confirmation, audit-logged (`rag_os.audit`). Anyone who can mint a dev token is an administrator, so keep `DEV_AUTH_ENABLED=false` wherever real data lives (the Azure default). |
+| **Shared index** | Reset empties the *active* index named in the confirmation. Never point two environments at one index. |
+| **Races** | A worker mid-document can write after the clear. The reset pauses first, sweeps the index again at the end, and the worker removes its own chunks if their document disappears. A second reset is always safe. |
 
 ## 11. User query handling scenarios
 

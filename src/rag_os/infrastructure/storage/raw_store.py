@@ -8,6 +8,7 @@ Staging target is filesystem (dev) or blob (Azure). Reads accept both schemes.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -20,6 +21,7 @@ from rag_os.application.ports import RawDocumentStore, Staged
 from rag_os.domain.errors import ConfigError, NotFound, ValidationFailed
 from rag_os.infrastructure.registry import RAW_STORES
 
+log = logging.getLogger(__name__)
 _SAFE = re.compile(r"[^A-Za-z0-9._/ -]+")
 _SPOOL_BYTES = 8 * 1024 * 1024
 
@@ -59,6 +61,13 @@ class _BlobAccess:
             else:
                 raise ConfigError("BLOB_ACCOUNT_URL is not configured")
         return self._svc
+
+    def container_of(self, url: str) -> tuple[str, str]:
+        """(host, container) of a blob url, for both Azure (/<container>/..) and azurite (/<account>/<container>/..)."""
+        p = urlparse(url)
+        parts = unquote(p.path).lstrip("/").split("/")
+        container = (parts[1] if len(parts) > 1 else "") if p.port else (parts[0] if parts else "")
+        return (p.netloc.lower(), container)
 
     def blob_from_url(self, url: str) -> Any:
         from azure.storage.blob import BlobClient
@@ -131,8 +140,32 @@ class RawStore(RawDocumentStore):
             if spool is not None:
                 spool.close()
 
+    def owns(self, uri: str | None) -> bool:
+        """Whether this store staged `uri` - and so may delete it.
+
+        A document from an azure_blob source is read in place: its blob_uri is the CUSTOMER's blob, in the
+        source's own container. Purge used to treat any https url as a staged copy and delete it, which removed
+        the original file from the source. Only our raw container (on our account) and our local root are ours.
+        """
+        if not uri:
+            return False
+        if uri.startswith("local://"):
+            path = (self.root / uri.removeprefix("local://")).resolve()
+            return self.root in path.parents
+        if uri.startswith(("https://", "http://")):
+            try:
+                ours_host = urlparse(str(self.blob.service().url)).netloc.lower()
+            except ConfigError:
+                return False
+            host, container = self.blob.container_of(uri)
+            return host == ours_host and container == self.container
+        return False
+
     def delete(self, uri: str) -> bool:
-        """Only ever called by purge, once no live document references this content - see the port docstring."""
+        """Delete a staged copy. Anything this store did not stage is refused (returns False) - see `owns`."""
+        if not self.owns(uri):
+            log.warning("refusing to delete a blob this store did not stage", extra={"uri": uri[:120]})
+            return False
         if uri.startswith("local://"):
             path = (self.root / uri.removeprefix("local://")).resolve()
             if self.root not in path.parents:
@@ -176,6 +209,32 @@ class RawStore(RawDocumentStore):
         if uri.startswith("file://"):
             return open(unquote(urlparse(uri).path.lstrip("/") if os.name == "nt" else urlparse(uri).path), "rb")
         raise ValidationFailed(f"unsupported uri scheme: {uri[:20]}")
+
+    def clear_staged(self) -> dict[str, int]:
+        """Delete every staged copy and every export - and nothing else. Used by the full data reset."""
+        out = {"staged": 0, "exports": 0}
+        if self.target == "filesystem":
+            for sub, key in (("staged", "staged"), ("exports", "exports")):
+                d = (self.root / sub).resolve()
+                if self.root in d.parents and d.exists():
+                    out[key] = sum(1 for f in d.rglob("*") if f.is_file())
+                    shutil.rmtree(d)
+            return out
+        svc = self.blob.service()
+        for container, key in ((self.container, "staged"), (self.exports_container, "exports")):
+            cc = svc.get_container_client(container)
+            try:
+                names = [b.name for b in cc.list_blobs()]
+            except Exception as e:  # a container that was never created holds nothing to clear
+                from azure.core.exceptions import ResourceNotFoundError
+
+                if isinstance(e, ResourceNotFoundError):
+                    continue
+                raise
+            for i in range(0, len(names), 256):
+                cc.delete_blobs(*names[i:i + 256])
+            out[key] = len(names)
+        return out
 
     # ------------------------------------------------------------------ exports
 

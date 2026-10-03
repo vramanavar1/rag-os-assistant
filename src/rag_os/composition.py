@@ -34,10 +34,12 @@ from rag_os.application.services.profile_guard import ProfileGuard
 from rag_os.application.services.query_trace import NearMissProbe
 from rag_os.application.services.tagging import TagResolver
 from rag_os.application.use_cases.answer_query import AnswerQuery
+from rag_os.application.use_cases.delete_documents import DeleteDocuments
 from rag_os.application.use_cases.discover import DiscoverSource
 from rag_os.application.use_cases.expectations import Expectations
 from rag_os.application.use_cases.process_item import ProcessItem
 from rag_os.application.use_cases.purge import Purge
+from rag_os.application.use_cases.reset import ResetAllData
 from rag_os.application.use_cases.scheduler import Reconcile, SchedulerTick
 from rag_os.domain.access import AccessPolicy
 from rag_os.domain.classification import FacetSchema, PathRules
@@ -383,6 +385,16 @@ class Container:
     @cached_property
     def purge(self) -> Purge:
         return Purge(self.state, self.raw, self.index)
+
+    def delete_documents(self) -> DeleteDocuments:
+        return DeleteDocuments(self.state, self.index, self.raw, self.queue,
+                               self.traces if self.settings.query_trace_enabled else None)
+
+    def reset(self) -> ResetAllData:
+        """Built per call: it captures the CURRENT schema, which a configuration reload may have changed."""
+        return ResetAllData(state=self.state, index=self.index, raw=self.raw, queue=self.queue,
+                            traces=self.traces, schema=self.schema, profile=self.guard.profile_record(),
+                            on_index_cleared=self.guard.invalidate)
 
     @cached_property
     def index_semaphore(self) -> asyncio.Semaphore:

@@ -220,6 +220,13 @@ class SearchIndex(ABC):
     @abstractmethod
     async def count(self) -> int: ...
 
+    @abstractmethod
+    async def clear(self, schema: IndexSchema, profile: dict[str, Any] | None) -> int:
+        """Remove every chunk but keep the index usable: same schema, same embedding-profile stamp.
+
+        Returns how many chunks were there. Full reset only.
+        """
+
     async def aclose(self) -> None:  # noqa: B027
         pass
 
@@ -260,6 +267,18 @@ class MessageQueue(ABC):
 
     @abstractmethod
     async def peek_dead_letters(self, lane: Lane, max_messages: int) -> list[IngestMessage]: ...
+
+    @abstractmethod
+    async def purge_all(self, time_budget_s: float = 120.0) -> int:
+        """Drop every message, active and dead-lettered, on both lanes. Returns how many. Full reset only."""
+
+    async def purge_messages(self, doc_ids: Sequence[str]) -> int:
+        """Drop queued messages for these documents, where the transport can address single messages.
+
+        Optional: Service Bus cannot remove a message without receiving it, so it keeps this default. A message
+        left behind finds no document row and is skipped by the worker.
+        """
+        return 0
 
     async def aclose(self) -> None:  # noqa: B027
         pass
@@ -363,6 +382,15 @@ class IngestionStateStore(ABC):
         """Remove state rows. The caller is responsible for the index and the blobs."""
 
     @abstractmethod
+    def blob_refs(self, uris: Sequence[str], exclude_doc_ids: Sequence[str]) -> set[str]:
+        """Which of these blob uris some OTHER live document still uses - by uri, or by the content hash behind
+        it (staging is keyed by content, so two documents can share one blob without sharing a uri string)."""
+
+    @abstractmethod
+    def clear_all(self) -> dict[str, int]:
+        """Delete every document, facet row, event and ingestion run; keep controls. Full reset only."""
+
+    @abstractmethod
     def count_by_status(self, q: DocumentQuery) -> dict[str, int]:
         """How many documents each status holds, for the same filters MINUS `status` itself.
 
@@ -450,6 +478,14 @@ class RawDocumentStore(ABC):
 
     @abstractmethod
     def open_export(self, name: str) -> IO[bytes]: ...
+
+    @abstractmethod
+    def owns(self, uri: str | None) -> bool:
+        """Whether this store staged `uri`. A source read in place (an azure_blob source) is NOT ours to delete."""
+
+    @abstractmethod
+    def clear_staged(self) -> dict[str, int]:
+        """Delete every staged copy and every export, and nothing else. Full reset only."""
 
 
 class ConfigRepository(ABC):
@@ -556,6 +592,18 @@ class QueryTraceStore(ABC):
 
     @abstractmethod
     def purge(self, older_than: datetime) -> int: ...
+
+    @abstractmethod
+    def forget_documents(self, doc_ids: Sequence[str]) -> dict[str, int]:
+        """Delete traces that mention these documents, and drop them from expectations' required documents.
+
+        A trace can hold a document's title, path and answer text quoting it, so a permanently deleted
+        document must not survive there. Returns {"traces": n, "expectations": m}.
+        """
+
+    @abstractmethod
+    def clear_all(self) -> dict[str, int]:
+        """Every trace and every expectation. Full reset only."""
 
     @abstractmethod
     def save_expectation(self, e: Expectation) -> None: ...

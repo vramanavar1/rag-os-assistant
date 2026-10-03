@@ -168,6 +168,24 @@ class SqlQueue(MessageQueue):
 
         return await asyncio.to_thread(_do)
 
+    async def purge_all(self, time_budget_s: float = 120.0) -> int:
+        def _do() -> int:
+            with self.engine.begin() as c:
+                return int(c.execute(delete(_q)).rowcount or 0)
+
+        return await asyncio.to_thread(_do)
+
+    async def purge_messages(self, doc_ids: Sequence[str]) -> int:
+        """Every message for these documents, active or dead-lettered (message ids are "<doc_id>:...")."""
+        def _do() -> int:
+            n = 0
+            with self.engine.begin() as c:
+                for d in doc_ids:
+                    n += int(c.execute(delete(_q).where(_q.c.message_id.like(f"{d}:%"))).rowcount or 0)
+            return n
+
+        return await asyncio.to_thread(_do)
+
     async def purge_dead_letters(self, doc_ids: Sequence[str]) -> None:
         def _do() -> None:
             with self.engine.begin() as c:

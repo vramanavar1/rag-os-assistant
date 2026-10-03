@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Sequence
@@ -151,6 +152,22 @@ class AzureSearchIndex(SearchIndex):
                 ],
             ),
         )
+
+    async def clear(self, schema: IndexSchema, profile: dict[str, Any] | None) -> int:
+        """Delete and recreate the index - seconds at any size, where deleting chunk by chunk is hours at
+        millions. The same schema and embedding-profile stamp are written back, so the profile guard passes and
+        nothing needs a bootstrap. Queries in the few seconds between delete and create see index_not_ready."""
+        try:
+            n = int(await self._client.get_document_count())
+        except ResourceNotFoundError:
+            n = 0
+        with contextlib.suppress(ResourceNotFoundError):
+            await self._indexes.delete_index(schema.name)
+        await self._indexes.create_index(self._build(schema, None))
+        if profile is not None:
+            await self.write_profile(profile)
+        log.warning("search index cleared (deleted and recreated)", extra={"index": schema.name, "chunks": n})
+        return n
 
     async def ensure_index(self, schema: IndexSchema) -> None:
         try:

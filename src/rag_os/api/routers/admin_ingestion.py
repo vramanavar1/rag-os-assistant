@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from rag_os.api.deps import get_container, require_role
 from rag_os.api.schemas import ExportRequest, RetryRequest, TagUpdate
@@ -296,6 +297,92 @@ async def delete_document(doc_id: str, principal: Principal = Depends(admin),
     return {"doc_id": doc_id, "deleted": bool(changed)}
 
 
+class PermanentDelete(BaseModel):
+    doc_ids: list[str] = Field(min_length=1, max_length=500)
+    permanent: bool = True
+
+
+@router.post("/documents/delete", summary="Permanently delete documents and everything derived from them")
+async def delete_documents_permanently(body: PermanentDelete, principal: Principal = Depends(admin),
+                                       c: Container = Depends(get_container)) -> dict[str, Any]:
+    """Index chunks, the stored copy (unless another document uses the same bytes), state rows and history,
+    queued messages, and query traces that mention them. A crawled document whose file is still at its source
+    comes back on that source's next sync; an upload is gone for good."""
+    if not body.permanent:
+        raise ValidationFailed("use DELETE /api/admin/documents/{doc_id} for a soft delete")
+    report = await c.delete_documents().run(body.doc_ids, by=principal.display_name or principal.subject)
+    return report.as_dict()
+
+
+class ResetRequest(BaseModel):
+    confirm: str = Field(max_length=256, description="the active index name, typed by the administrator")
+    include_traces: bool = True
+
+
+@router.get("/reset/preview", summary="What a data reset would delete, and what it keeps")
+async def reset_preview(_: Principal = Depends(admin), c: Container = Depends(get_container)) -> dict[str, Any]:
+    from datetime import UTC, datetime
+
+    counts = await asyncio.to_thread(c.state.count_by_status, DocumentQuery())
+    traces = await asyncio.to_thread(c.traces.window, datetime(1970, 1, 1, tzinfo=UTC), 1_000_000)
+    expectations = await asyncio.to_thread(c.traces.list_expectations)
+    try:
+        chunks = await c.index.count()
+    except Exception:
+        chunks = None
+    return {
+        "index": c.index_name,
+        "documents": sum(counts.values()),
+        "documents_by_status": counts,
+        "chunks": chunks,
+        "queue": await c.queue.depth(),
+        "traces": len(traces),
+        "expectations": len(expectations),
+        "keeps": ["configuration (sources, access policy, facets, path rules, embedding profile)",
+                  "the index itself, its schema and embedding-profile stamp",
+                  "people, roles and attributes (Microsoft Entra)",
+                  "telemetry already sent to Application Insights"],
+    }
+
+
+@router.post("/reset", summary="Delete ALL data and start afresh (configuration is kept)")
+async def reset_all(body: ResetRequest, principal: Principal = Depends(admin),
+                    c: Container = Depends(get_container)) -> dict[str, Any]:
+    if body.confirm.strip() != c.index_name:
+        raise ValidationFailed(f"type the index name exactly to confirm: {c.index_name}")
+    return await c.reset().run(by=principal.display_name or principal.subject, include_traces=body.include_traces)
+
+
+def _canonical_acl(c: Container, acl: dict[str, list[str] | int]) -> dict[str, list[str] | int]:
+    """Access values must come from the vocabulary - the same lists the upload form offers.
+
+    Matching is exact, so a typed `hr` never matches a person whose department is `HR`; that drift is how a
+    document becomes invisible without anyone noticing. A synonym or a different case is mapped to the canonical
+    id; a value the vocabulary does not know is refused with its name. `*` (everyone) is always allowed.
+    """
+    out: dict[str, list[str] | int] = {}
+    for name, value in acl.items():
+        rule = next((a for a in c.domain.policy.attributes if a.name == name), None)
+        if rule is None:
+            raise ValidationFailed(f"unknown access attribute '{name}'")
+        fd = c.domain.facets.get(rule.hierarchy_facet or name)
+        if rule.is_numeric or fd is None or isinstance(value, int):
+            out[name] = value
+            continue
+        canon: list[str] = []
+        for v in value:
+            if rule.wildcard and v == rule.wildcard:
+                canon.append(v)
+                continue
+            cv = fd.normalise(str(v))
+            if cv is None:
+                raise ValidationFailed(f"'{v}' is not a {rule.label or name} in the vocabulary; choose one from "
+                                       f"the list (or * for everyone)")
+            canon.append(cv)
+        out[name] = list(dict.fromkeys(canon))
+    return out
+
+
 @router.post("/documents/{doc_id}/tags", response_model=DocumentRecord, summary="Set/approve facets (and ACL: admin)")
 async def set_tags(doc_id: str, body: TagUpdate, principal: Principal = Depends(reviewer),
                    c: Container = Depends(get_container)) -> DocumentRecord:
@@ -315,7 +402,7 @@ async def set_tags(doc_id: str, body: TagUpdate, principal: Principal = Depends(
     if body.acl is not None:
         if not principal.is_admin:
             raise ValidationFailed("only admins can change document ACLs")
-        acl = c.engine.validate_doc_acl(body.acl)
+        acl = c.engine.validate_doc_acl(_canonical_acl(c, body.acl))
     sources = {**rec.tags.sources, **{f"facet:{k}": f"review:{principal.subject}" for k in facets}}
     if body.acl is not None:
         # An administrator setting access tags decides who reads the document; record it, so a document made

@@ -288,6 +288,13 @@ class SqlStateStore(IngestionStateStore):
                     merged_tags = _carry_classifier_facets(rec.tags, prev)
                     tags_changed = (cur["tags_hash"] or "") != th
                 values: dict[str, Any] = dict(base)
+                # A source that does not know these (a local folder lists paths, it neither stages nor hashes
+                # during listing) must not blank what staging recorded earlier. Blanking them used to make every
+                # rediscovery forget where the document's bytes were - so purge leaked the blob, and the
+                # shared-blob check could free bytes another document still needed.
+                for key in ("blob_uri", "content_hash"):
+                    if values.get(key) is None:
+                        values.pop(key, None)
                 # Indexed under a different embedding profile == not indexed for our purposes: those vectors
                 # live in another index, in another vector space. Without this, changing the model re-queues
                 # nothing and the new index stays empty.
@@ -404,24 +411,57 @@ class SqlStateStore(IngestionStateStore):
                 .order_by(documents.c.updated_at)
                 .limit(limit)
             ).mappings())
-            hashes = {r["content_hash"] for r in rows if r["content_hash"]}
-            still_referenced: set[str] = set()
-            if hashes:
-                still_referenced = {
-                    h for (h,) in c.execute(
-                        select(documents.c.content_hash).where(
-                            documents.c.content_hash.in_(hashes),
-                            documents.c.status != DocumentStatus.DELETED.value,
-                        ).distinct()
-                    )
-                }
+        uris = [r["blob_uri"] for r in rows if r["blob_uri"]]
+        shared = self.blob_refs(uris, [r["doc_id"] for r in rows]) if uris else set()
         return [
             PurgeCandidate(
                 doc_id=r["doc_id"], blob_uri=r["blob_uri"], content_hash=r["content_hash"],
-                free_blob=bool(r["blob_uri"]) and r["content_hash"] not in still_referenced,
+                free_blob=bool(r["blob_uri"]) and r["blob_uri"] not in shared,
             )
             for r in rows
         ]
+
+    def blob_refs(self, uris: Sequence[str], exclude_doc_ids: Sequence[str]) -> set[str]:
+        """Which of these uris a LIVE document other than `exclude_doc_ids` still uses, by uri or by content.
+
+        By uri as well as by hash: a row whose hash was never recorded (an older row, or one a rediscovery used
+        to blank) still names its blob, and judging by hash alone would free bytes it needs.
+        """
+        wanted = [u for u in dict.fromkeys(uris) if u]
+        if not wanted:
+            return set()
+        excluded = list(dict.fromkeys(exclude_doc_ids))
+        with self.engine.connect() as c:
+            hash_of = {
+                r["blob_uri"]: r["content_hash"]
+                for r in c.execute(select(documents.c.blob_uri, documents.c.content_hash).where(
+                    documents.c.blob_uri.in_(wanted), documents.c.content_hash.is_not(None))).mappings()
+            }
+            hashes = list({h for h in hash_of.values() if h})
+            cond = documents.c.blob_uri.in_(wanted)
+            if hashes:
+                cond = or_(cond, documents.c.content_hash.in_(hashes))
+            live = select(documents.c.blob_uri, documents.c.content_hash).where(
+                cond, documents.c.status != DocumentStatus.DELETED.value)
+            if excluded:
+                live = live.where(documents.c.doc_id.not_in(excluded))
+            live_uris: set[str] = set()
+            live_hashes: set[str] = set()
+            for r in c.execute(live).mappings():
+                if r["blob_uri"]:
+                    live_uris.add(r["blob_uri"])
+                if r["content_hash"]:
+                    live_hashes.add(r["content_hash"])
+        return {u for u in wanted if u in live_uris or (hash_of.get(u) in live_hashes)}
+
+    def clear_all(self) -> dict[str, int]:
+        """Every document, facet row, event and ingestion run. Controls stay: they are settings, not data."""
+        out: dict[str, int] = {}
+        with self.engine.begin() as c:
+            for name, table in (("document_facets", document_facets), ("document_events", document_events),
+                                ("documents", documents), ("ingestion_runs", ingestion_runs)):
+                out[name] = int(c.execute(delete(table)).rowcount or 0)
+        return out
 
     def delete_documents(self, doc_ids: Sequence[str]) -> int:
         """Remove state rows outright. Events and facets go with them; the caller frees index and blobs."""

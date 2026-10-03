@@ -76,3 +76,27 @@ class InMemoryQueue(MessageQueue):
 
     async def peek_dead_letters(self, lane: Lane, max_messages: int) -> list[IngestMessage]:
         return list(self.dlq[lane][:max_messages])
+
+    async def purge_all(self, time_budget_s: float = 120.0) -> int:
+        async with self._lock:
+            n = sum(len(q) for q in self.lanes.values()) + sum(len(d) for d in self.dlq.values())
+            for q in self.lanes.values():
+                q.clear()
+            for d in self.dlq.values():
+                d.clear()
+            self._seen.clear()
+            return n
+
+    async def purge_messages(self, doc_ids: Sequence[str]) -> int:
+        ids = set(doc_ids)
+        async with self._lock:
+            n = 0
+            for lane, q in self.lanes.items():
+                keep = deque(e for e in q if e[0].doc_id not in ids)
+                n += len(q) - len(keep)
+                self.lanes[lane] = keep
+            for lane, d in self.dlq.items():
+                keep_d = [m for m in d if m.doc_id not in ids]
+                n += len(d) - len(keep_d)
+                self.dlq[lane] = keep_d
+            return n

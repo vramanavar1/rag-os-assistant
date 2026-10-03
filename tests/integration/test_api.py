@@ -14,7 +14,6 @@ from rag_os.api.app import create_app
 from rag_os.composition import Container
 from rag_os.domain.answers import SearchHit
 from rag_os.domain.documents import DocumentStatus
-from rag_os.domain.errors import ValidationFailed
 from rag_os.infrastructure.queue.in_memory import InMemoryQueue
 from rag_os.infrastructure.settings import Settings
 
@@ -767,16 +766,20 @@ async def test_blobs_are_addressed_by_content_not_by_document(
 
 
 def test_the_raw_store_refuses_to_delete_what_it_did_not_stage(tmp_path: Path) -> None:
-    """`delete` exists for purge, which frees content nothing references any more. A source that reads its
-    own files in place (file://) is not ours to delete from."""
+    """`delete` exists for purge and permanent delete, which free content nothing references any more. A source
+    that reads its own files in place (file://, or an azure_blob source's https url) is not ours to delete from.
+    Refused by returning False rather than raising, so one foreign uri cannot abort a batch delete."""
     from rag_os.infrastructure.storage.raw_store import RawStore
 
-    store = RawStore(target="filesystem", raw_dir=str(tmp_path))
+    store = RawStore(target="filesystem", raw_dir=str(tmp_path / "raw"))
+    victim = tmp_path / "victim.txt"
+    victim.write_text("not ours")
     staged = store.stage("s", "d", "x.txt", io.BytesIO(b"hello"))
     assert store.delete(staged.uri) is True
     assert store.delete(staged.uri) is False, "already gone is not an error"
-    with pytest.raises(ValidationFailed):
-        store.delete("file:///etc/passwd")
+    assert store.delete(f"file:///{victim.as_posix()}") is False
+    assert store.delete("local://../victim.txt") is False, "a path that escapes the raw root is refused"
+    assert victim.exists()
 
 
 def test_staging_the_same_bytes_twice_writes_one_blob_and_is_idempotent(tmp_path: Path) -> None:

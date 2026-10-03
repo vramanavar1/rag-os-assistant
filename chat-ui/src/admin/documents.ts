@@ -5,7 +5,7 @@ import { fmtAgo, fmtBytes, fmtNum, h, mount, show } from '../dom';
 import { copyTag, problemBox, statusBadge, toast, toastError } from '../ui';
 import { createUploadWidget } from '../upload';
 import { PIPELINE_STATUSES, type DocumentRecord, type Page } from '../types';
-import { accessSummary, dataTable, getFacets, getRequiredAccess, openDocumentDialog, pageHeader, retryDocs, sourceSelect, type View, type ViewContext } from './common';
+import { accessSummary, dataTable, deletePermanently, getFacets, getRequiredAccess, openDocumentDialog, pageHeader, retryDocs, sourceSelect, type View, type ViewContext } from './common';
 
 const PAGE_SIZE = 50;
 
@@ -101,12 +101,15 @@ export const documentsView: View = async (ctx: ViewContext) => {
   const selected = new Set<string>();
   const retrySelBtn = h('button', { type: 'button', class: 'btn', disabled: true }, 'Retry selected');
   const retryAllBtn = h('button', { type: 'button', class: 'btn' }, sourceId ? `Retry all failed in ${sourceId}` : 'Retry all failed');
+  const deleteSelBtn = h('button', { type: 'button', class: 'btn btn-danger', disabled: true }, 'Delete selected permanently');
   const exportBtn = h('button', { type: 'button', class: 'btn btn-ghost' }, 'Export CSV');
   const uploadBtn = h('button', { type: 'button', class: 'btn btn-ghost', 'aria-expanded': 'false', 'aria-controls': 'doc-upload' }, 'Upload');
   const uploadPanel = h('section', { id: 'doc-upload', class: 'card', hidden: true });
   const updateSelection = () => {
     retrySelBtn.disabled = selected.size === 0;
     retrySelBtn.textContent = selected.size ? `Retry selected (${selected.size})` : 'Retry selected';
+    deleteSelBtn.disabled = selected.size === 0;
+    deleteSelBtn.textContent = selected.size ? `Delete selected permanently (${selected.size})` : 'Delete selected permanently';
   };
 
   const rows: DocumentRecord[] = [];
@@ -206,6 +209,12 @@ export const documentsView: View = async (ctx: ViewContext) => {
     if ((await retryDocs(ctx.api, { doc_ids: [...selected] })) !== null) await reload();
     updateSelection();
   });
+  deleteSelBtn.addEventListener('click', async () => {
+    deleteSelBtn.disabled = true;
+    const ids = [...selected];
+    if (await deletePermanently(ctx.api, ids, `${ids.length} selected document${ids.length === 1 ? '' : 's'}`)) await reload();
+    updateSelection();
+  });
   retryAllBtn.addEventListener('click', async () => {
     if (!window.confirm(`Requeue every FAILED document${sourceId ? ` in ${sourceId}` : ''}?`)) return;
     retryAllBtn.disabled = true;
@@ -231,7 +240,7 @@ export const documentsView: View = async (ctx: ViewContext) => {
     pageHeader('Documents', uploadBtn, exportBtn),
     filterForm,
     uploadPanel,
-    h('div', { class: 'toolbar' }, retrySelBtn, retryAllBtn, h('span', { class: 'spacer' }), countLabel),
+    h('div', { class: 'toolbar' }, retrySelBtn, retryAllBtn, deleteSelBtn, h('span', { class: 'spacer' }), countLabel),
     tableSlot,
     h('div', { class: 'load-more' }, moreBtn),
   );

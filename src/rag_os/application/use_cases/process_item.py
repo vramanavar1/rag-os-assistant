@@ -244,10 +244,17 @@ class ProcessItem:
             for i in range(0, len(docs), self.index_batch):
                 await self.index.upsert(docs[i:i + self.index_batch])
             removed = await self.index.delete_doc_versions(doc_id, keep_version=version)
-        self.state.transition(doc_id, DocumentStatus.INDEXED, stage="index", indexed_version=version,
-                              indexed_content_hash=rec.content_hash,
-                              chunk_count=len(docs), embedding_fp=self.fp, indexed_tags_hash=tags_hash(tags),
-                              event_message=f"{len(docs)} chunks indexed, {removed} stale removed")
+        try:
+            self.state.transition(doc_id, DocumentStatus.INDEXED, stage="index", indexed_version=version,
+                                  indexed_content_hash=rec.content_hash,
+                                  chunk_count=len(docs), embedding_fp=self.fp, indexed_tags_hash=tags_hash(tags),
+                                  event_message=f"{len(docs)} chunks indexed, {removed} stale removed")
+        except NotFound:
+            # The row was deleted permanently (or by a reset) while this document was being indexed. Chunks with
+            # no row are unreachable from the console yet still searchable, so take back what was just written.
+            async with self.index_sem:
+                await self.index.delete_doc_versions(doc_id, None)
+            raise
         return Outcome("indexed", len(docs), time.perf_counter() - t0, embedding_tokens=emb_usage.embedding)
 
     # ------------------------------------------------------------------ retag

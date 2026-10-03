@@ -534,6 +534,16 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .btn-danger { color: var(--critical-text); border-color: var(--critical); }
 .btn-danger:hover:not(:disabled) { background: var(--critical-soft); }
 
+.acl-values { display: flex; flex-direction: column; gap: 6px; }
+.acl-row { display: flex; gap: 6px; align-items: center; }
+.access-editor .field { min-width: 200px; }
+.access-editor .row { align-items: flex-start; }
+.access-editor .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+select.invalid { border-color: var(--critical); color: var(--critical-text); }
+.danger-zone { border: 1px solid var(--critical); }
+.danger-zone h2 { color: var(--critical-text); }
+.danger-zone ul { margin: 6px 0; padding-left: 20px; }
+
 /* ------------------------------------------------------------------ query traces */
 
 .tile.tone-warning { border-top-color: var(--warning); background: var(--surface); color: var(--ink); }

@@ -246,7 +246,9 @@
         <li><a href="#review-queue-explained">The review queue explained</a></li>
       </ol>
     </li>
-    <li><a href="#10-using-the-product"><span class="num">10</span>Using the product</a></li>
+    <li><a href="#10-using-the-product"><span class="num">10</span>Using the product</a>
+      <ol class="sub"><li><a href="#deleting-and-resetting">Deleting and resetting data</a></li></ol>
+    </li>
     <li><a href="#11-user-query-scenarios"><span class="num">11</span>User query scenarios</a>
       <ol class="sub">
         <li><a href="#conflict-handling">Conflict handling</a></li>
@@ -742,8 +744,9 @@ README.html          this document (self-contained; regenerate nothing, just ope
       and <strong>Access</strong>: who may read it ("HR &middot; Global &middot; 1", <em>Only me</em>, or a red
       <em>"No Department, Region: invisible"</em> badge).</li>
     <li><strong>Correcting a document.</strong> Open a document (or select its red badge): <strong>Edit access
-      tags</strong> re-tags the index in place and opens by itself when a required tag is missing;
-      <strong>Delete document</strong> removes it from the index.</li>
+      tags</strong> (the upload form's dropdowns) re-tags the index in place and opens by itself when a required tag
+      is missing; <strong>Delete permanently</strong> removes the document and everything derived from it (see
+      <a href="#deleting-and-resetting">Deleting documents and resetting all data</a>).</li>
     <li><strong>How an upload gets its facets.</strong> Three sources, weakest first:
       <ol>
         <li><strong>the folder it came from.</strong> Choose <em>choose a folder</em> (or drop a folder) and the
@@ -866,6 +869,65 @@ rag-os purge --retention-days 7 --apply    # actually free it</code></pre>
       <code>blobs_kept_shared</code> in the report counts content left in place because a live document still
       references it.</li>
   </ul>
+
+  <h3 id="deleting-and-resetting">Deleting documents and resetting all data</h3>
+  <p><strong>Correcting access tags.</strong> Admin &gt; Documents &gt; a document &gt; <strong>Edit access tags</strong>
+    uses the <em>same dropdowns</em> as the upload form: Department and Region from the vocabulary (plus
+    <em>Everyone</em>), and Clearance from the ladder. There is no free text, because matching is exact and a typed
+    <code>hr</code> never matches <code>HR</code>. The API enforces the same rule: a value outside the vocabulary is
+    refused, and a synonym or a different case is mapped to the canonical value.</p>
+  <p><strong>Permanently deleting selected documents.</strong> Tick the documents and press <strong>Delete selected
+    permanently</strong>, or use <strong>Delete permanently</strong> in a document's panel
+    (<code>POST /api/admin/documents/delete</code>). Removed immediately:</p>
+  <ul>
+    <li>its index entries (no answer can cite it any more);</li>
+    <li>its stored copy, unless another document holds the same bytes;</li>
+    <li>its status history and queued work;</li>
+    <li>query traces that mention it;</li>
+    <li>its id in any expectation's "must cite" list.</li>
+  </ul>
+  <p>A file read in place from an Azure Blob source is the customer's own file and is never deleted.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Where the document came from</th><th>After a permanent delete</th></tr></thead>
+    <tbody>
+      <tr><td><strong>An upload</strong></td><td>Gone for good. There is no other copy.</td></tr>
+      <tr><td><strong>A crawled source</strong> (folder, blob) whose file is still there</td><td><strong>Comes back on that
+        source's next sync.</strong> To keep it out, delete or move the file at the source.</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Resetting all data</strong> (Admin &gt; Controls &gt; <em>Danger zone</em>, <code>POST /api/admin/reset</code>,
+    or <code>rag-os reset --confirm &lt;index&gt;</code>). Type the index name to confirm. In order:</p>
+  <ol>
+    <li>Ingestion is paused.</li>
+    <li>The queue is emptied.</li>
+    <li>The index is emptied (on Azure it is deleted and re-created with the same schema and embedding-profile
+      stamp).</li>
+    <li>Every stored copy and export is deleted.</li>
+    <li>Every document, status event and ingestion run is deleted.</li>
+    <li>Every query trace and expectation is deleted (untick to keep them).</li>
+  </ol>
+  <p><strong>Kept:</strong> configuration, people and their attributes (Entra), and telemetry already in Application
+    Insights. <strong>Ingestion stays paused</strong> until you resume it in Controls. Every step can be repeated, so a
+    reset that stopped part-way is finished by running it again. For a very large store, prefer <code>rag-os
+    reset</code>: the console request passes through a proxy with a ~120 s timeout.</p>
+  <div class="callout warn"><p><strong>Business concerns before you press it.</strong></p>
+  <ul>
+    <li><strong>Irreversible:</strong> uploads have no other copy. Only crawled sources can be re-ingested.</li>
+    <li><strong>Cost:</strong> resuming re-parses and re-embeds every crawled document. With a hosted embedding model
+      that is billed per token, plus indexing time. Budget it before resuming.</li>
+    <li><strong>Outage:</strong> until re-ingestion finishes, every question gets "No grounded answer". It is not an
+      error, so announce it. Expectations that require documents fail until then.</li>
+    <li><strong>Audit and legal hold:</strong> deleting query traces removes the record of who asked what. Untick
+      <em>include query traces</em> if retention policy or a legal hold applies.</li>
+    <li><strong>Erasure is not total:</strong> Application Insights logs, PostgreSQL point-in-time backups and blob
+      soft-delete keep copies until their own retention ends.</li>
+    <li><strong>Who can press it:</strong> administrators only, typed confirmation, audit-logged. Anyone who can mint
+      a dev token is an administrator, so keep <code>DEV_AUTH_ENABLED=false</code> wherever real data lives.</li>
+    <li><strong>Shared index:</strong> reset empties the <em>active</em> index named in the confirmation. Never point
+      two environments at one index.</li>
+    <li><strong>Races:</strong> a worker mid-document can write after the clear. The reset pauses first and sweeps
+      the index again at the end; a second reset is always safe.</li>
+  </ul></div>
 
   <h2 id="11-user-query-scenarios"><span class="n">11</span>User query handling scenarios<a class="anchor" href="#11-user-query-scenarios">#</a></h2>
   <p>What the assistant does when the documents it can see do not agree, and how to try it. Each scenario is a

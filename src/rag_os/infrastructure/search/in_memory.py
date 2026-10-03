@@ -96,6 +96,14 @@ class InMemorySearchIndex(SearchIndex):
             del self.docs[k]
         return len(victims)
 
+    async def clear(self, schema: IndexSchema, profile: dict[str, Any] | None) -> int:
+        n = len(self.docs)
+        self.docs.clear()
+        self.fields = _check_schema(None, schema)
+        if profile is not None:
+            self.profile = dict(profile)
+        return n
+
     def _filtered(self, odata: str | None) -> list[dict[str, Any]]:
         pred = compile_filter(odata)
         return [d for d in self.docs.values() if pred(d)]
@@ -182,6 +190,21 @@ class SqlLocalSearchIndex(SearchIndex):
                 )
 
         await asyncio.to_thread(_do)
+
+    async def clear(self, schema: IndexSchema, profile: dict[str, Any] | None) -> int:
+        """Delete this index's chunks; the schema row and profile stay. Bumping the generation drops read caches."""
+        await self.ensure_index(schema)
+
+        def _do() -> int:
+            with self.engine.begin() as c:
+                n = int(c.execute(delete(_chunks).where(_chunks.c.index_name == self.index_name)).rowcount or 0)
+                self._bump(c)
+                if profile is not None:
+                    c.execute(update(_index_meta).where(_index_meta.c.index_name == self.index_name)
+                              .values(profile=profile))
+                return n
+
+        return await asyncio.to_thread(_do)
 
     async def upsert(self, documents: Sequence[dict[str, Any]]) -> None:
         if not documents:

@@ -129,6 +129,29 @@ class ServiceBusQueue(MessageQueue):
                 continue
         return out
 
+    async def purge_all(self, time_budget_s: float = 120.0) -> int:
+        """Receive-and-delete everything from both queues and their dead-letter sub-queues, within a time budget.
+
+        Service Bus has no purge call. Receive-and-delete removes messages as they are read, so a worker that is
+        still running may take some first - the reset pauses ingestion before calling this, and the count is
+        what THIS call removed.
+        """
+        import time
+
+        deadline = time.monotonic() + time_budget_s
+        n = 0
+        for lane in (Lane.PRIORITY, Lane.BULK):
+            for sub in (None, ServiceBusSubQueue.DEAD_LETTER):
+                async with self._client.get_queue_receiver(
+                    self._names[lane], sub_queue=sub, receive_mode=ServiceBusReceiveMode.RECEIVE_AND_DELETE,
+                ) as r:
+                    while time.monotonic() < deadline:
+                        batch = await r.receive_messages(max_message_count=100, max_wait_time=2)
+                        if not batch:
+                            break
+                        n += len(batch)
+        return n
+
     async def aclose(self) -> None:
         await self._renewer.close()
         for s in self._senders.values():

@@ -41,4 +41,35 @@ def test_a_document_nobody_can_read_is_flagged_and_one_click_from_the_fix() -> N
 
 def test_the_required_attributes_come_from_the_policy_not_a_hardcoded_list() -> None:
     common = source("admin/common.ts")
-    assert "/api/uploads/options" in common and ".then((o) => o.required)" in common
+    assert "/api/uploads/options" in common and "o?.required" in common
+
+
+def _function(text: str, name: str) -> str:
+    start = text.index(f"function {name}(")
+    end = text.find("\nfunction ", start + 10)
+    end2 = text.find("\nexport ", start + 10)
+    stops = [e for e in (end, end2) if e != -1]
+    return text[start:min(stops) if stops else len(text)]
+
+
+def test_access_tags_are_chosen_from_the_same_dropdowns_as_an_upload() -> None:
+    """Matching is exact: a typed `hr` never matches `HR`. So nothing that sets a tag accepts free text, and the
+    upload form and the admin editor share one builder so their lists cannot drift."""
+    editor = _function(source("admin/common.ts"), "accessEditor")
+    assert "vocabularySelect(" in editor and "clearanceSelect(" in editor
+    assert "type: 'text'" not in editor and "type: 'number'" not in editor and "h('input'" not in editor, (
+        "the access-tag editor must not take typed values")
+    upload = source("upload.ts")
+    assert "vocabularySelect(" in upload and "clearanceSelect(" in upload, "the upload form uses the same builders"
+    controls = source("tag-controls.ts")
+    assert "export function vocabularySelect(" in controls and "export function clearanceSelect(" in controls
+    assert chr(0xA0) in controls, "hierarchy indent uses non-breaking spaces (<option> collapses ordinary ones)"
+
+
+def test_permanent_delete_and_reset_say_what_they_cannot_undo() -> None:
+    common = source("admin/common.ts")
+    assert "cannot be recovered" in common and "COMES BACK" in common, (
+        "the delete confirmation must warn that uploads are unrecoverable and crawled files return on sync")
+    reset = source("admin/reset.ts")
+    assert "go.disabled = confirmInput.value.trim() !== p.index" in reset, "reset is typed-confirmation only"
+    assert "/api/admin/reset" in reset and "include_traces" in reset

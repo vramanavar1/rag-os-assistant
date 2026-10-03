@@ -2,6 +2,7 @@
 import type { ApiClient } from '../api';
 import { fmtDate, fmtNum, h, mount, shortId, type Child } from '../dom';
 import { correlationTag, problemBox, statusBadge, toast, toastError } from '../ui';
+import { clearanceSelect, vocabularySelect } from '../tag-controls';
 import type { DocumentDetail, DocumentRecord, FacetsResponse, Me, PublicConfig, Source, UploadOptions } from '../types';
 
 export interface ViewContext {
@@ -179,17 +180,20 @@ function tagTable(title: string, entries: Record<string, unknown> | undefined): 
 // ---------------------------------------------------------------- who can read a document
 
 type Required = { name: string; label: string }[];
-let requiredCache: Promise<Required> | null = null;
+let optionsCache: Promise<UploadOptions | null> | null = null;
+/** GET /api/uploads/options, cached: the required access attributes and the clearance ladder. */
+function getUploadOptions(api: ApiClient): Promise<UploadOptions | null> {
+  optionsCache ??= api.get<UploadOptions>('/api/uploads/options').catch(() => {
+    optionsCache = null;
+    return null;
+  });
+  return optionsCache;
+}
+
 /** The access attributes a document must carry for anyone (beyond individual shares) to read it. */
-export function getRequiredAccess(api: ApiClient): Promise<Required> {
-  requiredCache ??= api
-    .get<UploadOptions>('/api/uploads/options')
-    .then((o) => o.required)
-    .catch(() => {
-      requiredCache = null;
-      return [{ name: 'department', label: 'Department' }, { name: 'region', label: 'Region' }];
-    });
-  return requiredCache;
+export async function getRequiredAccess(api: ApiClient): Promise<Required> {
+  const o = await getUploadOptions(api);
+  return o?.required ?? [{ name: 'department', label: 'Department' }, { name: 'region', label: 'Region' }];
 }
 
 /** Required access tags this document lacks - unless it was deliberately made private (Only me). */
@@ -246,12 +250,14 @@ export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () =
 
   const load = async () => {
     try {
-      const [d, required] = await Promise.all([
+      const [d, required, options, facets] = await Promise.all([
         api.get<DocumentDetail>(`/api/admin/ingestion/documents/${encodeURIComponent(docId)}`),
         getRequiredAccess(api),
+        getUploadOptions(api),
+        getFacets(api).then((f) => f.facets).catch(() => ({}) as FacetsResponse['facets']),
       ]);
       const r = d.record;
-      const editor = accessEditor(api, r, () => { opts.onChanged?.(); void load(); }, required);
+      const editor = accessEditor(api, r, () => { opts.onChanged?.(); void load(); }, required, facets, options);
       if (opts.focusAccess || missingAccess(r, required).length) editor.open = true;
       const retry = h('button', { type: 'button', class: 'btn' }, 'Retry this document');
       retry.addEventListener('click', async () => {
@@ -315,25 +321,80 @@ export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () =
 
 // ---------------------------------------------------------------- access tags + delete (administrators)
 
-const ACCESS_KEYS = ['department', 'region', 'clearance'];
-
-/** Edit who may read a document. Saves through /tags, which re-tags the index in place (no re-embedding). */
-function accessEditor(api: ApiClient, r: DocumentDetail['record'], reload: () => void, required: Required): HTMLDetailsElement {
+/** Edit who may read a document - with the upload form's own dropdowns (tag-controls.ts), never free text.
+ *  Matching is exact, so a typed `hr` would silently never match `HR`. Saves through /tags, which re-tags the
+ *  index in place (no re-embedding) and refuses any value outside the vocabulary. */
+function accessEditor(
+  api: ApiClient,
+  r: DocumentDetail['record'],
+  reload: () => void,
+  required: Required,
+  vocab: FacetsResponse['facets'],
+  options: UploadOptions | null,
+): HTMLDetailsElement {
   const acl = (r.tags?.acl ?? {}) as Record<string, string[] | number>;
-  const keys = [...new Set([...required.map((x) => x.name), ...ACCESS_KEYS, ...Object.keys(acl)])];
-  const inputs = new Map<string, HTMLInputElement>();
-  const fields = keys.map((k) => {
-    const v = acl[k];
-    const input = h('input', {
-      id: `acl-${k}`,
-      type: k === 'clearance' ? 'number' : 'text',
-      min: k === 'clearance' ? 0 : null,
-      value: Array.isArray(v) ? v.join(', ') : v === undefined ? '' : String(v),
-      placeholder: k === 'clearance' ? 'e.g. 1' : 'comma separated, e.g. HR',
+  const clearance = options?.clearance ?? null;
+  const listNames = [...new Set([...required.map((x) => x.name), ...Object.keys(acl)])].filter(
+    (k) => k !== clearance?.name && vocab[k] !== undefined,
+  );
+  const labelOf = (k: string) => required.find((x) => x.name === k)?.label ?? vocab[k]?.label ?? k;
+
+  // One dropdown per value; + Add another for the rare document shared with several departments or regions.
+  const rows = new Map<string, HTMLElement>();
+  const addRow = (name: string, value: string): void => {
+    const list = rows.get(name)!;
+    const n = list.childElementCount;
+    const select = vocabularySelect({
+      id: `acl-${name}-${n}`,
+      name,
+      facet: vocab[name]!,
+      selected: value,
+      leading: [{ value: '', label: '— choose —' }, { value: '*', label: 'Everyone (*)' }],
     });
-    inputs.set(k, input);
-    return h('div', { class: 'field' }, h('label', { for: input.id }, k), input);
+    const remove = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-label': `Remove this ${labelOf(name)}` }, '×');
+    const row = h('div', { class: 'acl-row' }, select, remove);
+    remove.addEventListener('click', () => (list.childElementCount > 1 ? row.remove() : (select.value = '')));
+    list.appendChild(row);
+  };
+  const listFields = listNames.map((name) => {
+    const list = h('div', { class: 'acl-values', id: `acl-${name}` });
+    rows.set(name, list);
+    const current = acl[name];
+    const values = Array.isArray(current) && current.length ? current : [''];
+    for (const v of values) addRow(name, String(v));
+    const add = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, '+ Add another');
+    add.addEventListener('click', () => addRow(name, ''));
+    return h('div', { class: 'field' }, h('label', { for: `acl-${name}-0` }, labelOf(name)), list, add);
   });
+
+  const clearanceField = clearance
+    ? (() => {
+        // Recorded tags keep what their layer wrote: a manifest cell arrives as ["1"], a rule as 1.
+        const current = acl[clearance.name] as unknown;
+        const raw = Array.isArray(current) ? current[0] : current;
+        const level = raw === undefined || raw === null || raw === '' ? null : Number(raw);
+        const sel = clearanceSelect({ id: `acl-${clearance.name}`, clearance, selected: Number.isFinite(level) ? level : null });
+        return { sel, el: h('div', { class: 'field' }, h('label', { for: sel.id }, clearance.label), sel) };
+      })()
+    : null;
+
+  // Individual shares (employee_id): shown and removable, never typed. Adding a person needs a directory lookup.
+  const shareNames = Object.keys(acl).filter((k) => !listNames.includes(k) && k !== clearance?.name && Array.isArray(acl[k]));
+  const shares = new Map<string, Set<string>>(shareNames.map((k) => [k, new Set((acl[k] as string[]).map(String))]));
+  const shareFields = shareNames.map((k) => {
+    const chips = h('div', { class: 'chips' });
+    const draw = () =>
+      chips.replaceChildren(
+        ...[...shares.get(k)!].map((v) => {
+          const x = h('button', { type: 'button', class: 'chip', title: `Stop sharing with ${v}` }, v, ' ×');
+          x.addEventListener('click', () => (shares.get(k)!.delete(v), draw()));
+          return x;
+        }),
+      );
+    draw();
+    return h('div', { class: 'field' }, h('span', { class: 'label' }, `Shared individually (${k})`), chips);
+  });
+
   const visibility = r.tags?.sources?.visibility;
   const save = h('button', { type: 'submit', class: 'btn' }, 'Save access tags');
   const form = h(
@@ -343,11 +404,16 @@ function accessEditor(api: ApiClient, r: DocumentDetail['record'], reload: () =>
       onsubmit: async (ev: SubmitEvent) => {
         ev.preventDefault();
         const next: Record<string, string[] | number> = {};
-        for (const [k, input] of inputs) {
-          const raw = input.value.trim();
-          if (!raw) continue;
-          next[k] = k === 'clearance' ? Number(raw) : raw.split(',').map((x) => x.trim()).filter(Boolean);
+        for (const [name, list] of rows) {
+          const picked = [...list.querySelectorAll('select')].map((s) => s.value).filter(Boolean);
+          if (list.querySelector('select.invalid')) {
+            toastError(new Error(`Replace the ${labelOf(name)} value marked "not in vocabulary" first.`));
+            return;
+          }
+          if (picked.length) next[name] = [...new Set(picked)];
         }
+        if (clearanceField?.sel.value) next[clearance!.name] = Number(clearanceField.sel.value);
+        for (const [k, set] of shares) if (set.size) next[k] = [...set];
         save.disabled = true;
         try {
           await api.post(`/api/admin/documents/${encodeURIComponent(r.doc_id)}/tags`, { acl: next, approve: false });
@@ -360,8 +426,9 @@ function accessEditor(api: ApiClient, r: DocumentDetail['record'], reload: () =>
         }
       },
     },
-    h('p', { class: 'hint' }, 'Who may read this document. Department and Region are required for anyone but the people it is shared with individually (employee_id) to read it. Administrators only.'),
-    h('div', { class: 'row' }, fields),
+    h('p', { class: 'hint' }, 'Who may read this document — the same lists the upload form offers. Department and Region are required for anyone but the people it is shared with individually. Administrators only.'),
+    h('div', { class: 'row' }, listFields, clearanceField?.el ?? null),
+    shareFields,
     h('div', null, save),
   );
   return h(
@@ -372,19 +439,50 @@ function accessEditor(api: ApiClient, r: DocumentDetail['record'], reload: () =>
   );
 }
 
+export interface DeleteReport {
+  documents: number;
+  chunks: number;
+  blobs: number;
+  blobs_kept_shared: number;
+  blobs_left_at_source: number;
+  traces: number;
+  expectations_updated: number;
+  not_found: string[];
+  errors: string[];
+}
+
+/** The one confirmation for a permanent delete, so the single and the bulk action say the same thing. */
+export async function deletePermanently(api: ApiClient, docIds: string[], what: string): Promise<DeleteReport | null> {
+  const ok = confirm(
+    `Permanently delete ${what}?\n\n` +
+      'Removed now: its index entries (no answer can cite it), its stored copy (unless another document has the same bytes), ' +
+      'its status history, queued work, and query traces that mention it.\n\n' +
+      '• An UPLOAD has no other copy — it cannot be recovered.\n' +
+      '• A document from a crawled source (folder / blob) COMES BACK on that source\'s next sync if the file is still there — delete it at the source to keep it out.',
+  );
+  if (!ok) return null;
+  try {
+    const rep = await api.post<DeleteReport>('/api/admin/documents/delete', { doc_ids: docIds, permanent: true });
+    toast(
+      `Deleted ${fmtNum(rep.documents)} document(s): ${fmtNum(rep.chunks)} index entries, ${fmtNum(rep.blobs)} stored copies` +
+        (rep.blobs_kept_shared ? ` (${rep.blobs_kept_shared} kept: shared)` : '') +
+        (rep.traces ? `, ${fmtNum(rep.traces)} traces` : '') +
+        (rep.errors.length ? ` — ${rep.errors.length} error(s)` : '') + '.',
+      { kind: rep.errors.length ? 'error' : 'success' },
+    );
+    return rep;
+  } catch (err) {
+    toastError(err, 'Delete failed');
+    return null;
+  }
+}
+
 function deleteButton(api: ApiClient, docId: string, name: string, done: () => void): HTMLElement {
-  const btn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Delete document');
+  const btn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Delete permanently');
   btn.addEventListener('click', async () => {
-    if (!confirm(`Delete "${name}"? It leaves the index now; its stored copy is freed by the next purge.`)) return;
     btn.disabled = true;
-    try {
-      await api.delete(`/api/admin/documents/${encodeURIComponent(docId)}`);
-      toast('Document deleted.', { kind: 'success' });
-      done();
-    } catch (err) {
-      toastError(err, 'Delete failed');
-      btn.disabled = false;
-    }
+    if (await deletePermanently(api, [docId], `"${name}"`)) done();
+    else btn.disabled = false;
   });
   return btn;
 }

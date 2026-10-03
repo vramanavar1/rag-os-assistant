@@ -27,13 +27,15 @@ class PurgeReport:
     chunks: int = 0
     blobs: int = 0
     blobs_kept_shared: int = 0
+    blobs_left_at_source: int = 0  # documents read in place from their source: the file is not ours to delete
     dry_run: bool = False
     errors: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
         return {
             "documents": self.documents, "chunks": self.chunks, "blobs": self.blobs,
-            "blobs_kept_shared": self.blobs_kept_shared, "dry_run": self.dry_run, "errors": self.errors,
+            "blobs_kept_shared": self.blobs_kept_shared, "blobs_left_at_source": self.blobs_left_at_source,
+            "dry_run": self.dry_run, "errors": self.errors,
         }
 
 
@@ -65,7 +67,10 @@ class Purge:
                     # Chunks first: a row with no chunks is merely stale, whereas chunks with no row are
                     # unreachable and unattributable.
                     report.chunks += await self.index.delete_doc_versions(cand.doc_id, None)
-                if cand.free_blob and cand.blob_uri and cand.blob_uri not in seen_blobs:
+                if cand.blob_uri and not self.raw.owns(cand.blob_uri):
+                    # Read in place from its source (an azure_blob source): the customer's file, never ours.
+                    report.blobs_left_at_source += 1
+                elif cand.free_blob and cand.blob_uri and cand.blob_uri not in seen_blobs:
                     seen_blobs.add(cand.blob_uri)
                     if dry_run or self.raw.delete(cand.blob_uri):
                         report.blobs += 1
