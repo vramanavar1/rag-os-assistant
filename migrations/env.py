@@ -10,9 +10,10 @@ from rag_os.infrastructure.search.in_memory import _meta as search_meta
 from rag_os.infrastructure.settings import get_settings
 from rag_os.infrastructure.state.db import make_engine
 from rag_os.infrastructure.state.sql_store import metadata as state_meta
+from rag_os.infrastructure.state.trace_store import _meta as trace_meta
 
 target_metadata = MetaData()
-for md in (state_meta, queue_meta, search_meta):
+for md in (state_meta, queue_meta, search_meta, trace_meta):
     for table in md.tables.values():
         table.to_metadata(target_metadata)
 

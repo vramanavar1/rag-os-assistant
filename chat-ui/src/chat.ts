@@ -351,6 +351,10 @@ function usageFooter(res: ChatResponse): HTMLElement {
       ? h('details', { class: 'usage-details' }, h('summary', null, 'Details'), h('dl', null, u.calls ? [h('dt', null, 'LLM calls'), h('dd', null, fmtNum(u.calls))] : null, breakdown))
       : null,
     res.correlation_id ? correlationTag(res.correlation_id) : null,
+    // Administrators can open what happened to this question, stage by stage. The correlation id is the key.
+    res.correlation_id && isAdmin(signedInAs)
+      ? h('a', { class: 'trace-link', href: `/admin#/traces/${encodeURIComponent(res.correlation_id)}`, target: '_blank', rel: 'noopener' }, 'Open trace')
+      : null,
   );
 }
 

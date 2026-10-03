@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from rag_os.domain.access import AccessPolicy, AttributeRule, MatchKind, Principal
 from rag_os.domain.classification import FacetSchema
 from rag_os.domain.errors import AuthenticationFailed
+from rag_os.domain.trace import AttributeCheck
 
 DENY_ALL = "__deny_all__"
 _DELIM = "|"
@@ -314,6 +315,114 @@ class AccessPolicyEngine:
         if granted:
             parts.append("— or be shared with you individually (" + ", ".join(granted) + ")")
         return "To read it, " + " ".join(parts) + "."
+
+    # ------------------------------------------------------------------ troubleshooting (query traces)
+
+    def _label(self, rule: AttributeRule) -> str:
+        return rule.label or rule.name.replace("_", " ").title()
+
+    def explain_document(self, principal: Principal,
+                         doc_acl: Mapping[str, list[str] | int | None]) -> dict[str, AttributeCheck]:
+        """Each attribute of the policy, evaluated for one document, with the predicate `allows` uses.
+
+        `allows` answers yes or no; this says which attribute decided it, which is the whole question when a
+        person cannot see a document they expected to. It is the same `_rule_ok` underneath, and the same
+        handling of absent caller values, so the two cannot disagree.
+        """
+        out: dict[str, AttributeCheck] = {}
+        bypass = principal.is_admin
+        for name in self.policy.combine.all_of:
+            rule = self.policy.attribute(name)
+            pv = self._principal_values(rule, principal)
+            doc_val = doc_acl.get(name)
+            label = self._label(rule)
+            note = ""
+            if pv is None:
+                if rule.required:
+                    out[name] = AttributeCheck(passed=bypass, doc_values=doc_val, caller_values=None,
+                                               note=f"caller has no {label}, which is required")
+                    continue
+                pv = 0 if rule.is_numeric else []
+                note = f"caller has no {label}, so only documents open to everyone match"
+            passed = bypass or self._rule_ok(rule, pv, doc_val)
+            shown: list[str] | int = pv if rule.is_numeric else self._match_values(rule, pv)  # type: ignore[arg-type]
+            if not passed:
+                if doc_val is None or doc_val == []:
+                    note = f"document has no {label} tag, so no caller matches it"
+                elif rule.is_numeric:
+                    note = f"document is level {doc_val}; caller reaches level {pv} and below"
+                else:
+                    note = f"document is {label} {', '.join(map(str, doc_val))}; caller reaches {', '.join(map(str, shown))}"  # type: ignore[arg-type]
+            out[name] = AttributeCheck(passed=passed, doc_values=doc_val, caller_values=shown, note=note)
+        for name in self.policy.combine.grant_any_of:
+            rule = self.policy.attribute(name)
+            pv = self._principal_values(rule, principal)
+            doc_val = doc_acl.get(name)
+            passed = pv is not None and self._rule_ok(rule, pv, doc_val, allow_wildcard=False)
+            out[name] = AttributeCheck(
+                passed=passed, doc_values=doc_val, caller_values=pv,
+                note="shared with this caller individually" if passed else "not shared with this caller individually")
+        return out
+
+    def caller_problems(self, principal: Principal) -> list[str]:
+        """Things about the caller's attributes that are probably a mistake rather than a decision.
+
+        A missing required attribute, or a value the vocabulary spells differently: department matching is exact,
+        so an account carrying `hr` never matches a document tagged `HR`, and nothing else would say so.
+        """
+        if principal.is_admin:
+            return []
+        problems: list[str] = []
+        for rule in self.policy.attributes:
+            label = self._label(rule)
+            raw = principal.attributes.get(rule.name)
+            claim = rule.claims.get(principal.issuer_kind) or rule.name
+            if raw is None or raw == []:
+                if rule.required:
+                    problems.append(f"The account has no {label} (claim '{claim}'). It is required, so this person "
+                                    f"can only read documents shared with them individually.")
+                continue
+            if rule.is_numeric:
+                continue
+            fd = self.facets.get(rule.hierarchy_facet or rule.name)
+            if fd is None:
+                continue
+            for v in (raw if isinstance(raw, list) else [raw]):
+                canon = fd.normalise(str(v))
+                if canon is None:
+                    problems.append(f"{label} '{v}' is not a value in the {fd.name} vocabulary, so it matches no "
+                                    f"document tagged from that vocabulary.")
+                elif canon != str(v) and rule.match != MatchKind.HIERARCHICAL:
+                    # Hierarchical values are normalised before matching; any_of/exact values are not.
+                    problems.append(f"{label} '{v}' is spelled differently from the vocabulary value '{canon}'. "
+                                    f"Matching is exact, so documents tagged '{canon}' do not match.")
+        return problems
+
+    def document_problems(self, doc_acl: Mapping[str, list[str] | int | None],
+                          doc_facets: Mapping[str, list[str]]) -> list[str]:
+        """Things about a document's access tags that are probably a mistake rather than a decision."""
+        problems: list[str] = []
+        for name in self.policy.combine.all_of:
+            rule = self.policy.attribute(name)
+            v = doc_acl.get(name)
+            if v is None or v == []:
+                problems.append(f"The document has no {self._label(rule)} access tag, so it is invisible to everyone "
+                                f"except administrators and people it is shared with individually.")
+        for rule in self.policy.attributes:
+            if rule.is_numeric:
+                continue
+            facet_vals = doc_facets.get(rule.name) or []
+            acl_vals = doc_acl.get(rule.name)
+            if not facet_vals or not isinstance(acl_vals, list) or not acl_vals:
+                continue
+            if rule.wildcard and rule.wildcard in acl_vals:
+                continue
+            if not set(map(str, acl_vals)) & set(facet_vals):
+                problems.append(
+                    f"The document is classified {self._label(rule)} {', '.join(facet_vals)} but its access tag says "
+                    f"{', '.join(map(str, acl_vals))}. A document uploaded through the UI takes the uploader's access "
+                    f"tags, not its folder's.")
+        return problems
 
     def explain(self, principal: Principal) -> dict[str, object]:
         d = self.decide(principal)

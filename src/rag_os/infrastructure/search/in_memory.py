@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from rag_os.application.ports import IndexSchema, SearchIndex, SearchRequest
+from rag_os.application.services.index_schema import BASE_SELECT
 from rag_os.domain.answers import SearchHit
 from rag_os.domain.errors import ProfileMismatch
 from rag_os.infrastructure.registry import SEARCH_INDEXES
@@ -27,7 +28,8 @@ from rag_os.infrastructure.search.odata_eval import compile_filter
 from rag_os.infrastructure.state.db import make_engine
 
 
-def _hit(doc: dict[str, Any], score: float) -> SearchHit:
+def _hit(doc: dict[str, Any], score: float, select: list[str] | None = None) -> SearchHit:
+    extra = [f for f in (select or []) if f not in BASE_SELECT]
     return SearchHit(
         chunk_id=doc["chunk_id"],
         doc_id=doc["doc_id"],
@@ -41,6 +43,7 @@ def _hit(doc: dict[str, Any], score: float) -> SearchHit:
         score=score,
         reranker_score=None,
         facets={},
+        fields={f: doc.get(f) for f in extra},
     )
 
 
@@ -100,7 +103,7 @@ class InMemorySearchIndex(SearchIndex):
     async def search(self, request: SearchRequest) -> list[SearchHit]:
         cands = self._filtered(request.odata_filter)
         ranked = hybrid_rank(cands, [c.get("vector") for c in cands], request.text, request.vector, request.top)
-        return [_hit(cands[i], s) for i, s in ranked]
+        return [_hit(cands[i], s, request.select) for i, s in ranked]
 
     async def facets(self, odata_filter: str | None, fields: Sequence[str]) -> dict[str, dict[str, int]]:
         return facet_counts(self._filtered(odata_filter), fields)
@@ -253,7 +256,7 @@ class SqlLocalSearchIndex(SearchIndex):
             pred = compile_filter(request.odata_filter)
             cands = [d for d in self._load() if pred(d)]
             ranked = hybrid_rank(cands, [c.get("vector") for c in cands], request.text, request.vector, request.top)
-            return [_hit(cands[i], s) for i, s in ranked]
+            return [_hit(cands[i], s, request.select) for i, s in ranked]
 
         return await asyncio.to_thread(_do)
 

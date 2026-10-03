@@ -13,13 +13,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from rag_os import __doc__ as pkg_doc
 from rag_os.api.errors import install_error_handlers
 from rag_os.api.middleware import CorrelationMiddleware
-from rag_os.api.routers import admin_config, admin_directory, admin_ingestion, chat, dev, health, uploads
+from rag_os.api.routers import (
+    admin_config,
+    admin_directory,
+    admin_ingestion,
+    admin_traces,
+    chat,
+    dev,
+    health,
+    uploads,
+)
+from rag_os.application.use_cases.expectations import maintenance_tick
 from rag_os.composition import Container
 from rag_os.infrastructure.settings import Settings, get_settings
-from rag_os.infrastructure.telemetry import setup_telemetry
+from rag_os.infrastructure.telemetry import record_expectation, setup_telemetry
 
 log = logging.getLogger("rag_os.api")
 CONFIG_REFRESH_S = 60
+MAINTENANCE_S = 300
 
 
 def create_app(settings: Settings | None = None, container: Container | None = None) -> FastAPI:
@@ -54,11 +65,33 @@ def create_app(settings: Settings | None = None, container: Container | None = N
                 except Exception:
                     log.exception("configuration refresh failed")
 
+        async def _maintain() -> None:
+            # Trace retention and scheduled expectation replays. Here rather than in the scheduler job, which
+            # holds no LLM credentials; expectations are claimed in the database, so replicas never double up.
+            s = c.settings
+            if not s.query_trace_enabled:
+                return
+            while True:
+                await asyncio.sleep(MAINTENANCE_S)
+                try:
+                    out = await maintenance_tick(c.traces, c.expectations, retention_days=s.query_trace_retention_days,
+                                                 replay_hours=s.query_expectation_replay_hours)
+                    for _ in range(out.get("passed", 0)):
+                        record_expectation("pass")
+                    for _ in range(out.get("failed", 0)):
+                        record_expectation("fail")
+                    if any(out.values()):
+                        log.info("query trace maintenance", extra=out)
+                except Exception:
+                    log.exception("query trace maintenance failed")
+
         task = asyncio.create_task(_refresh())
+        maintenance = asyncio.create_task(_maintain())
         try:
             yield
         finally:
             task.cancel()
+            maintenance.cancel()
             await c.aclose()
 
     app = FastAPI(
@@ -83,7 +116,7 @@ def create_app(settings: Settings | None = None, container: Container | None = N
     app.add_middleware(CorrelationMiddleware)
     install_error_handlers(app)
     for r in (health.router, chat.router, uploads.router, admin_ingestion.router, admin_config.router,
-              admin_directory.router):
+              admin_directory.router, admin_traces.router):
         app.include_router(r)
     if settings.dev_auth_enabled:
         app.include_router(dev.router)

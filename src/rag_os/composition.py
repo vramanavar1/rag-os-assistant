@@ -31,9 +31,11 @@ from rag_os.application.services.directory_admin import DirectoryAdminService, e
 from rag_os.application.services.directory_claims import DirectoryAttributes
 from rag_os.application.services.index_schema import IndexDocumentMapper, build_schema
 from rag_os.application.services.profile_guard import ProfileGuard
+from rag_os.application.services.query_trace import NearMissProbe
 from rag_os.application.services.tagging import TagResolver
 from rag_os.application.use_cases.answer_query import AnswerQuery
 from rag_os.application.use_cases.discover import DiscoverSource
+from rag_os.application.use_cases.expectations import Expectations
 from rag_os.application.use_cases.process_item import ProcessItem
 from rag_os.application.use_cases.purge import Purge
 from rag_os.application.use_cases.scheduler import Reconcile, SchedulerTick
@@ -59,6 +61,7 @@ from rag_os.infrastructure.settings import Settings
 from rag_os.infrastructure.sources.factory import SourceFactory
 from rag_os.infrastructure.state.schema_status import SchemaStatus, schema_status
 from rag_os.infrastructure.state.sql_store import SqlStateStore
+from rag_os.infrastructure.state.trace_store import SqlQueryTraceStore
 
 log = logging.getLogger(__name__)
 DEV_ISSUER = "rag-os-dev"
@@ -109,6 +112,8 @@ class Container:
         self.tagger = TagResolver(dc.facets, dc.path_rules)
         self.schema = build_schema(self.index_name, self.profile, dc.policy, dc.facets, self.settings.search_compression)
         self.__dict__.pop("answer", None)
+        self.__dict__.pop("near_miss", None)  # holds the policy engine, so it must follow a policy reload
+        self.__dict__.pop("expectations", None)
         self.__dict__.pop("processor", None)
         self.__dict__.pop("discover", None)
         # Both read the policy: the service for its master lists, the adapter for the extension names it writes.
@@ -135,6 +140,12 @@ class Container:
         # environments shipped without the migrations directory.
         return SqlStateStore(self.settings.state_db_url, entra_auth=self.settings.pg_entra_auth,
                              create=_migration_config(self.settings.state_db_url, self.settings.pg_entra_auth) is None)
+
+    @cached_property
+    def traces(self) -> SqlQueryTraceStore:
+        return SqlQueryTraceStore(self.settings.state_db_url, entra_auth=self.settings.pg_entra_auth,
+                                  create=_migration_config(self.settings.state_db_url, self.settings.pg_entra_auth)
+                                  is None)
 
     @cached_property
     def index(self) -> SearchIndex:
@@ -242,14 +253,30 @@ class Container:
             return self._llm("aoai", role="answer")
         return None
 
+    @property
+    def relevance_bar(self) -> dict[str, float]:
+        """The one place the bar is decided, so the retriever and the near-miss probe cannot disagree on it."""
+        s = self.settings
+        return {"min_reranker_score": s.retrieval_min_reranker_score if s.search_backend == "azure" else 0.0,
+                "min_score": s.retrieval_min_score}
+
     @cached_property
     def retriever(self) -> Retriever:
         s = self.settings
+        bar = self.relevance_bar
         return RETRIEVERS.create(  # type: ignore[no-any-return]
             s.retriever, index=self.index, embedder=self.embed_query, candidates=s.retrieval_candidates,
-            min_reranker_score=s.retrieval_min_reranker_score if s.search_backend == "azure" else 0.0,
-            min_score=s.retrieval_min_score,
+            min_reranker_score=bar["min_reranker_score"], min_score=bar["min_score"],
             semantic=s.search_semantic)
+
+    @cached_property
+    def near_miss(self) -> NearMissProbe | None:
+        s = self.settings
+        if not (s.query_trace_enabled and s.query_trace_near_miss):
+            return None
+        return NearMissProbe(index=self.index, embedder=self.embed_query, engine=self.engine,
+                             facets=self.domain.facets, thresholds=self.relevance_bar, top=s.retrieval_top_k,
+                             candidates=s.retrieval_candidates, semantic=s.search_semantic)
 
     @cached_property
     def jwt(self) -> JwtValidator:
@@ -334,7 +361,11 @@ class Container:
         return AnswerQuery(engine=self.engine, facets=self.domain.facets, retriever=self.retriever,
                            llm=self.llm_answer, utility_llm=self.llm_utility, fallback_llm=self.llm_fallback,
                            top_k=s.retrieval_top_k, history_turns=s.answer_history_turns,
-                           max_output_tokens=s.llm_max_output_tokens)
+                           max_output_tokens=s.llm_max_output_tokens, probe=self.near_miss)
+
+    @cached_property
+    def expectations(self) -> Expectations:
+        return Expectations(self.traces, self.answer, max_hits=self.settings.query_trace_max_hits)
 
     @cached_property
     def discover(self) -> DiscoverSource:

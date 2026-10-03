@@ -87,6 +87,10 @@ def setup_telemetry(service: str, level: str = "INFO", connection_string: str | 
         _instruments["docs"] = _meter.create_counter("rag.ingest.docs", unit="{document}", description="Ingested docs")
         _instruments["chunks"] = _meter.create_counter("rag.ingest.chunks", unit="{chunk}",
                                                        description="Chunks indexed (what consumes index quota)")
+        _instruments["answers"] = _meter.create_counter(
+            "rag.answers", unit="{question}", description="Questions by outcome, refusal reason and trace verdict")
+        _instruments["expectations"] = _meter.create_counter(
+            "rag.expectations", unit="{replay}", description="Expectation replays by result")
     except Exception:  # noqa: S110
         pass
 
@@ -139,3 +143,16 @@ def record_ingest(status: str, source_id: str, chunks: int = 0, reused: bool = F
     ch = _instruments.get("chunks")
     if ch is not None and chunks:
         ch.add(chunks, {"source_id": source_id, "reused": str(reused).lower()})
+
+
+def record_answer(outcome: str, reason: str | None, verdict: str, replay: bool = False) -> None:
+    """One question answered or not. `verdict` separates a correct refusal from a problem - alert on that."""
+    c = _instruments.get("answers")
+    if c is not None:
+        c.add(1, {"outcome": outcome, "reason": reason or "none", "verdict": verdict, "replay": str(replay).lower()})
+
+
+def record_expectation(result: str) -> None:
+    c = _instruments.get("expectations")
+    if c is not None:
+        c.add(1, {"result": result})

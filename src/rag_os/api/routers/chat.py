@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -11,37 +12,79 @@ from fastapi import APIRouter, Depends
 from rag_os.api.deps import get_container, get_principal
 from rag_os.api.schemas import ChatRequest, MeResponse
 from rag_os.application.services.prompts import GUARD_REFUSALS
+from rag_os.application.services.query_trace import TraceRecorder
 from rag_os.composition import Container
 from rag_os.domain.access import Principal
 from rag_os.domain.answers import Answer
-from rag_os.infrastructure.telemetry import correlation_id_var, record_tokens, span
+from rag_os.domain.errors import ValidationFailed
+from rag_os.domain.trace import QueryTrace, StageStatus
+from rag_os.infrastructure.telemetry import correlation_id_var, record_answer, record_tokens, span
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
+TRACE_SAVE_TIMEOUT_S = 3.0
 
 
 @router.post("/chat", response_model=Answer, summary="Ask a question (answers only from documents you can access)")
 async def chat(req: ChatRequest, principal: Principal = Depends(get_principal),
                c: Container = Depends(get_container)) -> Answer:
+    # Every question is traced for Admin > Query traces unless QUERY_TRACE_ENABLED=false. The trace observes; it
+    # never changes the answer. A question rejected as malformed never entered the pipeline and is not traced.
+    rec = (TraceRecorder(principal=principal, question=req.question, filters=req.filters,
+                         history_turns=len(req.history), correlation_id=correlation_id_var.get(),
+                         max_hits=c.settings.query_trace_max_hits)
+           if c.settings.query_trace_enabled else None)
+    answer: Answer | None = None
+    try:
+        answer = await _answer(req, principal, c, rec)
+        return answer
+    except ValidationFailed:
+        rec = None
+        raise
+    except Exception as e:
+        if rec is not None:
+            rec.fail(e)
+        raise
+    finally:
+        if rec is not None:
+            await _persist(c, rec.finish(answer))
+
+
+async def _answer(req: ChatRequest, principal: Principal, c: Container, rec: TraceRecorder | None) -> Answer:
     # Refuse, politely, when there is genuinely nothing to answer from - an index that was never bootstrapped,
     # or one built with a different embedding model. Previously neither was checked here: a missing index
     # surfaced as DependencyUnavailable("search query failed") and a mismatch was not detected at all, so
     # queries ran against the wrong vector space and returned plausible but wrong answers.
     # An index that exists but is empty is NOT refused here - the guard is satisfied, the query runs, and
     # AnswerQuery answers with NOT_FOUND_MESSAGE. That path is unchanged.
+    tg = time.perf_counter()
     try:
         guard_reason = await asyncio.wait_for(c.guard.refusal_reason(c.index, {"query": c.embed_query}), timeout=20)
     except Exception as e:  # the guard itself is a dependency; never let it turn a question into a 500
         log.warning("profile guard unavailable; refusing the query", extra={"error": f"{type(e).__name__}: {e}"})
         guard_reason = "search_unavailable"
+    if rec is not None:
+        rec.set("guard", StageStatus.OK, f"Index {c.index_name} ready", (time.perf_counter() - tg) * 1000,
+                index=c.index_name, profile_fingerprint=c.guard.fp)
     if guard_reason:
+        if rec is not None:
+            rec.guard_refused(guard_reason)
         return Answer(answer=GUARD_REFUSALS[guard_reason], refused=True, refusal_reason=guard_reason,
                       correlation_id=correlation_id_var.get())
     with span("rag.chat", issuer=principal.issuer_kind):
         answer = await c.answer.ask(principal, req.question, req.history, req.filters,
-                                    correlation_id=correlation_id_var.get())
+                                    correlation_id=correlation_id_var.get(), trace=rec)
     record_tokens(answer.usage, answer.provider or c.settings.llm_answer, answer.model or "", "answer")
     return answer
+
+
+async def _persist(c: Container, trace: QueryTrace) -> None:
+    """Save a trace without ever failing, or noticeably slowing, the answer it describes."""
+    record_answer(trace.outcome, trace.reason, trace.verdict.value)
+    try:
+        await asyncio.wait_for(asyncio.to_thread(c.traces.save, trace), timeout=TRACE_SAVE_TIMEOUT_S)
+    except Exception as e:
+        log.warning("query trace not saved", extra={"trace_id": trace.id, "error": f"{type(e).__name__}: {e}"})
 
 
 @router.get("/facets", summary="Facet values and counts visible to the caller")

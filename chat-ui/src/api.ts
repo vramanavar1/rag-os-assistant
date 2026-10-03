@@ -187,6 +187,10 @@ export class ApiClient {
   put<T>(path: string, json?: unknown, opts: RequestOptions = {}): Promise<T> {
     return this.request<T>('PUT', path, { ...opts, json: json ?? {} });
   }
+
+  delete<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+    return this.request<T>('DELETE', path, opts);
+  }
 }
 
 /** Flatten problem.errors (list of strings / {loc,msg} objects / {field: msg} map) into display lines. */

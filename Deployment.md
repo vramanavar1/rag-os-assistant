@@ -1219,6 +1219,15 @@ Neither role has anything to do with embeddings — those come from the self-hos
 | **Uploads** | | | | |
 | `UPLOAD_SOURCE_ID` | `uploads` | default | A | Source id given to documents uploaded through the API. |
 | `UPLOAD_MAX_MB` | `50` | default | A | Maximum upload size. |
+| **Query traces** (Admin > Query traces) | | | | |
+| `QUERY_TRACE_ENABLED` | `true` | default | A | Record every question stage by stage in the `query_traces` table. Traces hold **question and answer text**; only `rag.admin` can read them. |
+| `QUERY_TRACE_RETENTION_DAYS` | `30` | default | A | Traces older than this are purged by the API every 5 minutes. |
+| `QUERY_TRACE_NEAR_MISS` | `true` | default | A | On a refused question, repeat the search with only the access clause removed, to show which attribute withheld which document. One extra search per refusal; the result goes into the trace only, never to the person who asked. |
+| `QUERY_TRACE_MAX_HITS` | `15` | default | A | Hits kept per stage in a trace. |
+| `QUERY_HEALTH_PROBLEM_RATE` | `0.10` | default | A | Health turns red above this share of **problem** verdicts (misconfiguration, should-have-answered, error). Correct refusals do not count. |
+| `QUERY_HEALTH_ERROR_RATE` | `0.05` | default | A | Health turns red above this share of errors. |
+| `QUERY_HEALTH_P95_MS` | `15000` | default | A | Health turns red above this p95 latency. |
+| `QUERY_EXPECTATION_REPLAY_HOURS` | `24` | default | A | Replay every expectation this often, from the API (the scheduler holds no LLM credentials). Uses answer-model tokens. `0` = only on demand. |
 | **chat-ui / embedder containers** | | | | |
 | `API_UPSTREAM` | – | `http://rag-api` | U | nginx proxy target for `/api/*`. |
 | `DEV_EMBED_HOST_ENABLED` | `false` | `DevAuthEnabled` | U | Serves `/dev/embed-host` and `/assets/devhost.js`; both return 404 otherwise. Set from the same psd1 key as `DEV_AUTH_ENABLED`, and they must stay in step — the mock host needs dev tokens from the API. |

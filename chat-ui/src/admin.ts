@@ -17,6 +17,7 @@ import { reviewView } from './admin/review';
 import { runsView } from './admin/runs';
 import { settingsSecurityView } from './admin/settings-security';
 import { sourcesView } from './admin/sources';
+import { tracesView } from './admin/traces';
 import { uploadsView } from './admin/uploads';
 
 const ROUTES: { id: string; label: string; view: View }[] = [
@@ -27,6 +28,7 @@ const ROUTES: { id: string; label: string; view: View }[] = [
   { id: 'dlq', label: 'Dead letters', view: dlqView },
   { id: 'sources', label: 'Sources', view: sourcesView },
   { id: 'review', label: 'Review queue', view: reviewView },
+  { id: 'traces', label: 'Query traces', view: tracesView },
   { id: 'controls', label: 'Controls', view: controlsView },
   { id: 'config', label: 'Config', view: configView },
   { id: 'settings-security', label: 'Settings (Security)', view: settingsSecurityView },

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -70,6 +72,9 @@ class SearchHit(BaseModel):
     score: float
     reranker_score: float | None = None
     facets: dict[str, list[str]] = Field(default_factory=dict)
+    # Index fields selected beyond the base set (access tags, facet fields), keyed by index field name. Only the
+    # near-miss probe asks for them; an answer's own retrieval never selects access tags.
+    fields: dict[str, Any] = Field(default_factory=dict)
 
 
 class Answer(BaseModel):

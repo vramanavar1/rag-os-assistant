@@ -62,9 +62,35 @@ traces
 | project timestamp, cloud_RoleName, reasons = tostring(customDimensions.reasons)
 ```
 
+## Query health: problem verdicts, not refusals
+`rag.answers` counts every question by `outcome`, `reason` and the trace `verdict`. Alert on the verdict:
+a correct "not in the documents" is a refusal but not a problem.
+```kql
+customMetrics
+| where timestamp > ago(1h) and name == "rag.answers"
+| extend verdict = tostring(customDimensions.verdict), replay = tostring(customDimensions.replay)
+| where replay != "true"
+| summarize total = sum(valueCount),
+            problems = sumif(valueCount, verdict in ("misconfiguration", "retrieval_miss", "generation_miss", "error")),
+            errors = sumif(valueCount, verdict == "error")
+            by bin(timestamp, 15m)
+| extend problem_rate = todouble(problems) / total, error_rate = todouble(errors) / total
+```
+
+## Failing expectations
+```kql
+customMetrics
+| where timestamp > ago(1d) and name == "rag.expectations"
+| summarize replays = sum(valueCount) by result = tostring(customDimensions.result), bin(timestamp, 1h)
+```
+Open Admin > Query traces > Expectations for which question failed and why.
+
 ## Suggested alerts
 | Signal | Condition |
 |---|---|
+| Query problem rate | problem verdicts / questions > 10% over 15 min (from `rag.answers`, `replay` != true) |
+| Query errors | `verdict == "error"` > 5% over 15 min |
+| Expectations | any `rag.expectations` with `result == "fail"` |
 | Service Bus dead-letter count | `DeadletteredMessages > 0` on either queue |
 | Ingestion failure rate | FAILED / processed > 2% over 30 min (from `rag.ingest.docs`) |
 | Retrieval latency | p95 of `rag.stage.duration` where stage = `rag.chat` above the SLO |

@@ -374,3 +374,127 @@ export interface DirectoryWriteResult extends DirectoryUserState {
   applied: string[];
   failed: string[];
 }
+
+// ---------------------------------------------------------------- query traces (#/traces)
+
+export type StageStatus = 'ok' | 'warn' | 'fail' | 'skipped';
+
+export interface TraceStage {
+  name: string;
+  label: string;
+  status: StageStatus;
+  duration_ms: number | null;
+  summary: string;
+  data: Record<string, unknown>;
+}
+
+export interface AttributeCheck {
+  passed: boolean;
+  doc_values: string[] | number | null;
+  caller_values: string[] | number | null;
+  note: string;
+}
+
+export interface NearMissDoc {
+  doc_id: string;
+  chunk_id: string;
+  title: string;
+  path: string;
+  page: number | null;
+  score: number;
+  reranker_score: number | null;
+  allowed: boolean;
+  checks: Record<string, AttributeCheck>;
+  problems: string[];
+}
+
+export interface NearMiss {
+  ran: boolean;
+  skipped_reason: string;
+  relevance_bar: Record<string, number>;
+  docs: NearMissDoc[];
+  below_bar: number;
+}
+
+export interface TraceRow {
+  id: string;
+  correlation_id: string | null;
+  at: string;
+  subject: string;
+  display_name: string;
+  question: string;
+  outcome: 'answered' | 'refused' | 'error';
+  reason: string | null;
+  verdict: string;
+  failed_stage: string | null;
+  duration_ms: number;
+  tokens: number;
+  replay_of: string | null;
+}
+
+export interface QueryTrace extends TraceRow {
+  issuer: string;
+  roles: string[];
+  attributes: Record<string, string[] | number>;
+  filters: Record<string, string[]>;
+  history_turns: number;
+  answer: string;
+  provider: string;
+  model: string;
+  stages: TraceStage[];
+  near_miss: NearMiss;
+  caller_problems: string[];
+  diagnosis: string[];
+  verdict_label: string;
+  is_problem: boolean;
+}
+
+export interface TraceMeta {
+  enabled: boolean;
+  near_miss: boolean;
+  retention_days: number;
+  replay_hours: number;
+  stages: { name: string; label: string }[];
+  verdicts: { verdict: string; label: string; problem: boolean }[];
+}
+
+export interface HealthMetric {
+  key: string;
+  label: string;
+  value: number | null;
+  threshold: number;
+  status: 'ok' | 'warn' | 'fail';
+  detail: string;
+}
+
+export interface TraceSummary {
+  since: string;
+  minutes: number;
+  total: number;
+  replays: number;
+  status: 'ok' | 'warn' | 'fail';
+  metrics: HealthMetric[];
+  by_verdict: { verdict: string; label: string; count: number; problem: boolean }[];
+  by_reason: Record<string, number>;
+  repeated_refusals: { subject: string; display_name: string; refusals: number; problems: number; last_at: string; last_trace_id: string }[];
+  failing_expectations: { id: string; question: string; detail: string; last_trace_id: string | null }[];
+  last_error: { id: string; at: string; failed_stage: string | null; reason: string | null } | null;
+}
+
+export interface Expectation {
+  id: string;
+  question: string;
+  attributes: Record<string, string[] | number>;
+  roles: string[];
+  filters: Record<string, string[]>;
+  expected: 'answer' | 'no_answer';
+  required_doc_ids: string[];
+  note: string;
+  created_by: string;
+  created_at: string;
+  from_trace_id: string | null;
+  last_result: 'pass' | 'fail' | null;
+  last_detail: string;
+  last_run_at: string | null;
+  last_trace_id: string | null;
+}

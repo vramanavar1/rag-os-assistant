@@ -8,7 +8,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import IO, Any, NamedTuple, Protocol, runtime_checkable
 
 from rag_os.domain.access import AccessPolicy
@@ -31,6 +31,7 @@ from rag_os.domain.ingestion import (
     SourceConfig,
     SourcesFile,
 )
+from rag_os.domain.trace import Expectation, QueryTrace, TraceSummaryRow
 
 # --------------------------------------------------------------------------- sources
 
@@ -512,6 +513,65 @@ class RetrievalResult:
     hits: list[SearchHit]
     usage: TokenUsage
     timings_ms: dict[str, float]
+    # What the relevance bar removed, and the bar itself. Recorded rather than silently discarded, because "the
+    # search found nothing" and "the search found something the bar threw away" need different fixes.
+    dropped: list[SearchHit] = field(default_factory=list)
+    thresholds: dict[str, float] = field(default_factory=dict)
+    vector: list[float] | None = None  # the query embedding, so a diagnostic probe need not embed again
+
+
+@dataclass
+class TraceQuery:
+    outcome: str | None = None
+    verdict: str | None = None
+    reason: str | None = None
+    user: str | None = None  # substring of subject or display name
+    text: str | None = None  # substring of the question
+    since: datetime | None = None
+    problems_only: bool = False
+    after: str | None = None
+    limit: int = 50
+
+
+class QueryTraceStore(ABC):
+    """Per-question traces and the expectations they are checked against. Synchronous, like the state store."""
+
+    @abstractmethod
+    def save(self, trace: QueryTrace) -> None: ...
+
+    @abstractmethod
+    def get(self, key: str) -> QueryTrace | None:
+        """By trace id, or by correlation id (the newest trace carrying it)."""
+
+    @abstractmethod
+    def query(self, q: TraceQuery) -> tuple[list[TraceSummaryRow], str | None]: ...
+
+    @abstractmethod
+    def window(self, since: datetime, limit: int = 50_000) -> list[TraceSummaryRow]:
+        """Every trace since a moment, newest first - the raw material of the health summary."""
+
+    @abstractmethod
+    def purge(self, older_than: datetime) -> int: ...
+
+    @abstractmethod
+    def save_expectation(self, e: Expectation) -> None: ...
+
+    @abstractmethod
+    def get_expectation(self, expectation_id: str) -> Expectation | None: ...
+
+    @abstractmethod
+    def list_expectations(self) -> list[Expectation]: ...
+
+    @abstractmethod
+    def delete_expectation(self, expectation_id: str) -> bool: ...
+
+    @abstractmethod
+    def claim_due(self, due_before: datetime, lease: timedelta, limit: int = 20) -> list[Expectation]:
+        """Expectations not run since `due_before`, claimed atomically so two API replicas never both run one."""
+
+    @abstractmethod
+    def record_result(self, expectation_id: str, result: str, detail: str, trace_id: str | None,
+                      at: datetime) -> None: ...
 
 
 class Retriever(ABC):

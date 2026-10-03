@@ -139,6 +139,21 @@ class Settings(BaseSettings):
     applicationinsights_connection_string: str | None = None
     otel_enabled: bool = True
 
+    # --- query traces (Admin > Query traces). Traces hold question and answer text and are readable by
+    # administrators only; they are purged after the retention period.
+    query_trace_enabled: bool = True
+    query_trace_retention_days: int = 30
+    # On a refused question, re-run the search without the access clause to show what access withheld. One
+    # extra search per refusal; its results go into the trace only, never to the person who asked.
+    query_trace_near_miss: bool = True
+    query_trace_max_hits: int = 15
+    # Health thresholds. Rates count problem verdicts only - a correct "not in the documents" is not a problem.
+    query_health_problem_rate: float = 0.10
+    query_health_error_rate: float = 0.05
+    query_health_p95_ms: int = 15000
+    # Replay every expectation this often (uses LLM tokens). 0 = only when someone presses Replay.
+    query_expectation_replay_hours: int = 24
+
     # --- uploads
     upload_source_id: str = "uploads"
     upload_max_mb: int = 50

@@ -1666,7 +1666,54 @@ az rest --method patch --url https://graph.microsoft.com/v1.0/users/priya@contos
     <li><strong>Token usage</strong> is returned with every answer
       (<code>usage.input/output/cache_read/cache_write/embedding</code>, plus the split by purpose).</li>
     <li>KQL for traces, token dashboards, failures and alerts: <a href="docs/kql.md">docs/kql.md</a>.</li>
+    <li>Metrics <code>rag.answers{outcome,reason,verdict}</code> and <code>rag.expectations{result}</code> feed the
+      query-health alerts.</li>
   </ul>
+
+  <h3 id="query-traces-why-did-this-person-get-no-answer">Query traces: why did this person get no answer?</h3>
+  <p><strong>Admin &gt; Query traces</strong> records every question stage by stage, from the person's attributes
+    through the access filter, search hits, the relevance bar and the model to the citations. Administrators only:
+    a trace holds the question, the answer, and for a refused question the titles of documents the person was
+    <em>not</em> allowed to read. Traces are purged after <code>QUERY_TRACE_RETENTION_DAYS</code> (30).</p>
+  <ul>
+    <li><strong>The picture.</strong> Twelve stages in the order they ran. Red marks where it went wrong, amber is
+      worth a look, and grey did not run. Select a stage to see its data.</li>
+    <li><strong>The verdict.</strong> It separates a correct no-answer from a problem, using evidence only. When
+      a question is refused, a <em>near-miss check</em> repeats the search with the access clause removed and
+      everything else held constant. Any difference between the two result sets is therefore caused by access
+      alone.</li>
+  </ul>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Verdict</th><th>What it means</th><th>Problem?</th></tr></thead>
+    <tbody>
+      <tr><td>Answered with citations</td><td>Every citation came from a passage the person may read</td><td>no</td></tr>
+      <tr><td>Not in the documents</td><td>Nothing cleared the relevance bar, even without the access filter</td><td>no</td></tr>
+      <tr><td>Withheld by access policy</td><td>Relevant documents exist; the policy withholds them; nothing looks wrong</td><td>no</td></tr>
+      <tr><td>Suspected misconfiguration</td><td>As above, but a document's tags or the person's attributes look wrong</td><td><strong>yes</strong></td></tr>
+      <tr><td>Should have answered: retrieval</td><td>A relevant document the person <em>may</em> read was not returned to them</td><td><strong>yes</strong></td></tr>
+      <tr><td>Should have answered: generation</td><td>Passages reached the model, which refused or did not cite them</td><td><strong>yes</strong></td></tr>
+      <tr><td>Error</td><td>The pipeline failed (index not ready, search unavailable, an exception)</td><td><strong>yes</strong></td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><strong>The near-miss table.</strong> Each relevant document gets one cell per access attribute: ✓ means
+      that attribute lets the person read it, and a red ✕ names the document's value against the values the
+      person reaches.</li>
+    <li><strong>Health.</strong> A live strip shows the problem rate, error rate, p95 latency, failing expectations
+      and anyone being refused repeatedly. The rates count problem verdicts, not refusals.</li>
+    <li><strong>Opening a trace from chat.</strong> An administrator sees <em>Open trace</em> under every answer.
+      Anyone else can send the correlation ID shown under the answer.</li>
+  </ul>
+  <p><strong>Proving the right answer: expectations.</strong> A trace shows <em>why</em>, but only a person knows
+    what the right outcome is. On any trace, record <em>Expected: answer (must cite these documents)</em> or
+    <em>Expected: no answer</em>. <strong>Replay</strong> runs the question again, as the same attributes, and passes
+    only if the outcome matches and every required document is cited. All expectations are replayed every
+    <code>QUERY_EXPECTATION_REPLAY_HOURS</code> (24), and a failure turns the health strip red.</p>
+  <p><strong>Worked example.</strong> An HR / AMER / clearance-2 user asks about the 401(k) plan and gets no answer.
+    The trace names the cause: an upload that carries its IT uploader's access tags (red on Department and
+    Clearance); a crawled file with no Region tag; a document tagged <code>US</code>, which an AMER caller does not
+    reach because hierarchy runs upward only; or an account with no Department claim. Record <em>Expected: answer,
+    must cite Benefits.pdf</em>, fix the tags, re-ingest, then press Replay.</p>
 
   <h2 id="15-scaling-and-operations"><span class="n">15</span>Scaling and operations<a class="anchor" href="#15-scaling-and-operations">#</a></h2>
   <div class="cards">

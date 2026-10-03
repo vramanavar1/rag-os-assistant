@@ -8,6 +8,7 @@ from typing import Any
 
 from rag_os.application.ports import EmbeddingProvider, RetrievalResult, Retriever, SearchIndex, SearchRequest
 from rag_os.application.services.index_schema import BASE_SELECT
+from rag_os.application.services.relevance import apply_relevance_bar
 from rag_os.infrastructure.registry import RETRIEVERS
 
 
@@ -34,12 +35,13 @@ class DirectSearchRetriever(Retriever):
             semantic=self.semantic, select=BASE_SELECT,
         ))
         t2 = time.perf_counter()
-        if self.min_reranker > 0:
-            hits = [h for h in hits if h.reranker_score is None or h.reranker_score >= self.min_reranker]
-        # Raw hybrid score. On Azure this is an RRF score (~0.01-0.03), NOT a similarity - see Deployment.md.
-        if self.min_score > 0:
-            hits = [h for h in hits if h.score >= self.min_score]
+        kept, dropped = apply_relevance_bar(hits, self.min_reranker, self.min_score)
         return RetrievalResult(
-            hits=hits, usage=usage,
+            hits=kept, usage=usage,
             timings_ms={"embed_query": (t1 - t0) * 1000, "search": (t2 - t1) * 1000},
+            dropped=dropped, thresholds=self.thresholds, vector=vector,
         )
+
+    @property
+    def thresholds(self) -> dict[str, float]:
+        return {"min_reranker_score": self.min_reranker, "min_score": self.min_score}

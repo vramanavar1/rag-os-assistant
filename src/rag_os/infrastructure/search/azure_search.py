@@ -38,6 +38,7 @@ from azure.search.documents.models import VectorizedQuery
 from tenacity import AsyncRetrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from rag_os.application.ports import IndexField, IndexSchema, SearchIndex, SearchRequest
+from rag_os.application.services.index_schema import BASE_SELECT
 from rag_os.domain.answers import SearchHit
 from rag_os.domain.errors import DependencyUnavailable, ProfileMismatch
 from rag_os.infrastructure.registry import SEARCH_INDEXES
@@ -268,6 +269,7 @@ class AzureSearchIndex(SearchIndex):
             ]
         if request.semantic and self.semantic and request.text:
             kwargs.update(query_type="semantic", semantic_configuration_name=_SEMANTIC)
+        extra = [f for f in (request.select or []) if f not in BASE_SELECT]
         try:
             results = await self._client.search(**kwargs)
             hits: list[SearchHit] = []
@@ -285,6 +287,7 @@ class AzureSearchIndex(SearchIndex):
                         effective_date=r.get("effective_date"),
                         score=float(r.get("@search.score") or 0.0),
                         reranker_score=r.get("@search.reranker_score"),
+                        fields={f: r.get(f) for f in extra},
                     )
                 )
             return hits

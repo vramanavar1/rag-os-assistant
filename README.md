@@ -1312,6 +1312,59 @@ app id URI must match the application GUID or a verified domain.
 * **Token usage** is returned with every answer (`usage.input/output/cache_read/cache_write/embedding`, plus the
   split by purpose).
 * KQL for traces, token dashboards, failures and alerts: [`docs/kql.md`](docs/kql.md).
+* Metrics `rag.answers{outcome,reason,verdict}` and `rag.expectations{result}` feed the query-health alerts.
+
+### Query traces: why did this person get no answer?
+
+**Admin > Query traces** records every question stage by stage, from the person's attributes through the
+access filter, search hits, the relevance bar and the model to the citations. Administrators only: a trace
+holds the question, the answer, and for a refused question the titles of documents the person was *not*
+allowed to read. Traces are purged after `QUERY_TRACE_RETENTION_DAYS` (30).
+
+* **The picture.** Twelve stages in the order they ran. Red marks where it went wrong, amber is worth a look,
+  and grey did not run. Select a stage to see its data.
+* **The verdict.** It separates a correct no-answer from a problem, using evidence only. When a question is
+  refused, a *near-miss check* repeats the search with the access clause removed and everything else held
+  constant. Any difference between the two result sets is therefore caused by access alone.
+
+  | Verdict | What it means | Problem? |
+  |---|---|---|
+  | Answered with citations | Every citation came from a passage the person may read | no |
+  | Not in the documents | Nothing cleared the relevance bar, even without the access filter | no |
+  | Withheld by access policy | Relevant documents exist; the policy withholds them; nothing looks wrong | no |
+  | Suspected misconfiguration | As above, but a document's tags or the person's attributes look wrong | **yes** |
+  | Should have answered: retrieval | A relevant document the person *may* read was not returned to them | **yes** |
+  | Should have answered: generation | Passages reached the model, which refused or did not cite them | **yes** |
+  | Error | The pipeline failed (index not ready, search unavailable, an exception) | **yes** |
+
+* **The near-miss table.** Each relevant document gets one cell per access attribute: ✓ means that attribute
+  lets the person read it, and a red ✕ names the document's value against the values the person reaches.
+* **Health.** A live strip shows the problem rate, error rate, p95 latency, failing expectations and anyone
+  being refused repeatedly. The rates count problem verdicts, not refusals, so a correct refusal never raises
+  an alert.
+* **Opening a trace from chat.** An administrator sees **Open trace** under every answer. Anyone else can
+  send the correlation ID shown under the answer, which an administrator pastes into *Open by correlation ID*.
+
+**Proving the right answer: expectations.** A trace shows *why*, but only a person knows what the right
+outcome is. On any trace, record *Expected: answer (must cite these documents)* or *Expected: no answer*.
+**Replay** runs the question again through the real pipeline, as the same attributes, and passes only if the
+outcome matches and every required document is cited. All expectations are replayed every
+`QUERY_EXPECTATION_REPLAY_HOURS` (24), and a failure turns the health strip red.
+
+**Worked example.** An HR / AMER / clearance-2 user asks about the 401(k) plan and gets no answer. The trace
+might show any of these:
+* *Suspected misconfiguration*, with the near-miss row for `Benefits.pdf` red on Department and Clearance and
+  the note "classified Department HR but its access tag says IT". The file was uploaded by an IT administrator,
+  and an upload takes the uploader's access tags.
+* *Suspected misconfiguration*, "the document has no Region access tag". The file was crawled from `HR/`
+  without a region folder, so it is invisible to everyone.
+* *Withheld by access policy*, red only on Region (`US`; the caller reaches `AMER, Global`). That is the policy
+  working as configured, because hierarchy runs upward only.
+* *Suspected misconfiguration* on the User context stage: "the account has no Department". The token carries
+  no department claim yet; sign in again, or see [section 13](#13-entra-user-attributes-and-claims).
+
+Record *Expected: answer, must cite Benefits.pdf*, fix the tags (sidecar, manifest or folder), re-ingest,
+then press **Replay**.
 
 ## 15. Scaling and operations
 
