@@ -1587,8 +1587,26 @@ az rest --method patch --url https://graph.microsoft.com/v1.0/users/priya@contos
       deleted before its values are set to <code>null</code>, the data becomes permanently undiscoverable
       <em>and still counts</em> toward that 100 &mdash; so the decommission order is always null-the-values, then
       delete the definition.</li>
-    <li><strong>MSA (personal Microsoft account) users receive no custom extension claims</strong>, so they cannot
-      be given these attributes at all.</li>
+    <li><strong>MSA (personal Microsoft account) users receive no custom extension claims.</strong> Microsoft's
+      optional-claims reference states it outright: <em>&ldquo;If your application manifest requests a custom
+      extension and an MSA user logs in to your app, these extensions aren't returned.&rdquo;</em> The values are
+      genuinely written on the user object and the admin page reads them back correctly through Graph &mdash; the
+      token service simply omits them, so such a caller used to arrive with no department and no region and, both
+      being required, read nothing, with no error anywhere.
+      <p><strong>RAG-OS fills this in.</strong> When an Entra token carries no <code>extn.*</code> claim, the API
+      reads that caller's attributes from Graph by the <code>oid</code> in their own signed token, caching for five
+      minutes. Three properties of that fallback are worth knowing:</p>
+      <ul>
+        <li>A claim the token <strong>does</strong> carry is never overridden. The issuer signed it; the directory
+          did not.</li>
+        <li>Nothing is read when the token is complete, so a work account costs no extra call and no extra
+          latency.</li>
+        <li>It needs <code>DIRECTORY=graph</code>. Without a directory adapter there is nothing to ask, and such a
+          caller still reads nothing.</li>
+      </ul>
+      <p>An attribute change therefore reaches a guest within five minutes, rather than the 60&ndash;90 the claims
+      path needs. The alternative remains the <code>groups</code> route (see <code>access-policy.yaml</code>),
+      which works for guests because group membership <em>is</em> emitted in their tokens.</p></li>
     <li>If a <strong>Claims Mapping Policy</strong> exists on the service principal, it overrides the claims
       configuration shown in the portal for that application.</li>
   </ul>

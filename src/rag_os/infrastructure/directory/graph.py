@@ -49,6 +49,7 @@ _PAGE_GUARD = 100  # pages, not rows: a runaway nextLink loop must end
 # Control characters are the other way an address can change the meaning of a $filter; quotes are doubled.
 _UNSAFE_IN_FILTER = re.compile(r"[\x00-\x1f\x7f]")
 _HEX32 = re.compile(r"^[0-9a-fA-F]{32}$")
+_GUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 # Which Graph permission governs which call. A 403 names one of these rather than listing the whole set, because
 # "it is one of these four" costs a round trip to the tenant to narrow down - and the permissions are not
@@ -228,15 +229,31 @@ class GraphDirectory(DirectoryAdmin):
         """
         return quote(odata_quote(value), safe="")
 
+    def _user_select(self) -> str:
+        """Every field _to_user reads. A directory extension is simply ABSENT from the response without an
+        explicit $select naming it - not null, absent - so omitting one reads as "no value set"."""
+        return ",".join(
+            ["id", "userPrincipalName", "displayName", "mail", "accountEnabled", "userType"]
+            + [self._extension(n) for n in self._attrs]
+        )
+
+    async def read_user(self, object_id: str) -> DirectoryUser:
+        if not _GUID.match(object_id):
+            raise NotFound("a directory object id is required here")
+        # Path addressing is safe for an object id and only for an object id: it is a GUID, so none of the
+        # characters that make a user principal name unusable in a path (#EXT# in a guest's, a leading $) can
+        # appear. See the module docstring.
+        row = await self._request("GET", f"/users/{object_id}?$select={self._user_select()}")
+        if not row:
+            raise NotFound("no directory user with that object id")
+        return self._to_user(row)
+
     async def find_user(self, email: str) -> DirectoryUser:
         needle = email.strip()
         if not needle or _UNSAFE_IN_FILTER.search(needle):
             raise NotFound("that is not a usable email address")
         q = self._filter_literal(needle)
-        selected = ",".join(
-            ["id", "userPrincipalName", "displayName", "mail", "accountEnabled", "userType"]
-            + [self._extension(n) for n in self._attrs]
-        )
+        selected = self._user_select()
         # A $filter, never /users/{upn}: see the module docstring on #EXT# and $-leading names. And $select,
         # because a directory extension is simply absent from the response without it.
         rows = await self._paged(

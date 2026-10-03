@@ -42,6 +42,16 @@ def _claim_value(claims: dict[str, Any], name: str) -> Any:
     return _MISSING
 
 
+def claim_is_present(claims: dict[str, Any], name: str) -> bool:
+    """Whether the token actually carries this claim, in either spelling.
+
+    Shared with the directory fallback so "missing" means one thing. Deciding presence with `name in claims`
+    there would re-read from Graph for every caller whose token carried the LONG form, which is a Graph call per
+    request for users who never needed one.
+    """
+    return _claim_value(claims, name) is not _MISSING
+
+
 class ClaimsMapper:
     def __init__(self, policy: AccessPolicy) -> None:
         self.policy = policy

@@ -83,6 +83,16 @@ class FakeDirectory(DirectoryAdmin):
             mail=u.mail, account_enabled=u.account_enabled, user_type=u.user_type, attributes=dict(u.attributes),
         )
 
+    async def read_user(self, object_id: str) -> DirectoryUser:
+        self._maybe_fail("read_user")
+        u = self._user(object_id)
+        # A copy, like find_user: a caller that mutated this would be editing the directory's own record, and
+        # the real adapter hands back a freshly decoded response that cannot do that.
+        return DirectoryUser(
+            object_id=u.object_id, user_principal_name=u.user_principal_name, display_name=u.display_name,
+            mail=u.mail, account_enabled=u.account_enabled, user_type=u.user_type, attributes=dict(u.attributes),
+        )
+
     async def set_attributes(self, object_id: str, values: Mapping[str, str | None]) -> None:
         self._maybe_fail("set_attributes")
         u = self._user(object_id)

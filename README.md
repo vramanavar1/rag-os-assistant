@@ -1248,8 +1248,23 @@ API, not on Microsoft Graph.
 * **100 extension values per directory object**, across every application. If a definition is deleted before its
   values are set to `null`, the data becomes permanently undiscoverable *and still counts* toward that 100 — so
   the decommission order is always null-the-values, then delete the definition.
-* **MSA (personal Microsoft account) users receive no custom extension claims**, so they cannot be given these
-  attributes at all.
+* **MSA (personal Microsoft account) users receive no custom extension claims.** Microsoft's optional-claims
+  reference states it outright: *"If your application manifest requests a custom extension and an MSA user logs in
+  to your app, these extensions aren't returned."* The values are genuinely written on the user object and the
+  admin page reads them back correctly through Graph — the token service simply omits them, so such a caller used
+  to arrive with no department and no region and, both being required, read nothing, with no error anywhere.
+
+  **RAG-OS fills this in.** When an Entra token carries no `extn.*` claim, the API reads that caller's attributes
+  from Graph by the `oid` in their own signed token, caching for five minutes. Three properties of that fallback
+  are worth knowing:
+  * A claim the token **does** carry is never overridden. The issuer signed it; the directory did not.
+  * Nothing is read when the token is complete, so a work account costs no extra call and no extra latency.
+  * It needs `DIRECTORY=graph`. Without a directory adapter there is nothing to ask, and such a caller still
+    reads nothing.
+
+  An attribute change therefore reaches a guest within five minutes, rather than the 60–90 the claims path needs.
+  The alternative remains the `groups` route (see `access-policy.yaml`), which works for guests because group
+  membership *is* emitted in their tokens.
 * If a **Claims Mapping Policy** exists on the service principal, it overrides the claims configuration shown in
   the portal for that application.
 

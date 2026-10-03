@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG-OS Product Overview</title>
+<meta name="description" content="RAG-OS: an enterprise knowledge assistant that answers only from your documents, and only from the ones each person is allowed to see. Business case, architecture, security, market and roadmap.">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f8fafc; --panel:#ffffff; --fg:#0f172a; --muted:#475569; --faint:#64748b;
+    --line:#e2e8f0; --line-strong:#cbd5e1; --accent:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+    --ok:#047857; --ok-bg:#ecfdf5; --ok-line:#a7f3d0;
+    --warn:#b45309; --warn-bg:#fffbeb; --warn-line:#fde68a;
+    --plan:#475569; --plan-bg:#f1f5f9; --plan-line:#cbd5e1;
+    --cover-a:#312e81; --cover-b:#4338ca; --cover-fg:#ffffff; --cover-muted:#c7d2fe;
+    --d-bg:#ffffff; --d-lane:#f8fafc; --d-lane-br:#e2e8f0; --d-lane-tx:#475569;
+    --d-query-bg:#eef2ff; --d-query-br:#6366f1; --d-query-tx:#312e81;
+    --d-ingest-bg:#fff7ed; --d-ingest-br:#f59e0b; --d-ingest-tx:#92400e;
+    --d-data-bg:#f1f5f9; --d-data-br:#64748b; --d-data-tx:#1e293b;
+    --d-ai-bg:#f5f3ff; --d-ai-br:#8b5cf6; --d-ai-tx:#5b21b6;
+    --d-sec-bg:#ecfdf5; --d-sec-br:#10b981; --d-sec-tx:#065f46;
+    --d-obs-bg:#f8fafc; --d-obs-br:#94a3b8; --d-obs-tx:#334155;
+    --d-ext-bg:#ffffff; --d-ext-br:#0f172a; --d-ext-tx:#0f172a;
+    --d-state-bg:#ffffff; --d-state-br:#334155; --d-state-tx:#0f172a;
+    --d-bad-bg:#fef2f2; --d-bad-br:#ef4444; --d-bad-tx:#991b1b;
+    --d-text:#0f172a; --d-muted:#475569; --d-edge:#64748b; --d-edge-tx:#334155;
+    --d-chip:#ffffff; --d-badge:#0f172a; --d-badge-tx:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0b1220; --bg-soft:#0f172a; --panel:#111c33; --fg:#e2e8f0; --muted:#94a3b8; --faint:#8296b0;
+      --line:#233149; --line-strong:#334155; --accent:#a5b4fc; --accent-soft:#1e1b4b; --accent-line:#3730a3;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+      --ok:#6ee7b7; --ok-bg:#052e26; --ok-line:#065f46;
+      --warn:#fcd34d; --warn-bg:#3b2a0c; --warn-line:#78350f;
+      --plan:#cbd5e1; --plan-bg:#1c2942; --plan-line:#334155;
+      --cover-a:#1e1b4b; --cover-b:#312e81; --cover-fg:#eef2ff; --cover-muted:#a5b4fc;
+      --d-bg:#0f172a; --d-lane:#111c33; --d-lane-br:#2a3a56; --d-lane-tx:#94a3b8;
+      --d-query-bg:#1e1b4b; --d-query-br:#818cf8; --d-query-tx:#c7d2fe;
+      --d-ingest-bg:#3b2a0c; --d-ingest-br:#fbbf24; --d-ingest-tx:#fde68a;
+      --d-data-bg:#1c2942; --d-data-br:#94a3b8; --d-data-tx:#e2e8f0;
+      --d-ai-bg:#2e1065; --d-ai-br:#a78bfa; --d-ai-tx:#ddd6fe;
+      --d-sec-bg:#052e26; --d-sec-br:#34d399; --d-sec-tx:#a7f3d0;
+      --d-obs-bg:#172033; --d-obs-br:#94a3b8; --d-obs-tx:#cbd5e1;
+      --d-ext-bg:#0b1220; --d-ext-br:#cbd5e1; --d-ext-tx:#e2e8f0;
+      --d-state-bg:#111c33; --d-state-br:#94a3b8; --d-state-tx:#e2e8f0;
+      --d-bad-bg:#3f1d1d; --d-bad-br:#f87171; --d-bad-tx:#fecaca;
+      --d-text:#e2e8f0; --d-muted:#94a3b8; --d-edge:#94a3b8; --d-edge-tx:#cbd5e1;
+      --d-chip:#0f172a; --d-badge:#e2e8f0; --d-badge-tx:#0f172a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1220; --bg-soft:#0f172a; --panel:#111c33; --fg:#e2e8f0; --muted:#94a3b8; --faint:#8296b0;
+    --line:#233149; --line-strong:#334155; --accent:#a5b4fc; --accent-soft:#1e1b4b; --accent-line:#3730a3;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    --ok:#6ee7b7; --ok-bg:#052e26; --ok-line:#065f46;
+    --warn:#fcd34d; --warn-bg:#3b2a0c; --warn-line:#78350f;
+    --plan:#cbd5e1; --plan-bg:#1c2942; --plan-line:#334155;
+    --cover-a:#1e1b4b; --cover-b:#312e81; --cover-fg:#eef2ff; --cover-muted:#a5b4fc;
+    --d-bg:#0f172a; --d-lane:#111c33; --d-lane-br:#2a3a56; --d-lane-tx:#94a3b8;
+    --d-query-bg:#1e1b4b; --d-query-br:#818cf8; --d-query-tx:#c7d2fe;
+    --d-ingest-bg:#3b2a0c; --d-ingest-br:#fbbf24; --d-ingest-tx:#fde68a;
+    --d-data-bg:#1c2942; --d-data-br:#94a3b8; --d-data-tx:#e2e8f0;
+    --d-ai-bg:#2e1065; --d-ai-br:#a78bfa; --d-ai-tx:#ddd6fe;
+    --d-sec-bg:#052e26; --d-sec-br:#34d399; --d-sec-tx:#a7f3d0;
+    --d-obs-bg:#172033; --d-obs-br:#94a3b8; --d-obs-tx:#cbd5e1;
+    --d-ext-bg:#0b1220; --d-ext-br:#cbd5e1; --d-ext-tx:#e2e8f0;
+    --d-state-bg:#111c33; --d-state-br:#94a3b8; --d-state-tx:#e2e8f0;
+    --d-bad-bg:#3f1d1d; --d-bad-br:#f87171; --d-bad-tx:#fecaca;
+    --d-text:#e2e8f0; --d-muted:#94a3b8; --d-edge:#94a3b8; --d-edge-tx:#cbd5e1;
+    --d-chip:#0f172a; --d-badge:#e2e8f0; --d-badge-tx:#0f172a;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:24px}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.65 "Segoe UI",Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:.86em;
+    background:var(--bg-soft);border:1px solid var(--line);border-radius:5px;padding:.06em .32em;overflow-wrap:anywhere}
+  .skip{position:absolute;left:-9999px;top:0;background:var(--accent-soft);padding:10px 16px;border-radius:0 0 8px 0;z-index:100}
+  .skip:focus{left:0}
+
+  .layout{display:grid;grid-template-columns:288px minmax(0,1fr);max-width:1600px;margin:0 auto}
+  /* ---------- sidebar ---------- */
+  #toc{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--line);
+    background:var(--bg-soft);padding:22px 18px 40px}
+  #toc .brand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  #toc .brand b{font-size:15px}
+  #toc .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+  #toc .sub{color:var(--faint);font-size:12px;margin:0 0 14px}
+  #toc .tools{display:flex;gap:8px;margin:0 0 14px}
+  #toc .tools button{flex:1}
+  #toc ol{list-style:none;margin:0;padding:0}
+  #toc li{margin:1px 0}
+  #toc a{display:block;padding:6px 10px;border-radius:7px;color:var(--muted);font-size:13.5px;border-left:2px solid transparent}
+  #toc a:hover{background:var(--panel);color:var(--fg);text-decoration:none}
+  #toc a.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+  #toc .num{display:inline-block;width:24px;color:var(--faint);font-variant-numeric:tabular-nums}
+  #toc ol ol a{padding:4px 10px 4px 34px;font-size:12.5px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--panel);
+    border:1px solid var(--line);border-radius:9px;padding:8px 12px;font:600 13px/1 inherit;color:var(--muted);cursor:pointer}
+  .btn:hover{color:var(--accent);border-color:var(--accent-line)}
+  .btn.primary{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+  .toc-toggle{display:none}
+
+  /* ---------- content ---------- */
+  main{padding:0 40px 90px;min-width:0}
+  .wrap{max-width:1040px}
+  section.chapter{max-width:1040px}
+
+  /* cover */
+  .cover{margin:0 -40px 8px;padding:64px 56px 52px;color:var(--cover-fg);
+    background:linear-gradient(135deg,var(--cover-a),var(--cover-b));position:relative;overflow:hidden}
+  .cover::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;
+    border:56px solid rgba(255,255,255,.07)}
+  .cover .kicker{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--cover-muted);margin:0 0 14px}
+  .cover h1{font-size:46px;line-height:1.1;margin:0 0 14px;letter-spacing:-.02em;max-width:820px}
+  .cover .tag{font-size:20px;line-height:1.5;max-width:760px;margin:0 0 26px;color:var(--cover-fg);opacity:.92}
+  .cover .meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13.5px;color:var(--cover-muted);margin:0;padding:0;list-style:none}
+  .cover .meta b{color:var(--cover-fg);font-weight:600}
+  .cover .pillars{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:34px 0 0;
+    padding:0;list-style:none;max-width:980px}
+  .cover .pillars li{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:12px;
+    padding:12px 14px;font-size:13.5px;line-height:1.45;color:var(--cover-muted)}
+  .cover .pillars b{display:block;color:var(--cover-fg);font-size:15px;margin-bottom:2px}
+  .print-toc{display:none}
+
+  h2{font-size:26px;margin:56px 0 6px;letter-spacing:-.01em;padding-top:20px;border-top:1px solid var(--line)}
+  h2 .n{color:var(--faint);font-weight:600;margin-right:8px}
+  h3{font-size:18px;margin:30px 0 4px}
+  h4{font-size:15.5px;margin:20px 0 2px}
+  p{margin:12px 0}
+  ul,ol{margin:12px 0;padding-left:24px}
+  li{margin:6px 0}
+  strong{font-weight:650}
+  .lede{font-size:17.5px;color:var(--muted)}
+
+  table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--panel);border:1px solid var(--line)}
+  th,td{padding:10px 13px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{background:var(--bg-soft);font-weight:650;font-size:13px;color:var(--muted)}
+  tbody tr:last-child td{border-bottom:0}
+  td ul{margin:2px 0;padding-left:18px}
+  td li{margin:2px 0}
+  .table-wrap{overflow-x:auto;margin:16px 0;border-radius:10px}
+  td.nowrap{white-space:nowrap}
+
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;
+    padding:12px 18px;margin:18px 0}
+  .callout.note{border-color:var(--line-strong);background:var(--bg-soft);color:var(--muted)}
+  .callout p{margin:6px 0}
+
+  /* status badges */
+  .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    border-radius:999px;padding:2px 9px;border:1px solid;vertical-align:2px;white-space:nowrap;line-height:1.5}
+  .badge.av{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line)}
+  .badge.pt{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+  .badge.rm{color:var(--plan);background:var(--plan-bg);border-color:var(--plan-line)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:13.5px;color:var(--muted);
+    margin:14px 0;padding:10px 14px;border:1px dashed var(--line-strong);border-radius:10px}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:18px 0}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel)}
+  .card h4{margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .card p,.card li{font-size:14.5px;color:var(--muted)}
+  .card p{margin:6px 0}
+  .card ul{margin:6px 0;padding-left:20px}
+  .card .ex{font-size:13.5px;border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}
+
+  .levels{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}
+  .levels div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);font-size:13.5px;color:var(--muted)}
+  .levels b{display:block;color:var(--fg);font-size:15px}
+  .levels span{font-family:ui-monospace,Consolas,monospace;color:var(--accent);font-weight:700}
+
+  .phases{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}
+  .phase{border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:12px;padding:14px 16px;background:var(--panel)}
+  .phase h4{margin:0 0 2px}
+  .phase .when{font-size:12.5px;color:var(--faint);margin:0 0 8px}
+  .phase ul{margin:0;padding-left:18px;font-size:14px;color:var(--muted)}
+
+  figure{margin:22px 0 30px}
+  .fig-frame{border:1px solid var(--line);border-radius:14px;background:var(--d-bg);padding:14px;box-shadow:var(--shadow);overflow:hidden}
+  .fig-frame svg{display:block;width:100%;height:auto}
+  figcaption{margin-top:10px;font-size:13.5px;color:var(--muted)}
+  figcaption b{color:var(--fg)}
+
+  /* ---------- inline diagrams (SVG inherits the page's --d-* variables above) ---------- */
+  svg.ragos-diagram text{font-family:"Segoe UI",Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif}
+  svg.ragos-diagram .t-title{font-size:15px;font-weight:650}
+  svg.ragos-diagram .t-line{font-size:12.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .t-small{font-size:11.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .t-lane{font-size:12.5px;font-weight:700;letter-spacing:.06em;fill:var(--d-lane-tx)}
+  svg.ragos-diagram .t-edge{font-size:12px;fill:var(--d-edge-tx)}
+  svg.ragos-diagram .t-badge{font-size:11.5px;font-weight:700;fill:var(--d-badge-tx)}
+  svg.ragos-diagram .t-head{font-size:17px;font-weight:700;fill:var(--d-text)}
+  svg.ragos-diagram .t-code{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:12.5px;fill:var(--d-text)}
+  svg.ragos-diagram .t-codesm{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:11.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .edge{fill:none;stroke:var(--d-edge);stroke-width:1.7}
+  svg.ragos-diagram .edge-dash{fill:none;stroke:var(--d-edge);stroke-width:1.5;stroke-dasharray:6 5}
+  svg.ragos-diagram .lane{fill:var(--d-lane);stroke:var(--d-lane-br);stroke-width:1.5}
+  svg.ragos-diagram .chip{fill:var(--d-chip);stroke:var(--d-lane-br);stroke-width:1}
+  svg.ragos-diagram .lifeline{stroke:var(--d-edge);stroke-width:1.6;stroke-dasharray:5 5}
+  /* the overview diagram is drawn at a smaller canvas, so its text is set larger */
+  svg.ov .t-title{font-size:17px}
+  svg.ov .t-line{font-size:14px}
+  svg.ov .t-lane{font-size:13.5px}
+  svg.ov .t-edge{font-size:13px}
+  svg.ov .t-small{font-size:12.5px}
+  svg.ov .t-rm{font-size:13px;fill:var(--d-muted);font-style:italic}
+
+  footer.doc-end{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:13px}
+  .theme{position:fixed;top:16px;right:20px;z-index:20}
+
+  @media (max-width:1100px){
+    .layout{grid-template-columns:1fr}
+    #toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);display:none}
+    #toc.open{display:block}
+    .toc-toggle{display:inline-flex;margin:16px 0}
+    main{padding:0 16px 70px}
+    .cover{margin:0 -16px 8px;padding:40px 20px 34px}
+    .cover h1{font-size:32px}
+    .cover .tag{font-size:17px}
+    .levels{grid-template-columns:repeat(2,1fr)}
+    .phases{grid-template-columns:1fr}
+    .theme{position:absolute;top:10px;right:10px}
+    /* diagrams stay legible on phones: scroll sideways instead of shrinking */
+    .fig-frame{overflow-x:auto}
+    .fig-frame svg{min-width:760px}
+  }
+
+  /* ======================================================================
+     PRINT. Two paths share these rules:
+     - "Print / Save as PDF" opens ?print=1, which lays the document out with
+       Paged.js (page X of Y footers, ToC page numbers, landscape figures).
+     - Ctrl+P on the web view falls back to the browser's own pagination.
+     ====================================================================== */
+  @page{size:A4;margin:18mm 16mm 20mm;
+    @bottom-left{content:"RAG-OS \2014  Product Overview";font:8.5pt "Segoe UI",Arial,sans-serif;color:#64748b}
+    @bottom-right{content:"Page " counter(page) " of " counter(pages);font:8.5pt "Segoe UI",Arial,sans-serif;color:#64748b}
+  }
+  @page cover{margin:0;
+    @bottom-left{content:none} @bottom-right{content:none}
+  }
+
+  @media print{
+    :root{--bg:#fff;--panel:#fff;--bg-soft:#f8fafc;--shadow:none}
+    body{font-size:10.5pt;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #toc,.theme,.toc-toggle,.skip,.print-bar{display:none !important}
+    .layout{display:block;max-width:none}
+    main{padding:0}
+    .cover{page:cover;margin:0;height:296mm;padding:70mm 22mm 0;break-after:page}
+    .cover::after{display:none}
+    .cover h1{font-size:34pt}
+    .cover .tag{font-size:14pt}
+    .cover .pillars{grid-template-columns:repeat(2,1fr);max-width:150mm}
+    .print-toc{display:block;break-after:page}
+    section.chapter{break-before:page;max-width:none}
+    h2{margin-top:0;border-top:0;padding-top:0;font-size:19pt}
+    h3{font-size:13pt;break-after:avoid}
+    h4{break-after:avoid}
+    .card,.phase,.levels div,tr,.callout,.legend{break-inside:avoid}
+    figure{break-inside:avoid}
+    /* wide figures get a page of their own, turned 90° anticlockwise so they print larger */
+    figure.landscape{break-before:page;break-after:page;margin:0;height:250mm;position:relative}
+    figure.landscape .rot{position:absolute;top:0;left:0;width:250mm;height:176mm;
+      transform-origin:top left;transform:translateY(250mm) rotate(-90deg)}
+    figure.landscape .fig-frame svg{max-height:152mm}
+    .fig-frame{box-shadow:none}
+    .table-wrap{overflow:visible}
+    a{color:inherit}
+    footer.doc-end{break-inside:avoid}
+  }
+  .print-toc h2{border:0;margin:0 0 18px;padding:0}
+  .print-toc ol{list-style:none;margin:0;padding:0}
+  .print-toc li{margin:0}
+  .print-toc a{display:flex;align-items:baseline;color:var(--fg);text-decoration:none;padding:5px 0;font-size:11pt}
+  .print-toc li.l2 a{padding:2px 0 2px 26px;font-size:10pt;color:var(--muted)}
+  .print-toc li.l1 a{font-weight:600;margin-top:6px}
+  .print-toc .tt{flex:1;display:flex;align-items:baseline}
+  .print-toc .tt::after{content:"";flex:1;border-bottom:1px dotted #94a3b8;margin:0 8px}
+  .print-toc a::after{content:target-counter(attr(href), page);font-variant-numeric:tabular-nums;min-width:20px;text-align:right}
+
+  /* Paged.js: the cover colour is painted on the whole sheet, not on an element that has to match its height */
+  html.print-mode .cover{background:none;height:auto}
+  html.print-mode .pagedjs_cover_page .pagedjs_sheet{background:linear-gradient(135deg,#312e81,#4338ca)}
+  /* Paged.js preview on screen: grey desk, white sheets */
+  @media screen{
+    html.print-mode body{background:#e5e7eb}
+    html.print-mode .pagedjs_pages{display:flex;flex-direction:column;align-items:center;padding:28px 0 60px}
+    html.print-mode .pagedjs_page{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.18);margin-bottom:24px}
+  }
+  .print-bar{position:fixed;top:12px;right:12px;z-index:50;display:flex;gap:8px;background:#fff;border:1px solid #cbd5e1;
+    border-radius:12px;padding:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);font:13px "Segoe UI",Arial,sans-serif;align-items:center}
+  .print-bar span{color:#475569;padding:0 6px}
+  .print-bar .btn{background:#fff;color:#334155;border-color:#cbd5e1}
+  .print-bar .btn.primary{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<button class="btn theme" id="themeBtn" type="button" aria-label="Toggle light or dark theme">◐ Theme</button>
+<div class="layout">
+  <nav id="toc" aria-label="Table of contents">
+    <div class="brand"><span class="dot"></span><b>RAG-OS</b></div>
+    <p class="sub">Product overview · v1.0 · October 2026</p>
+    <div class="tools"><button class="btn primary" id="printBtn" type="button">Print / Save as PDF</button></div>
+    <ol>
+      <li><a href="#s-summary"><span class="num">1</span>Executive summary</a></li>
+      <li><a href="#s-intro"><span class="num">2</span>Introduction</a></li>
+      <li><a href="#s-overview"><span class="num">3</span>Product overview</a>
+        <ol>
+          <li><a href="#s-ingest">3.1 Data ingestion path</a></li>
+          <li><a href="#s-query">3.2 User query path</a></li>
+          <li><a href="#s-scenarios">3.3 Answer quality scenarios</a></li>
+        </ol>
+      </li>
+      <li><a href="#s-models"><span class="num">4</span>Models</a></li>
+      <li><a href="#s-security"><span class="num">5</span>Secure data querying</a></li>
+      <li><a href="#s-compliance"><span class="num">6</span>Data compliance</a></li>
+      <li><a href="#s-ops"><span class="num">7</span>Observability and operations</a></li>
+      <li><a href="#s-different"><span class="num">8</span>How RAG-OS is different</a></li>
+      <li><a href="#s-market"><span class="num">9</span>Similar products in market</a></li>
+      <li><a href="#s-usecases"><span class="num">10</span>Potential use cases</a></li>
+      <li><a href="#s-future"><span class="num">11</span>Future scope and potential</a></li>
+      <li><a href="#s-appendix"><span class="num">12</span>Appendix</a></li>
+    </ol>
+  </nav>
+
+  <main id="content">
+    <button class="btn toc-toggle" id="tocToggle" type="button" aria-expanded="false" aria-controls="toc">☰ Contents</button>
+
+    <header class="cover">
+      <p class="kicker">Product overview</p>
+      <h1>RAG-OS: the knowledge assistant that knows who is asking</h1>
+      <p class="tag">Answers drawn only from your documents, only from the ones each person is allowed to see, with a page-level citation for every claim, and an honest "I don't know" when the documents don't say.</p>
+      <ul class="meta">
+        <li><b>Version</b> 1.0</li>
+        <li><b>Date</b> 2 October 2026</li>
+        <li><b>Platform</b> Microsoft Azure · Microsoft Foundry</li>
+      </ul>
+      <ul class="pillars">
+        <li><b>Grounded</b>Every answer cites its source passages; uncited answers are refused.</li>
+        <li><b>Permission-aware</b>Department, region, clearance and role are enforced inside the search.</li>
+        <li><b>Yours</b>Runs in your Azure subscription, with models you choose.</li>
+        <li><b>Accountable</b>Token cost and a correlation ID on every answer.</li>
+      </ul>
+    </header>
+
+    <div class="wrap"><div class="legend" role="note"><b>How to read this document:</b>
+      <span><span class="badge av">Available</span> built and running today</span>
+      <span><span class="badge pt">Partial</span> works, with known limits stated</span>
+      <span><span class="badge rm">Roadmap</span> planned, not yet built</span>
+    </div></div>
+
+    <nav class="print-toc" aria-label="Contents"><h2>Contents</h2><ol></ol></nav>
+
+    <!-- ===================================================================== 1 -->
+    <section class="chapter" id="s-summary">
+      <h2><span class="n">1</span>Executive summary</h2>
+      <p class="lede">Every organisation already holds the answers its people need. They sit in policies, price lists, SOPs, contracts and handbooks spread across HR, Sales, IT, Legal and Finance, and finding the right one, in its current version, is slow and error-prone.</p>
+      <p>Generic AI assistants made that search feel instant, but they introduced two risks that enterprises cannot accept:</p>
+      <ul>
+        <li><strong>They leak.</strong> An assistant that can read everything will eventually quote a confidential salary band to an intern or a restricted contract clause to a partner.</li>
+        <li><strong>They guess.</strong> When the documents do not cover a question, a language model still produces a fluent, plausible answer, and nobody can tell which parts are real.</li>
+      </ul>
+      <p><strong>RAG-OS</strong> removes both risks by design. Each user's identity attributes (department, region, clearance level and role) are compiled into a filter that runs <em>inside</em> the search engine, so documents a person may not see are never retrieved, never sent to the model and never paraphrased. Answers are generated only from retrieved passages, carry numbered citations down to the page, and are refused outright when the evidence is missing.</p>
+
+      <h3>The business case</h3>
+      <div class="cards">
+        <div class="card"><h4>Faster answers, fewer escalations</h4><p>Staff self-serve policy, pricing and process questions that today land on HR, Sales Ops, IT or Legal, with a citation they can open and verify.</p></div>
+        <div class="card"><h4>Lower risk of disclosure</h4><p>Access is enforced before generation, not filtered afterwards. The same assistant can safely serve an entire workforce, and even external portal users.</p></div>
+        <div class="card"><h4>Predictable, visible cost</h4><p>Embeddings run on self-hosted models with no per-token charge, and every answer reports its own token usage, so cost per question is measurable from day one.</p></div>
+        <div class="card"><h4>A platform, not a chatbot</h4><p>Once the knowledge base is indexed and classified, the same governed retrieval can power questionnaires, form filling and vertical workflows (see <a href="#s-usecases">section 10</a>).</p></div>
+      </div>
+
+      <h3>Why now</h3>
+      <p>Organisations have moved from AI pilots to production rollouts, and the questions buyers ask have changed accordingly: <em>who can see what</em>, <em>where does the data go</em>, <em>can we prove where an answer came from</em> and <em>what does each answer cost</em>. RAG-OS is built around exactly those questions, on the Azure and Microsoft Foundry estate many enterprises have already approved.</p>
+
+    </section>
+
+    <!-- ===================================================================== 2 -->
+    <section class="chapter" id="s-intro">
+      <h2><span class="n">2</span>Introduction</h2>
+      <p>RAG-OS is an enterprise-grade knowledge-base assistant built on <strong>retrieval-augmented generation (RAG)</strong>. It ingests an organisation's documents, classifies them against a vocabulary the organisation's own subject-matter experts control, indexes them for hybrid vector and keyword search, and answers questions in a chat interface, either its own or embedded in an existing intranet or customer portal.</p>
+      <p>What sets it apart is that <strong>scope of visibility is part of the question</strong>. Two people asking the same thing may legitimately get different answers, because they are entitled to different documents:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Dimension</th><th>Example values</th><th>How it is matched</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Department</strong></td><td>HR, Finance, Sales, IT, Legal, Support</td><td>The user needs any one of the document's departments</td></tr>
+          <tr><td><strong>Region</strong></td><td>Global › EMEA › UK, DE · AMER › US · APAC › IN</td><td>Hierarchical: a UK user also sees EMEA and Global documents</td></tr>
+          <tr><td><strong>Clearance level</strong></td><td>Public, Internal, Confidential, Restricted</td><td>The document's level must be at or below the user's</td></tr>
+          <tr><td><strong>Role</strong></td><td>Admin, taxonomy editor (SME), reviewer, contributor</td><td>Governs what a person can administer, classify or upload</td></tr>
+          <tr><td><strong>Personal share</strong></td><td>One document for one named person</td><td>Matched on the user's directory object ID</td></tr>
+        </tbody>
+      </table></div>
+      <p>The attribute set is not hard-coded. It lives in a declarative access policy, so an organisation can add cost centre, legal entity, project or any other attribute without changing code.</p>
+      <p><strong>Who it is for:</strong> organisations of any size whose knowledge is spread across departments and must not be shared indiscriminately, starting with mid-sized enterprises on Microsoft Azure and growing toward SMBs through a subscription offering.</p>
+    </section>
+
+    <!-- ===================================================================== 3 -->
+    <section class="chapter" id="s-overview">
+      <h2><span class="n">3</span>High-level product overview</h2>
+      <p>RAG-OS has two independent paths that meet at a shared search index. The <strong>ingestion path</strong> turns documents into classified, searchable passages; it runs on its own compute and scales from zero to many workers without affecting users. The <strong>query path</strong> turns a signed-in user's question into a cited answer drawn only from passages that user is entitled to see.</p>
+      <figure>
+        <div class="fig-frame"><svg class="ragos-diagram ov" data-figure="overview" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 676" width="980" height="676" preserveAspectRatio="xMidYMid meet" role="img" aria-label="RAG-OS at a glance: ingestion path and query path meeting at a shared, permission-tagged search index"><title>RAG-OS at a glance: ingestion path and query path meeting at a shared, permission-tagged search index</title><defs><marker id="ov-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><rect x="10" y="10" width="956" height="248" rx="14" class="lane"/><text x="30" y="38" class="t-lane">INGESTION PATH</text><rect x="30" y="56" width="168" height="150" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text x="44" y="86" class="t-title" fill="var(--d-ingest-tx)">1 · Sources</text><text x="44" y="114" class="t-line">Local folder</text><text x="44" y="137" class="t-line">Azure Blob Storage</text><text x="44" y="160" class="t-line">Upload (UI / API)</text><text x="44" y="183" class="t-rm">SharePoint, FTP: roadmap</text><rect x="218" y="56" width="168" height="150" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text x="232" y="86" class="t-title" fill="var(--d-ingest-tx)">2 · Parse</text><text x="232" y="114" class="t-line">pdf · docx · txt · md</text><text x="232" y="137" class="t-line">csv · xlsx · xls</text><text x="232" y="160" class="t-line">json · jsonl · xml</text><text x="232" y="183" class="t-line">page-aware PDFs</text><rect x="406" y="56" width="168" height="150" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text x="420" y="86" class="t-title" fill="var(--d-sec-tx)">3 · Classify</text><text x="420" y="114" class="t-line">path rules · manifest</text><text x="420" y="137" class="t-line">sidecar · classifier</text><text x="420" y="160" class="t-line">SME facets, synonyms</text><text x="420" y="183" class="t-line">review queue</text><rect x="594" y="56" width="168" height="150" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text x="608" y="86" class="t-title" fill="var(--d-ai-tx)">4 · Embed</text><text x="608" y="114" class="t-line">embedding profile</text><text x="608" y="137" class="t-line">self-hosted Qwen3</text><text x="608" y="160" class="t-line">or Azure OpenAI</text><text x="608" y="183" class="t-line">same as queries</text><rect x="782" y="56" width="168" height="150" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text x="796" y="86" class="t-title" fill="var(--d-data-tx)">5 · Index</text><text x="796" y="114" class="t-line">Azure AI Search</text><text x="796" y="137" class="t-line">text + vectors</text><text x="796" y="160" class="t-line">dept · region</text><text x="796" y="183" class="t-line">clearance · shares</text><path class="edge" d="M198 131 H215" marker-end="url(#ov-arrow)"/><path class="edge" d="M386 131 H403" marker-end="url(#ov-arrow)"/><path class="edge" d="M574 131 H591" marker-end="url(#ov-arrow)"/><path class="edge" d="M762 131 H779" marker-end="url(#ov-arrow)"/><text x="30" y="242" class="t-small">Queue-driven workers · idempotent · per-document state machine · retries and dead-letter queue · scales 0..N</text><rect x="10" y="300" width="956" height="248" rx="14" class="lane"/><text x="30" y="328" class="t-lane">QUERY PATH</text><rect x="30" y="346" width="168" height="150" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text x="44" y="376" class="t-title" fill="var(--d-ext-tx)">1 · Ask</text><text x="44" y="404" class="t-line">RAG-OS chat UI</text><text x="44" y="427" class="t-line">or portal embed</text><text x="44" y="450" class="t-line">(one script tag)</text><text x="44" y="473" class="t-line">Entra ID sign-in</text><rect x="218" y="346" width="168" height="150" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text x="232" y="376" class="t-title" fill="var(--d-sec-tx)">2 · Identify</text><text x="232" y="404" class="t-line">token claims</text><text x="232" y="427" class="t-line">department · region</text><text x="232" y="450" class="t-line">clearance · roles</text><text x="232" y="473" class="t-line">default deny</text><rect x="406" y="346" width="168" height="150" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text x="420" y="376" class="t-title" fill="var(--d-sec-tx)">3 · Filter</text><text x="420" y="404" class="t-line">access policy (YAML)</text><text x="420" y="427" class="t-line">→ search filter</text><text x="420" y="450" class="t-line">applied inside</text><text x="420" y="473" class="t-line">every query</text><rect x="594" y="346" width="168" height="150" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text x="608" y="376" class="t-title" fill="var(--d-data-tx)">4 · Retrieve</text><text x="608" y="404" class="t-line">hybrid vector + text</text><text x="608" y="427" class="t-line">semantic ranker</text><text x="608" y="450" class="t-line">only passages the</text><text x="608" y="473" class="t-line">user may see</text><rect x="782" y="346" width="168" height="150" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text x="796" y="376" class="t-title" fill="var(--d-ai-tx)">5 · Answer</text><text x="796" y="404" class="t-line">Claude on Foundry</text><text x="796" y="427" class="t-line">or Azure OpenAI</text><text x="796" y="450" class="t-line">cited answer [n]</text><text x="796" y="473" class="t-line">or abstain + reason</text><path class="edge" d="M198 421 H215" marker-end="url(#ov-arrow)"/><path class="edge" d="M386 421 H403" marker-end="url(#ov-arrow)"/><path class="edge" d="M574 421 H591" marker-end="url(#ov-arrow)"/><path class="edge" d="M762 421 H779" marker-end="url(#ov-arrow)"/><text x="30" y="532" class="t-small">Page-level citations · reason-coded abstention · conflicts surfaced · token usage returned with every answer</text><path class="edge-dash" d="M866 206 V286 H678 V343" marker-end="url(#ov-arrow)"/><text x="690" y="280" class="t-edge">same index, same embedding profile</text><rect x="10" y="572" width="470" height="94" rx="12" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.4"/><text x="30" y="602" class="t-title" fill="var(--d-obs-tx)">Observability</text><text x="30" y="628" class="t-line">OpenTelemetry → Application Insights</text><text x="30" y="650" class="t-line">correlation IDs · tokens per answer · KQL pack</text><rect x="496" y="572" width="470" height="94" rx="12" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.4"/><text x="516" y="602" class="t-title" fill="var(--d-data-tx)">Platform</text><text x="516" y="628" class="t-line">Azure Container Apps · Microsoft Foundry</text><text x="516" y="650" class="t-line">Key Vault · managed identity · PostgreSQL · Service Bus</text></svg></div>
+        <figcaption><b>Figure 1.</b> The two paths at a glance. Both use the same embedding profile, so a question is always compared with documents in the same vector space.</figcaption>
+      </figure>
+      <figure class="landscape"><div class="rot">
+        <div class="fig-frame"><svg class="ragos-diagram" data-figure="architecture" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1062" width="1440" height="1062" preserveAspectRatio="xMidYMid meet" role="img" aria-label="RAG-OS system architecture: query path, ingestion path and shared services"><title>RAG-OS system architecture: query path, ingestion path and shared services</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker><marker id="arrow-start" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="44" text-anchor="start">RAG-OS system architecture</text><text class="t-small" x="36" y="64">Container Apps environment cae-ragos-dev · every app and job authenticates with the user-assigned managed identity id-ragos-dev (no keys, no connection strings)</text><rect class="lane" x="36" y="84" width="1076" height="262" rx="14"/><text class="t-lane" x="54" y="108">QUERY PATH</text><text class="t-small" x="54" y="126">workload profile: query (Dedicated D4)</text><rect class="lane" x="36" y="364" width="1076" height="350" rx="14"/><text class="t-lane" x="54" y="388">INGESTION PATH</text><text class="t-small" x="54" y="406">workload profiles: ingest (Dedicated D8) + Consumption-GPU-NC8as-T4</text><rect class="lane" x="1136" y="84" width="268" height="630" rx="14"/><text class="t-lane" x="1154" y="108">DATA &amp; AI SERVICES</text><rect x="62" y="156" width="222" height="81" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="173.0" y="183.0" text-anchor="middle" fill="var(--d-ext-tx)">Browser</text><text class="t-line" x="173.0" y="206.0" text-anchor="middle">signed in with Entra ID</text><text class="t-line" x="173.0" y="223.0" text-anchor="middle">MSAL · code + PKCE</text><rect x="330" y="156" width="222" height="98" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="441.0" y="183.0" text-anchor="middle" fill="var(--d-query-tx)">rag-chat-ui</text><text class="t-line" x="441.0" y="206.0" text-anchor="middle">nginx · CSP · /api proxy</text><text class="t-line" x="441.0" y="223.0" text-anchor="middle">EXTERNAL ingress :8080</text><text class="t-line" x="441.0" y="240.0" text-anchor="middle">1–3 replicas</text><rect x="596" y="156" width="222" height="98" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="707.0" y="183.0" text-anchor="middle" fill="var(--d-query-tx)">rag-api</text><text class="t-line" x="707.0" y="206.0" text-anchor="middle">FastAPI · access policy</text><text class="t-line" x="707.0" y="223.0" text-anchor="middle">INTERNAL ingress :8000</text><text class="t-line" x="707.0" y="240.0" text-anchor="middle">min 2 · max 10 replicas</text><rect x="866" y="156" width="222" height="81" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="977.0" y="183.0" text-anchor="middle" fill="var(--d-query-tx)">rag-embed-query</text><text class="t-line" x="977.0" y="206.0" text-anchor="middle">TEI 1.9 · Qwen3-Embedding</text><text class="t-line" x="977.0" y="223.0" text-anchor="middle">CPU · :80 · 1–4 · tei only</text><rect x="62" y="428" width="222" height="98" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="173.0" y="455.0" text-anchor="middle" fill="var(--d-ingest-tx)">Document sources</text><text class="t-line" x="173.0" y="478.0" text-anchor="middle">local_folder · azure_blob</text><text class="t-line" x="173.0" y="495.0" text-anchor="middle">upload · (SharePoint, Drive,</text><text class="t-line" x="173.0" y="512.0" text-anchor="middle">FTP registered as stubs)</text><rect x="330" y="428" width="222" height="98" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="441.0" y="455.0" text-anchor="middle" fill="var(--d-ingest-tx)">rag-scheduler</text><text class="t-line" x="441.0" y="478.0" text-anchor="middle">Container Apps job</text><text class="t-line" x="441.0" y="495.0" text-anchor="middle">cron */5 · discovery +</text><text class="t-line" x="441.0" y="512.0" text-anchor="middle">reconciliation</text><path d="M596 443 a111.0 11 0 0 1 222 0 v76 a111.0 11 0 0 1 -222 0 z" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><path d="M596 443 a111.0 11 0 0 0 222 0" fill="none" stroke="var(--d-data-br)" stroke-width="1.2" opacity=".65"/><text class="t-title" x="707.0" y="463.0" text-anchor="middle" fill="var(--d-data-tx)">Service Bus</text><text class="t-line" x="707.0" y="486.0" text-anchor="middle">ingest-priority (uploads)</text><text class="t-line" x="707.0" y="503.0" text-anchor="middle">ingest-bulk (backfills)</text><text class="t-line" x="707.0" y="520.0" text-anchor="middle">dead-letter after 5 tries</text><rect x="866" y="428" width="222" height="98" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="977.0" y="455.0" text-anchor="middle" fill="var(--d-ingest-tx)">rag-ingest-worker</text><text class="t-line" x="977.0" y="478.0" text-anchor="middle">KEDA azure-servicebus</text><text class="t-line" x="977.0" y="495.0" text-anchor="middle">0..10 replicas × 4 docs</text><text class="t-line" x="977.0" y="512.0" text-anchor="middle">parse · chunk · classify</text><path d="M330 611 a111.0 11 0 0 1 222 0 v59 a111.0 11 0 0 1 -222 0 z" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><path d="M330 611 a111.0 11 0 0 0 222 0" fill="none" stroke="var(--d-data-br)" stroke-width="1.2" opacity=".65"/><text class="t-title" x="441.0" y="631.0" text-anchor="middle" fill="var(--d-data-tx)">Blob Storage</text><text class="t-line" x="441.0" y="654.0" text-anchor="middle">raw-docs · config · exports</text><text class="t-line" x="441.0" y="671.0" text-anchor="middle">shared keys disabled</text><rect x="866" y="600" width="222" height="81" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="977.0" y="627.0" text-anchor="middle" fill="var(--d-ingest-tx)">rag-embed-ingest</text><text class="t-line" x="977.0" y="650.0" text-anchor="middle">TEI turing · NVIDIA T4 GPU</text><text class="t-line" x="977.0" y="667.0" text-anchor="middle">0..4 · scale to zero · tei only</text><rect x="1154" y="122" width="232" height="81" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1270.0" y="149.0" text-anchor="middle" fill="var(--d-ai-tx)">Microsoft Foundry</text><text class="t-line" x="1270.0" y="172.0" text-anchor="middle">aif-ragos-dev / proj-ragos-dev</text><text class="t-line" x="1270.0" y="189.0" text-anchor="middle">claude-opus-5 · gpt-5-mini</text><path d="M1154 263 a116.0 11 0 0 1 232 0 v93 a116.0 11 0 0 1 -232 0 z" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><path d="M1154 263 a116.0 11 0 0 0 232 0" fill="none" stroke="var(--d-data-br)" stroke-width="1.2" opacity=".65"/><text class="t-title" x="1270.0" y="283.0" text-anchor="middle" fill="var(--d-data-tx)">Azure AI Search S1</text><text class="t-line" x="1270.0" y="306.0" text-anchor="middle">srch-ragos-dev · 2 replicas</text><text class="t-line" x="1270.0" y="323.0" text-anchor="middle">index kb-&lt;domain&gt;-&lt;fp&gt;</text><text class="t-line" x="1270.0" y="340.0" text-anchor="middle">hybrid + semantic ranker</text><text class="t-line" x="1270.0" y="357.0" text-anchor="middle">int8 · ACL + facet fields</text><path d="M1154 459 a116.0 11 0 0 1 232 0 v76 a116.0 11 0 0 1 -232 0 z" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><path d="M1154 459 a116.0 11 0 0 0 232 0" fill="none" stroke="var(--d-data-br)" stroke-width="1.2" opacity=".65"/><text class="t-title" x="1270.0" y="479.0" text-anchor="middle" fill="var(--d-data-tx)">PostgreSQL Flexible</text><text class="t-line" x="1270.0" y="502.0" text-anchor="middle">psql-ragos-dev · Entra-only</text><text class="t-line" x="1270.0" y="519.0" text-anchor="middle">document state · runs</text><text class="t-line" x="1270.0" y="536.0" text-anchor="middle">report read by rag-api</text><rect x="1154" y="596" width="232" height="98" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="1270.0" y="623.0" text-anchor="middle" fill="var(--d-sec-tx)">Key Vault</text><text class="t-line" x="1270.0" y="646.0" text-anchor="middle">dev-jwt-signing-key</text><text class="t-line" x="1270.0" y="663.0" text-anchor="middle">appinsights-connection</text><text class="t-line" x="1270.0" y="680.0" text-anchor="middle">read via keyvaultref</text><path class="edge" d="M284 196.5 L330 205.0" marker-end="url(#arrow)"/><circle cx="307.0" cy="176.5" r="11" fill="var(--d-badge)"/><text class="t-badge" x="307.0" y="180.5" text-anchor="middle">1</text><path class="edge" d="M552 205.0 L596 205.0" marker-end="url(#arrow)"/><circle cx="574.0" cy="185.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="574.0" y="189.0" text-anchor="middle">2</text><circle cx="618" cy="178" r="11" fill="var(--d-badge)"/><text class="t-badge" x="618" y="182" text-anchor="middle">3</text><path class="edge" d="M818 205.0 L866 196.5" marker-end="url(#arrow)"/><circle cx="842.0" cy="185.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="842.0" y="189.0" text-anchor="middle">4</text><text class="t-small" x="842.0" y="231.0" text-anchor="middle">embed query</text><path class="edge" d="M747.0 254 L747.0 312 L1120 312 L1120 275.5 L1154 275.5" marker-end="url(#arrow)"/><rect class="chip" x="820.485" y="301.0" width="288.68" height="21" rx="7"/><text class="t-edge" x="964.825" y="316.0" text-anchor="middle">hybrid query + ACL filter inside the query</text><circle cx="765.0" cy="274" r="11" fill="var(--d-badge)"/><text class="t-badge" x="765.0" y="278" text-anchor="middle">5</text><path class="edge" d="M667.0 156 L667.0 128 L1120 128 L1120 162.5 L1154 162.5" marker-end="url(#arrow)"/><rect class="chip" x="806.56" y="117.0" width="236.36" height="21" rx="7"/><text class="t-edge" x="924.74" y="132.0" text-anchor="middle">grounded prompt + numbered context</text><circle cx="649.0" cy="136" r="11" fill="var(--d-badge)"/><text class="t-badge" x="649.0" y="140" text-anchor="middle">6</text><path class="edge" d="M284 477.0 L330 477.0" marker-end="url(#arrow)"/><circle cx="307.0" cy="457.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="307.0" y="461.0" text-anchor="middle">7</text><path class="edge" d="M552 477.0 L596 481.0" marker-end="url(#arrow)"/><circle cx="574.0" cy="457.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="574.0" y="461.0" text-anchor="middle">8</text><path class="edge" d="M818 481.0 L866 477.0" marker-end="url(#arrow)"/><circle cx="842.0" cy="461.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="842.0" y="465.0" text-anchor="middle">9</text><path class="edge" d="M441.0 526 L441.0 576 L441.0 600" marker-end="url(#arrow)"/><rect class="chip" x="398.03" y="559.4" width="85.94000000000001" height="21" rx="7"/><text class="t-edge" x="441.0" y="574.4" text-anchor="middle">stage bytes</text><path class="edge" d="M552 640.5 L578 640.5 L578 566 L917.0 566 L917.0 526" marker-end="url(#arrow)"/><rect class="chip" x="715.9099999999999" y="555.0" width="79.4" height="21" rx="7"/><text class="t-edge" x="755.6099999999999" y="570.0" text-anchor="middle">read bytes</text><path class="edge" d="M1037.0 526 L1037.0 600" marker-end="url(#arrow)"/><rect class="chip" x="990.76" y="560.88" width="92.48" height="21" rx="7"/><text class="t-edge" x="1037.0" y="575.88" text-anchor="middle">embed chunks</text><circle cx="1037.0" cy="546" r="11" fill="var(--d-badge)"/><text class="t-badge" x="1037.0" y="550" text-anchor="middle">10</text><path class="edge" d="M1088 453.0 L1122 453.0 L1122 353.5 L1154 353.5" marker-end="url(#arrow)"/><rect class="chip" x="1072.49" y="423.04" width="99.02000000000001" height="21" rx="7"/><text class="t-edge" x="1122.0" y="438.04" text-anchor="middle">upsert chunks</text><circle cx="1106" cy="429.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="1106" y="433.0" text-anchor="middle">11</text><path class="edge" d="M1088 503.0 L1130 503.0 L1130 487.0 L1154 487.0" marker-end="url(#arrow)"/><rect class="chip" x="1053.2900000000002" y="492.0" width="125.18" height="21" rx="7"/><text class="t-edge" x="1115.88" y="507.0" text-anchor="middle">state transitions</text><rect x="36" y="742" width="1368" height="81" rx="10" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.6"/><text class="t-title" x="720.0" y="769.0" text-anchor="middle" fill="var(--d-obs-tx)">Application Insights + Log Analytics   (appi-ragos-dev · log-ragos-dev)</text><text class="t-line" x="720.0" y="792.0" text-anchor="middle">Every app and job exports OpenTelemetry traces, logs and metrics. One X-Correlation-ID follows a request from the browser through the API,</text><text class="t-line" x="720.0" y="809.0" text-anchor="middle">onto the queue message and into the worker.   Metrics: rag.tokens · rag.stage.duration · rag.ingest.docs   ·   KQL in docs/kql.md</text><rect x="36" y="852" width="770" height="147.0" rx="10" fill="var(--d-lane)" stroke="var(--d-lane-br)" stroke-width="1.4" stroke-dasharray="6 4"/><text class="t-title" x="52" y="877.0" fill="var(--d-text)" font-size="13">Answering a question</text><text class="t-line" x="52" y="895.0">1  The user signs in with Microsoft; MSAL acquires an access token for the RAG-OS API scope.</text><text class="t-line" x="52" y="912.0">2  The page calls /api/* with that token; nginx adds X-Correlation-ID and proxies to the internal API.</text><text class="t-line" x="52" y="929.0">3  rag-api validates issuer/algorithm/audience/expiry and maps the claims to the caller's attributes.</text><text class="t-line" x="52" y="946.0">4  The question is embedded by rag-embed-query (tei only), or by Foundry text-embedding-3-small (aoai only).</text><text class="t-line" x="52" y="963.0">5  Hybrid + semantic search runs with the access filter INSIDE the query (never a filter afterwards).</text><text class="t-line" x="52" y="980.0">6  Claude or GPT answers from the numbered passages; citations and token usage come back with the answer.</text><rect x="824" y="852" width="580" height="130.0" rx="10" fill="var(--d-lane)" stroke="var(--d-lane-br)" stroke-width="1.4" stroke-dasharray="6 4"/><text class="t-title" x="840" y="877.0" fill="var(--d-text)" font-size="13">Ingesting a document</text><text class="t-line" x="840" y="895.0">7   Scheduler lists each due source and detects what changed (etag / content hash).</text><text class="t-line" x="840" y="912.0">8   Changed documents are staged to Blob and enqueued as claim-check messages.</text><text class="t-line" x="840" y="929.0">9   KEDA scales workers on queue length; the priority lane is drained first.</text><text class="t-line" x="840" y="946.0">10  Chunks are embedded on the GPU pool (tei only); facets come from those vectors.</text><text class="t-line" x="840" y="963.0">11  New chunks are upserted, the previous version is deleted, and the state is recorded.</text><rect x="36" y="1026" width="16" height="13" rx="4" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.4"/><text class="t-small" x="60" y="1036">Query path</text><rect x="264" y="1026" width="16" height="13" rx="4" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.4"/><text class="t-small" x="288" y="1036">Ingestion path</text><rect x="492" y="1026" width="16" height="13" rx="4" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.4"/><text class="t-small" x="516" y="1036">Data store / queue</text><rect x="720" y="1026" width="16" height="13" rx="4" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.4"/><text class="t-small" x="744" y="1036">AI service</text><rect x="948" y="1026" width="16" height="13" rx="4" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.4"/><text class="t-small" x="972" y="1036">Secrets</text><rect x="1176" y="1026" width="16" height="13" rx="4" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.4"/><text class="t-small" x="1200" y="1036">Outside RAG-OS</text></svg></div>
+        <figcaption><b>Figure 2.</b> System architecture: query path, ingestion path and shared Azure services.</figcaption>
+      </div></figure>
+
+      <h3 id="s-ingest">3.1 Data ingestion path</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Capability</th><th>Details</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Configurable data sources</strong></td><td>Local folder, Azure Blob Storage, and direct upload through the UI or API (served on a priority lane). Sources are declared in configuration and built by a factory, so adding one is a plug-in.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Further connectors</strong></td><td>SharePoint (with permission sync), Google Drive, SFTP/FTPS. Registered in the product, not yet implemented.</td><td><span class="badge rm">Roadmap</span></td></tr>
+          <tr><td><strong>File formats</strong></td><td>PDF (one section per page), DOCX, TXT/Markdown/log, CSV/TSV, XLSX/XLSM, XLS, JSON, JSONL/NDJSON, JSONP, XML.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Scanned documents (OCR)</strong>, PPTX, legacy DOC</td><td>Planned through Azure Content Understanding.</td><td><span class="badge rm">Roadmap</span></td></tr>
+          <tr><td><strong>Classification</strong></td><td>Facets with owners, synonyms and hierarchies. Applied in order: folder path rules, a manifest, per-file sidecar metadata, then an automatic classifier. Low-confidence results go to an SME review queue.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Indexing</strong></td><td>Azure AI Search: hybrid vector and keyword search, semantic ranker, int8 vector compression. Access attributes are stored on every passage.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Scale and resilience</strong></td><td>Queue-driven (Azure Service Bus) and idempotent, with a per-document state machine, retries, a dead-letter queue and a status report per document. Designed for millions of documents.</td><td><span class="badge av">Available</span></td></tr>
+        </tbody>
+      </table></div>
+      <figure class="landscape"><div class="rot">
+        <div class="fig-frame"><svg class="ragos-diagram" data-figure="classification-layers" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 926" width="1440" height="926" preserveAspectRatio="xMidYMid meet" role="img" aria-label="How documents are organised and classified, layer by layer"><title>How documents are organised and classified, layer by layer</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker><marker id="arrow-start" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="44" text-anchor="start">How documents get classified</text><text class="t-small" x="36" y="64">Cheapest layer first. Later layers override earlier ones for the same facet; an SME decision is never overwritten by a rule. Only facets still empty reach the classifier.</text><path class="edge" d="M74 130 L74 586" marker-end="url(#arrow)"/><text class="t-small" x="58" y="350" transform="rotate(-90 58 358)" text-anchor="middle" font-weight="700">later layers win</text><rect x="96" y="118" width="1010" height="58" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.5"/><circle cx="126" cy="147.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="151.0" text-anchor="middle">1</text><text class="t-title" x="152" y="143" fill="var(--d-data-tx)">Source defaults</text><text class="t-small" x="152" y="163">defaults: in each instance in config/sources/sources.yaml</text><text class="t-small" x="1090" y="143" text-anchor="end">Covers a whole repository in one line.</text><rect x="1041.6" y="150" width="48.4" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1065.8" y="164" text-anchor="middle" font-weight="700">free</text><rect x="96" y="186" width="1010" height="58" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.5"/><circle cx="126" cy="215.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="219.0" text-anchor="middle">2</text><text class="t-title" x="152" y="211" fill="var(--d-data-tx)">Folder path rules</text><text class="t-small" x="152" y="231">config/classification/path-rules.yaml  ·  glob → facets + ACL</text><text class="t-small" x="1090" y="211" text-anchor="end">hr/** → department HR;  */emea/** → region EMEA.</text><rect x="1041.6" y="218" width="48.4" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1065.8" y="232" text-anchor="middle" font-weight="700">free</text><rect x="96" y="254" width="1010" height="58" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.5"/><circle cx="126" cy="283.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="287.0" text-anchor="middle">3</text><text class="t-title" x="152" y="279" fill="var(--d-data-tx)">Sidecar file</text><text class="t-small" x="152" y="299">&lt;file&gt;.meta.json next to the document</text><text class="t-small" x="1090" y="279" text-anchor="end">For the handful of exceptions.</text><rect x="1041.6" y="286" width="48.4" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1065.8" y="300" text-anchor="middle" font-weight="700">free</text><rect x="96" y="322" width="1010" height="58" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.5"/><circle cx="126" cy="351.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="355.0" text-anchor="middle">4</text><text class="t-title" x="152" y="347" fill="var(--d-data-tx)">Manifest</text><text class="t-small" x="152" y="367">manifest.csv at the source root  ·  SMEs edit it in Excel</text><text class="t-small" x="1090" y="347" text-anchor="end">path, facet.&lt;name&gt;, acl.&lt;name&gt; — ';' separates values.</text><rect x="1041.6" y="354" width="48.4" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1065.8" y="368" text-anchor="middle" font-weight="700">free</text><rect x="96" y="390" width="1010" height="58" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.5"/><circle cx="126" cy="419.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="423.0" text-anchor="middle">5</text><text class="t-title" x="152" y="415" fill="var(--d-data-tx)">Upload form</text><text class="t-small" x="152" y="435">facets chosen by the uploader  ·  ACL from their own attributes</text><text class="t-small" x="1090" y="415" text-anchor="end">The only layer folder rules cannot reach.</text><rect x="1041.6" y="422" width="48.4" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1065.8" y="436" text-anchor="middle" font-weight="700">free</text><rect x="96" y="458" width="1010" height="58" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.5"/><circle cx="126" cy="487.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="491.0" text-anchor="middle">6</text><text class="t-title" x="152" y="483" fill="var(--d-ingest-tx)">Embedding classifier</text><text class="t-small" x="152" y="503">facets marked classify: true in facets.yaml</text><text class="t-small" x="1090" y="483" text-anchor="end">Reuses the chunk vectors the self-hosted model already produced.</text><rect x="1008.6" y="490" width="81.4" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1049.3" y="504" text-anchor="middle" font-weight="700">no tokens</text><rect x="96" y="526" width="1010" height="58" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.5"/><circle cx="126" cy="555.0" r="11" fill="var(--d-badge)"/><text class="t-badge" x="126" y="559.0" text-anchor="middle">7</text><text class="t-title" x="152" y="551" fill="var(--d-ingest-tx)">LLM classifier (optional)</text><text class="t-small" x="152" y="571">CLASSIFIER=embedding+llm  ·  only when the top two are close</text><text class="t-small" x="1090" y="551" text-anchor="end">Capped by CLASSIFIER_LLM_TOKEN_BUDGET.</text><rect x="1021.8" y="558" width="68.19999999999999" height="19" rx="9" fill="var(--d-chip)" stroke="var(--d-lane-br)"/><text class="t-small" x="1055.9" y="572" text-anchor="middle" font-weight="700">bounded</text><rect x="1140" y="234" width="264" height="98" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="1272.0" y="261.0" text-anchor="middle" fill="var(--d-sec-tx)">SME review queue</text><text class="t-line" x="1272.0" y="284.0" text-anchor="middle">anything the classifier is</text><text class="t-line" x="1272.0" y="301.0" text-anchor="middle">unsure about waits here</text><text class="t-line" x="1272.0" y="318.0" text-anchor="middle">(/admin → Review queue)</text><path class="edge" d="M1106 555 L1128 555 L1128 283.0 L1140 283.0" marker-end="url(#arrow)"/><text class="t-small" x="1272.0" y="222" text-anchor="middle" font-weight="700">low confidence goes here</text><rect x="1140" y="392" width="264" height="98" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="1272.0" y="419.0" text-anchor="middle" fill="var(--d-sec-tx)">Approved label</text><text class="t-line" x="1272.0" y="442.0" text-anchor="middle">becomes a new example, so</text><text class="t-line" x="1272.0" y="459.0" text-anchor="middle">the classifier improves and</text><text class="t-line" x="1272.0" y="476.0" text-anchor="middle">rules never overwrite it</text><path class="edge" d="M1272.0 332 L1272.0 392" marker-end="url(#arrow)"/><rect x="1140" y="548" width="264" height="98" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="1272.0" y="575.0" text-anchor="middle" fill="var(--d-data-tx)">Index fields</text><text class="t-line" x="1272.0" y="598.0" text-anchor="middle">f_department · f_region</text><text class="t-line" x="1272.0" y="615.0" text-anchor="middle">f_doc_type · f_topic</text><text class="t-line" x="1272.0" y="632.0" text-anchor="middle">f_confidentiality · f_language</text><rect x="96" y="606" width="1010" height="64" rx="10" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.6"/><text class="t-title" x="601.0" y="633.0" text-anchor="middle" fill="var(--d-obs-tx)">Result stored with every chunk</text><text class="t-line" x="601.0" y="656.0" text-anchor="middle">facet values (hierarchical facets also carry their ancestors, so filtering on EMEA finds UK documents)   ·   ACL values   ·   provenance per facet</text><rect x="36" y="716" width="1368" height="96.0" rx="10" fill="var(--d-lane)" stroke="var(--d-lane-br)" stroke-width="1.4" stroke-dasharray="6 4"/><text class="t-title" x="52" y="741.0" fill="var(--d-text)" font-size="13">Conventions that make layers 1–4 do most of the work</text><text class="t-line" x="52" y="759.0">Recommended folder convention:   &lt;source root&gt;/&lt;department&gt;/&lt;region&gt;/&lt;doc type&gt;/&lt;file&gt;      for example   hr/uk/policies/parental-leave-policy.md</text><text class="t-line" x="52" y="776.0">The parser contributes the title only (author and dates are read but set no facet); language comes from the source default. Access facets (department, region, confidentiality) also drive the policy; business facets (document type, topic) drive filtering and navigation.</text><text class="t-line" x="52" y="793.0">Provenance is kept for every facet — manifest, path_rule:&lt;glob&gt;, sidecar, classifier:&lt;method&gt; with its confidence, or review:&lt;user&gt; — and is visible in /admin.</text><rect x="36" y="878" width="16" height="13" rx="4" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.4"/><text class="t-small" x="60" y="888">Rule-based layer (free)</text><rect x="336" y="878" width="16" height="13" rx="4" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.4"/><text class="t-small" x="360" y="888">Automatic classification</text><rect x="636" y="878" width="16" height="13" rx="4" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.4"/><text class="t-small" x="660" y="888">Human decision</text><rect x="936" y="878" width="16" height="13" rx="4" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.4"/><text class="t-small" x="960" y="888">Stored on every chunk</text></svg></div>
+        <figcaption><b>Figure 3.</b> How documents are organised and classified, layer by layer. SMEs own the vocabulary; the system applies it.</figcaption>
+      </div></figure>
+
+      <h3 id="s-query">3.2 User query path</h3>
+      <ol>
+        <li><strong>Sign in.</strong> The user signs in with Microsoft Entra ID, in the RAG-OS chat UI or in a host portal that embeds it with a single script tag.</li>
+        <li><strong>Resolve scope.</strong> The token's claims are mapped to the user's department, region, clearance and roles. Anything missing defaults to <em>deny</em>.</li>
+        <li><strong>Filter inside the search.</strong> The access policy is compiled into a search filter and applied inside Azure AI Search, so only permitted passages are ever candidates.</li>
+        <li><strong>Retrieve and rank.</strong> Hybrid vector and keyword retrieval is followed by semantic re-ranking.</li>
+        <li><strong>Answer or abstain.</strong> The language model answers only from the retrieved passages and cites them as <code>[n]</code>. If there is nothing relevant, or the answer would be uncited, RAG-OS declines and says why.</li>
+      </ol>
+      <figure class="landscape"><div class="rot">
+        <div class="fig-frame"><svg class="ragos-diagram" data-figure="query-sequence" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1000" width="1440" height="1000" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sequence: a question travels from a signed-in browser to a cited answer"><title>Sequence: a question travels from a signed-in browser to a cited answer</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker><marker id="arrow-start" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="44" text-anchor="start">What happens when someone asks a question</text><text class="t-small" x="36" y="64">Every step carries the same X-Correlation-ID, so one identifier links the browser request, the search call and the model call in Application Insights.</text><rect x="45.0" y="96" width="184" height="64" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="137.0" y="123.0" text-anchor="middle" fill="var(--d-ext-tx)">Browser</text><text class="t-line" x="137.0" y="146.0" text-anchor="middle">MSAL · Entra sign-in</text><path class="lifeline" d="M137.0 162 L137.0 836"/><rect x="239.0" y="96" width="184" height="64" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="331.0" y="123.0" text-anchor="middle" fill="var(--d-query-tx)">rag-chat-ui</text><text class="t-line" x="331.0" y="146.0" text-anchor="middle">nginx · external :8080</text><path class="lifeline" d="M331.0 162 L331.0 836"/><rect x="433.0" y="96" width="184" height="64" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="525.0" y="123.0" text-anchor="middle" fill="var(--d-query-tx)">rag-api</text><text class="t-line" x="525.0" y="146.0" text-anchor="middle">FastAPI · internal :8000</text><path class="lifeline" d="M525.0 162 L525.0 836"/><rect x="627.0" y="96" width="184" height="64" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="719.0" y="123.0" text-anchor="middle" fill="var(--d-sec-tx)">AccessPolicyEngine</text><text class="t-line" x="719.0" y="146.0" text-anchor="middle">access-policy.yaml</text><path class="lifeline" d="M719.0 162 L719.0 836"/><rect x="821.0" y="96" width="184" height="64" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="913.0" y="123.0" text-anchor="middle" fill="var(--d-query-tx)">rag-embed-query</text><text class="t-line" x="913.0" y="146.0" text-anchor="middle">TEI · Qwen3 · tei only</text><path class="lifeline" d="M913.0 162 L913.0 836"/><rect x="1015.0" y="96" width="184" height="64" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="1107.0" y="123.0" text-anchor="middle" fill="var(--d-data-tx)">Azure AI Search S1</text><text class="t-line" x="1107.0" y="146.0" text-anchor="middle">kb-&lt;domain&gt;-&lt;fp&gt;</text><path class="lifeline" d="M1107.0 162 L1107.0 836"/><rect x="1209.0" y="96" width="184" height="64" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1301.0" y="123.0" text-anchor="middle" fill="var(--d-ai-tx)">Microsoft Foundry</text><text class="t-line" x="1301.0" y="146.0" text-anchor="middle">claude-opus-5 / gpt-5-mini</text><path class="lifeline" d="M1301.0 162 L1301.0 836"/><path class="edge" d="M147.0 200 L321.0 200" marker-end="url(#arrow)"/><rect class="chip" x="14.449999999999989" y="173" width="439.1" height="21" rx="7"/><text class="t-edge" x="234.0" y="188" text-anchor="middle">GET /  ·  access token acquired for api://&lt;app-id&gt;/access_as_user</text><circle cx="129.0" cy="200" r="11" fill="var(--d-badge)"/><text class="t-badge" x="129.0" y="204" text-anchor="middle">1</text><path class="edge" d="M341.0 256 L515.0 256" marker-end="url(#arrow)"/><rect class="chip" x="188.82999999999998" y="229" width="478.34000000000003" height="21" rx="7"/><text class="t-edge" x="428.0" y="244" text-anchor="middle">POST /api/chat   ·   Authorization: Bearer &lt;JWT&gt;   ·   X-Correlation-ID</text><circle cx="323.0" cy="256" r="11" fill="var(--d-badge)"/><text class="t-badge" x="323.0" y="260" text-anchor="middle">2</text><path class="edge" d="M525.0 312 L649.0 312 L649.0 338 L535.0 338" marker-end="url(#arrow)"/><rect class="chip" x="324.93999999999994" y="285" width="524.1200000000001" height="21" rx="7"/><text class="t-edge" x="587.0" y="300" text-anchor="middle">validate issuer / algorithm / audience / expiry, then map claims to attributes</text><circle cx="505.0" cy="312" r="11" fill="var(--d-badge)"/><text class="t-badge" x="505.0" y="316" text-anchor="middle">3</text><path class="edge" d="M535.0 376 L709.0 376" marker-end="url(#arrow)"/><rect class="chip" x="559.41" y="349" width="125.18" height="21" rx="7"/><text class="t-edge" x="622.0" y="364" text-anchor="middle">decide(principal)</text><circle cx="517.0" cy="376" r="11" fill="var(--d-badge)"/><text class="t-badge" x="517.0" y="380" text-anchor="middle">4</text><path class="edge-dash" d="M709.0 432 L535.0 432" marker-end="url(#arrow)"/><rect class="chip" x="395.90999999999997" y="405" width="452.18" height="21" rx="7"/><text class="t-edge" x="622.0" y="420" text-anchor="middle">OData filter   ·   or DENY_ALL when a required attribute is missing</text><circle cx="727.0" cy="432" r="11" fill="var(--d-badge)"/><text class="t-badge" x="727.0" y="436" text-anchor="middle">5</text><path class="edge" d="M535.0 488 L903.0 488" marker-end="url(#arrow)"/><rect class="chip" x="499.45" y="461" width="439.1" height="21" rx="7"/><text class="t-edge" x="719.0" y="476" text-anchor="middle">POST /v1/embeddings   ·   query prefix from the embedding profile</text><circle cx="517.0" cy="488" r="11" fill="var(--d-badge)"/><text class="t-badge" x="517.0" y="492" text-anchor="middle">6</text><path class="edge-dash" d="M903.0 544 L535.0 544" marker-end="url(#arrow)"/><rect class="chip" x="643.33" y="517" width="151.34" height="21" rx="7"/><text class="t-edge" x="719.0" y="532" text-anchor="middle">1024-dimension vector</text><circle cx="921.0" cy="544" r="11" fill="var(--d-badge)"/><text class="t-badge" x="921.0" y="548" text-anchor="middle">7</text><path class="edge" d="M535.0 600 L1097.0 600" marker-end="url(#arrow)"/><rect class="chip" x="602.99" y="573" width="426.02000000000004" height="21" rx="7"/><text class="t-edge" x="816.0" y="588" text-anchor="middle">hybrid + semantic search, access filter INSIDE the query, top 8</text><circle cx="517.0" cy="600" r="11" fill="var(--d-badge)"/><text class="t-badge" x="517.0" y="604" text-anchor="middle">8</text><path class="edge-dash" d="M1097.0 656 L535.0 656" marker-end="url(#arrow)"/><rect class="chip" x="629.15" y="629" width="373.70000000000005" height="21" rx="7"/><text class="t-edge" x="816.0" y="644" text-anchor="middle">only the chunks this caller may read (+ reranker score)</text><circle cx="1115.0" cy="656" r="11" fill="var(--d-badge)"/><text class="t-badge" x="1115.0" y="660" text-anchor="middle">9</text><path class="edge" d="M535.0 712 L1291.0 712" marker-end="url(#arrow)"/><rect class="chip" x="732.69" y="685" width="360.62" height="21" rx="7"/><text class="t-edge" x="913.0" y="700" text-anchor="middle">system rules + numbered context blocks + the question</text><circle cx="517.0" cy="712" r="11" fill="var(--d-badge)"/><text class="t-badge" x="517.0" y="716" text-anchor="middle">10</text><path class="edge-dash" d="M1291.0 768 L535.0 768" marker-end="url(#arrow)"/><rect class="chip" x="680.37" y="741" width="465.26000000000005" height="21" rx="7"/><text class="t-edge" x="913.0" y="756" text-anchor="middle">answer with [n] citations   ·   usage: input / output / cached tokens</text><circle cx="1309.0" cy="768" r="11" fill="var(--d-badge)"/><text class="t-badge" x="1309.0" y="772" text-anchor="middle">11</text><path class="edge-dash" d="M515.0 824 L341.0 824" marker-end="url(#arrow)"/><rect class="chip" x="221.52999999999997" y="797" width="412.94000000000005" height="21" rx="7"/><text class="t-edge" x="428.0" y="812" text-anchor="middle">200  { answer, citations, usage, timings_ms, correlation_id }</text><circle cx="533.0" cy="824" r="11" fill="var(--d-badge)"/><text class="t-badge" x="533.0" y="828" text-anchor="middle">12</text><rect x="40" y="856" width="1360" height="96.0" rx="10" fill="var(--d-lane)" stroke="var(--d-lane-br)" stroke-width="1.4" stroke-dasharray="6 4"/><text class="t-title" x="56" y="881.0" fill="var(--d-text)" font-size="13">Where the request stops early</text><text class="t-line" x="56" y="899.0">Missing required attribute (no department, say) → DENY_ALL: the search is never executed and the caller is told they have no access.</text><text class="t-line" x="56" y="916.0">No chunk passes the filter or the reranker threshold → "I could not find this in the documents available to you." — no model call is made.</text><text class="t-line" x="56" y="933.0">An answer that cites nothing is refused as ungrounded; a Claude refusal (stop_reason = refusal) is retried once on Azure OpenAI.  ·  rag-embed-query is tei only — an azure_openai profile calls Foundry instead.</text><rect x="40" y="964" width="16" height="13" rx="4" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.4"/><text class="t-small" x="64" y="974">RAG-OS app</text><rect x="290" y="964" width="16" height="13" rx="4" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.4"/><text class="t-small" x="314" y="974">Access control</text><rect x="540" y="964" width="16" height="13" rx="4" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.4"/><text class="t-small" x="564" y="974">Search index</text><rect x="790" y="964" width="16" height="13" rx="4" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.4"/><text class="t-small" x="814" y="974">Model</text><rect x="1040" y="964" width="16" height="13" rx="4" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.4"/><text class="t-small" x="1064" y="974">Outside RAG-OS</text><text class="t-small" x="1400" y="974" text-anchor="end">dashed arrow = response</text></svg></div>
+        <figcaption><b>Figure 4.</b> A question travels from a signed-in browser to a cited answer.</figcaption>
+      </div></figure>
+
+      <h3 id="s-scenarios">3.3 Answer quality scenarios</h3>
+      <p>Four behaviours separate a trustworthy assistant from a plausible one. Each is stated with its current status.</p>
+      <div class="cards">
+        <div class="card">
+          <h4>Version correctness <span class="badge pt">Partial</span></h4>
+          <p>When a document is re-ingested, its previous version is removed from the index, so stale copies of the <em>same</em> document are never quoted.</p>
+          <p>Choosing between <em>different</em> documents (for example <code>ProductPriceCatalog_2025</code> vs <code>ProductPriceCatalog_2026</code>) currently relies on an instruction to prefer the most recent effective date. The effective date is read from Markdown and text metadata today.</p>
+          <p class="ex"><b>Roadmap:</b> effective dates for every format, version-aware ranking, and an explicit "as of" filter in the query.</p>
+        </div>
+        <div class="card">
+          <h4>Page-level citation <span class="badge av">Available</span></h4>
+          <p>Every answer carries numbered citations with the document, the <strong>page number</strong> (for PDFs) or section heading, a snippet and a relevance score.</p>
+          <p>When the same passage appears in several files, the citation lists the other locations too, instead of hiding them.</p>
+          <p class="ex"><b>Example:</b> "Parental leave is 26 weeks [1]." → [1] UK Parental Leave Handbook, page 4.</p>
+        </div>
+        <div class="card">
+          <h4>Abstention <span class="badge av">Available</span></h4>
+          <p>RAG-OS returns no answer rather than a plausible one, with a machine-readable reason:</p>
+          <ul>
+            <li><code>no_access</code>: nothing this user may see</li>
+            <li><code>no_relevant_context</code>: the corpus does not cover it</li>
+            <li><code>model_refusal</code>: the model declined</li>
+            <li>Grounding guard: an answer without citations is discarded</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>Conflict handling <span class="badge pt">Partial</span></h4>
+          <p>When two permitted sources disagree, for example a global and a UK handbook, the answer surfaces the conflict and cites both, rather than choosing silently.</p>
+          <p>A user who can see only one of the two sources gets a clean answer from that source, because the other was never retrieved.</p>
+          <p class="ex"><b>Roadmap:</b> a structured <code>conflict</code> flag in the API response, so portals and workflows can act on it.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 4 -->
+    <section class="chapter" id="s-models">
+      <h2><span class="n">4</span>Models</h2>
+      <p>RAG-OS treats models as configuration, not code. Two model roles are configured independently.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Role</th><th>Options</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Embeddings</strong><br><small>turn text into vectors</small></td>
+            <td><ul>
+              <li><strong>Default:</strong> Qwen3-Embedding-0.6B (Apache-2.0), self-hosted on Hugging Face Text Embeddings Inference in your own containers. Multilingual, 1024 or 512 dimensions, <strong>no per-token cost</strong>, and text never leaves your environment.</li>
+              <li><strong>Alternative:</strong> Azure OpenAI <code>text-embedding-3-small</code>.</li>
+            </ul></td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Answering</strong><br><small>compose the cited answer</small></td>
+            <td><ul>
+              <li>Claude models on Microsoft Foundry, or Azure OpenAI GPT models. Both use keyless Entra authentication.</li>
+              <li>A separate, cheaper "utility" model for background tasks, and an optional fallback provider.</li>
+            </ul></td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>On-premises / confidential compute</strong></td>
+            <td>Adapters for models hosted on-premises or on confidential-compute GPUs. The provider registry is already pluggable; the adapters are not yet built.</td><td><span class="badge rm">Roadmap</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout">
+        <p><strong>The embedding-profile guarantee.</strong> Exactly one embedding profile is active at a time. It pins the model, revision, dimensions and query/document prefixes, and both ingestion and querying read the same profile. A mismatch between how documents and questions are embedded, a common and silent cause of poor RAG quality, cannot happen. Changing the profile builds a new index alongside the old one, which keeps serving until the new one is ready.</p>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 5 -->
+    <section class="chapter" id="s-security">
+      <h2><span class="n">5</span>Secure data querying</h2>
+      <p>Users are governed by <strong>Microsoft Entra ID</strong>: app roles decide what a person can <em>do</em>, and directory attributes decide what a person can <em>see</em>. Documents carry matching facets (tags) in the index. A declarative policy joins the two.</p>
+      <h3>Clearance levels</h3>
+      <div class="levels">
+        <div><span>0</span><b>Public</b>Anyone signed in. Also the default when a document has no clearance.</div>
+        <div><span>1</span><b>Internal</b>Employees, within their department and region.</div>
+        <div><span>2</span><b>Confidential</b>Named roles or teams with a business need.</div>
+        <div><span>3</span><b>Restricted</b>The narrowest audience: legal, board or regulated data.</div>
+      </div>
+      <p>Levels are configurable in the access policy, so an organisation that needs an extra tier, such as "Private", can add one.</p>
+      <h3>Pre-filtering, not post-filtering</h3>
+      <p>Many assistants retrieve broadly and then hide what the user should not see. RAG-OS never retrieves it. The policy (default deny; department <em>and</em> region <em>and</em> clearance, <em>or</em> a personal share) is compiled into a filter that the search engine applies <strong>inside</strong> every query. Restricted text never reaches the model, the logs or the answer.</p>
+      <figure class="landscape"><div class="rot">
+        <div class="fig-frame"><svg class="ragos-diagram" data-figure="access-filter" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1004" width="1440" height="1004" preserveAspectRatio="xMidYMid meet" role="img" aria-label="How a person's token claims become the access filter applied inside every search"><title>How a person's token claims become the access filter applied inside every search</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker><marker id="arrow-start" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="44" text-anchor="start">How a person's attributes become a search filter</text><text class="t-small" x="36" y="64">Worked example: Priya — HR, United Kingdom, clearance 1, employee id E1001, signed in with Entra ID. Adding an attribute is a YAML edit; none of this is hard-coded.</text><text class="t-small" x="36" y="86" font-weight="700">Three names for one idea: (1) the CLAIM Entra sends about the person, (2) the ATTRIBUTE the policy calls it, (3) the acl_* INDEX FIELD on the document. Nothing named acl_* is ever a claim.</text><rect x="40" y="132" width="286" height="132" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="183.0" y="159.0" text-anchor="middle" fill="var(--d-ext-tx)">1 · Token claims</text><text class="t-line" x="183.0" y="182.0" text-anchor="middle">extn.department: ["HR"]</text><text class="t-line" x="183.0" y="199.0" text-anchor="middle">extn.region: ["UK"]</text><text class="t-line" x="183.0" y="216.0" text-anchor="middle">extn.clearance: 1</text><text class="t-line" x="183.0" y="233.0" text-anchor="middle">oid: "E1001"</text><text class="t-line" x="183.0" y="250.0" text-anchor="middle">roles: ["rag.sme"]</text><rect x="372" y="132" width="266" height="132" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="505.0" y="159.0" text-anchor="middle" fill="var(--d-sec-tx)">2 · ClaimsMapper</text><text class="t-line" x="505.0" y="182.0" text-anchor="middle">maps each claim to an</text><text class="t-line" x="505.0" y="199.0" text-anchor="middle">attribute, per issuer</text><text class="t-line" x="505.0" y="216.0" text-anchor="middle">(entra · dev)</text><text class="t-line" x="505.0" y="233.0" text-anchor="middle">value_map turns a group</text><text class="t-line" x="505.0" y="250.0" text-anchor="middle">object id into a value</text><rect x="684" y="132" width="286" height="132" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="827.0" y="159.0" text-anchor="middle" fill="var(--d-sec-tx)">3 · Principal attributes</text><text class="t-line" x="827.0" y="182.0" text-anchor="middle">department = [HR]</text><text class="t-line" x="827.0" y="199.0" text-anchor="middle">region = [UK]</text><text class="t-line" x="827.0" y="216.0" text-anchor="middle">clearance = 1</text><text class="t-line" x="827.0" y="233.0" text-anchor="middle">employee_id = [E1001]</text><text class="t-line" x="827.0" y="250.0" text-anchor="middle">roles = {reviewer}</text><rect x="1016" y="132" width="388" height="132" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="1210.0" y="159.0" text-anchor="middle" fill="var(--d-sec-tx)">4 · AccessPolicyEngine</text><text class="t-line" x="1210.0" y="182.0" text-anchor="middle">every value is checked against</text><text class="t-line" x="1210.0" y="199.0" text-anchor="middle">its allow-list pattern first —</text><text class="t-line" x="1210.0" y="216.0" text-anchor="middle">a bad value is a 401, never a</text><text class="t-line" x="1210.0" y="233.0" text-anchor="middle">sanitised filter</text><text class="t-line" x="1210.0" y="250.0" text-anchor="middle">(this is what blocks injection)</text><path class="edge" d="M326 198.0 L372 198.0" marker-end="url(#arrow)"/><path class="edge" d="M638 198.0 L684 198.0" marker-end="url(#arrow)"/><path class="edge" d="M970 198.0 L1016 198.0" marker-end="url(#arrow)"/><text class="t-small" x="183.0" y="294" text-anchor="middle" font-weight="700">(1) claim names — configured in Entra</text><text class="t-small" x="827.0" y="294" text-anchor="middle" font-weight="700">(2) attribute names — `name:` in the policy</text><rect class="lane" x="40" y="322" width="1364" height="244" rx="14"/><text class="t-lane" x="58" y="346">MATCH RULES</text><text class="t-small" x="58" y="364">(3) index fields (acl_*) describe the DOCUMENT — declared as `field:` in access-policy.yaml</text><rect x="62" y="380" width="316" height="115" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="220.0" y="407.0" text-anchor="middle" fill="var(--d-data-tx)">any_of   ·   department</text><text class="t-line" x="220.0" y="430.0" text-anchor="middle">field acl_department</text><text class="t-line" x="220.0" y="447.0" text-anchor="middle">caller has any value the document</text><text class="t-line" x="220.0" y="464.0" text-anchor="middle">allows; a document value of *</text><text class="t-line" x="220.0" y="481.0" text-anchor="middle">means everyone</text><text class="t-codesm" x="220.0" y="519" text-anchor="middle">search.in(v, 'HR|*', '|')</text><rect x="396" y="380" width="316" height="115" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="554.0" y="407.0" text-anchor="middle" fill="var(--d-data-tx)">hierarchical   ·   region</text><text class="t-line" x="554.0" y="430.0" text-anchor="middle">field acl_region</text><text class="t-line" x="554.0" y="447.0" text-anchor="middle">the caller's value is expanded to its</text><text class="t-line" x="554.0" y="464.0" text-anchor="middle">ancestors, so UK also sees EMEA</text><text class="t-line" x="554.0" y="481.0" text-anchor="middle">and Global</text><text class="t-codesm" x="554.0" y="519" text-anchor="middle">search.in(v, 'UK|EMEA|Global|*', '|')</text><rect x="730" y="380" width="316" height="115" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="888.0" y="407.0" text-anchor="middle" fill="var(--d-data-tx)">max_level   ·   clearance</text><text class="t-line" x="888.0" y="430.0" text-anchor="middle">field acl_clearance</text><text class="t-line" x="888.0" y="447.0" text-anchor="middle">the document's level must be at or</text><text class="t-line" x="888.0" y="464.0" text-anchor="middle">below the caller's; a document</text><text class="t-line" x="888.0" y="481.0" text-anchor="middle">with no level is denied</text><text class="t-codesm" x="888.0" y="519" text-anchor="middle">acl_clearance le 1</text><rect x="1064" y="380" width="316" height="115" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="1222.0" y="407.0" text-anchor="middle" fill="var(--d-data-tx)">exact   ·   employee_id</text><text class="t-line" x="1222.0" y="430.0" text-anchor="middle">field acl_employee_id</text><text class="t-line" x="1222.0" y="447.0" text-anchor="middle">explicit share with one person;</text><text class="t-line" x="1222.0" y="464.0" text-anchor="middle">the * wildcard is never honoured</text><text class="t-line" x="1222.0" y="481.0" text-anchor="middle">for a grant</text><text class="t-codesm" x="1222.0" y="519" text-anchor="middle">search.in(v, 'E1001', '|')</text><rect x="40" y="600" width="1364" height="81" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="722.0" y="627.0" text-anchor="middle" fill="var(--d-sec-tx)">combine:   all_of = AND   ·   grant_any_of = OR</text><text class="t-line" x="722.0" y="650.0" text-anchor="middle">(department AND region AND clearance)   OR   (employee_id)</text><text class="t-line" x="722.0" y="667.0" text-anchor="middle">a grant stands alone: it still applies when a required all_of attribute is missing</text><path class="edge" d="M1210.0 264 L1210.0 322" marker-end="url(#arrow)"/><path class="edge" d="M722.0 566 L722.0 600" marker-end="url(#arrow)"/><rect x="40" y="710" width="1364" height="112" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-small" x="60" y="734" font-weight="700">The filter sent to Azure AI Search with every search, facet and listing call — rag-os explain prints exactly this</text><text class="t-code" x="60" y="762">(acl_department/any(v: search.in(v, 'HR|*', '|')) and acl_region/any(v: search.in(v, 'UK|EMEA|Global|*', '|'))</text><text class="t-code" x="60" y="782"> and acl_clearance le 1)</text><text class="t-code" x="60" y="802">or (acl_employee_id/any(v: search.in(v, 'E1001', '|')))</text><path class="edge" d="M722.0 681 L722.0 710" marker-end="url(#arrow)"/><rect x="40" y="848" width="430" height="81" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="255.0" y="875.0" text-anchor="middle" fill="var(--d-sec-tx)">Document is returned</text><text class="t-line" x="255.0" y="898.0" text-anchor="middle">every all_of attribute allows this caller,</text><text class="t-line" x="255.0" y="915.0" text-anchor="middle">or an explicit grant matches</text><rect x="504" y="848" width="436" height="81" rx="10" fill="var(--d-bad-bg)" stroke="var(--d-bad-br)" stroke-width="1.6"/><text class="t-title" x="722.0" y="875.0" text-anchor="middle" fill="var(--d-bad-tx)">Default deny</text><text class="t-line" x="722.0" y="898.0" text-anchor="middle">untagged document, or every branch failed</text><text class="t-line" x="722.0" y="915.0" text-anchor="middle">→ DENY_ALL, the search never runs</text><rect x="974" y="848" width="430" height="81" rx="10" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.6"/><text class="t-title" x="1189.0" y="875.0" text-anchor="middle" fill="var(--d-obs-tx)">Admin bypass</text><text class="t-line" x="1189.0" y="898.0" text-anchor="middle">Entra app role rag.admin only — never from an</text><text class="t-line" x="1189.0" y="915.0" text-anchor="middle">untrusted issuer — and always audit-logged</text><path class="edge" d="M255.0 822 L255.0 848" marker-end="url(#arrow)"/><path class="edge" d="M722.0 822 L722.0 848" marker-end="url(#arrow)"/><path class="edge" d="M1189.0 822 L1189.0 848" marker-end="url(#arrow)"/><text class="t-small" x="36" y="986">A property test generates random principals and documents and checks that this OData filter and the Python predicate used by the local index always agree — so what you test offline is what Azure enforces.</text></svg></div>
+        <figcaption><b>Figure 5.</b> How a person's token claims become the filter applied inside every search.</figcaption>
+      </div></figure>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Control</th><th>What it does</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Entra ID sign-in and app roles</td><td>Admin, taxonomy editor (SME), reviewer and contributor roles</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td>Attribute administration</td><td>Admins set a person's department, region and clearance from the admin console, written to Entra through Microsoft Graph</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td>"Explain access"</td><td>Shows exactly why a given user can or cannot see a given document</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td>Prompt-injection hygiene</td><td>Document content is treated as data, never as instructions</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td>Secrets</td><td>Azure Key Vault and managed identities; no secrets in code, images or files</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td>Source permission sync</td><td>Inherit SharePoint ACLs in addition to the attribute policy</td><td><span class="badge rm">Roadmap</span></td></tr>
+          <tr><td>Microsoft Purview labels</td><td>Map sensitivity labels to clearance levels automatically</td><td><span class="badge rm">Roadmap</span></td></tr>
+          <tr><td>Private networking</td><td>Private endpoints and VNet integration</td><td><span class="badge rm">Roadmap</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== 6 -->
+    <section class="chapter" id="s-compliance">
+      <h2><span class="n">6</span>Data compliance</h2>
+      <p>For regulated organisations the first question is not "how good are the answers" but "where does our data go". RAG-OS is designed to keep the answer to that question short.</p>
+      <div class="cards">
+        <div class="card"><h4>Your tenant, your subscription <span class="badge av">Available</span></h4><p>RAG-OS deploys into the customer's own Azure subscription. Documents, index, database, logs and keys stay under the customer's control and policies.</p></div>
+        <div class="card"><h4>Embeddings never leave <span class="badge av">Available</span></h4><p>With the default self-hosted embedding model, document text is vectorised inside the deployment. No document content is sent to a third-party embedding API.</p></div>
+        <div class="card"><h4>Minimal exposure to the LLM <span class="badge av">Available</span></h4><p>Only the handful of passages the user is already entitled to see are sent to the answering model, through Microsoft Foundry or Azure OpenAI in the customer's chosen region.</p></div>
+        <div class="card"><h4>Compliance-perimeter models <span class="badge rm">Roadmap</span></h4><p>Answering models running on-premises or on Azure confidential-compute infrastructure, so that even the answering step stays inside a defined perimeter.</p></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 7 -->
+    <section class="chapter" id="s-ops">
+      <h2><span class="n">7</span>Observability and operations</h2>
+      <div class="cards">
+        <div class="card"><h4>Tokens per answer <span class="badge av">Available</span></h4><p>Every answer reports input, output, cache and embedding tokens, split by purpose, and the same figures are emitted as metrics by provider and model.</p></div>
+        <div class="card"><h4>End-to-end tracing <span class="badge av">Available</span></h4><p>A correlation ID follows a request from the browser through the API, and follows a document from upload through queue, worker and index. OpenTelemetry exports to Azure Application Insights.</p></div>
+        <div class="card"><h4>Ready-made queries <span class="badge av">Available</span></h4><p>A library of KQL queries for traces, token dashboards, failures and alerts ships with the product.</p></div>
+        <div class="card"><h4>Admin console <span class="badge av">Available</span></h4><p>Dashboard, sources and "sync now", ingestion runs with progress and ETA, per-document status, bulk retry, CSV export, SME review queue, dead-letter viewer, ingestion throttling and configuration editing.</p></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 8 -->
+    <section class="chapter" id="s-different">
+      <h2><span class="n">8</span>How RAG-OS is different</h2>
+      <p>Compared with Azure knowledge bases, NotebookLM and similar RAG products, RAG-OS competes on governance and control rather than on connector count.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Differentiator</th><th>Why it matters</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Attribute-based access enforced inside the search</strong></td><td>Department, region, clearance and personal shares are matched before retrieval. Nothing is retrieved and then hidden.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Clearance levels and region hierarchy</strong></td><td>Models how regulated organisations actually classify information, beyond simple per-file sharing.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Explainable access</strong></td><td>Admins can answer "why can this person see this?" in seconds, which matters for audits.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Configurable models</strong></td><td>Self-hosted embeddings, Claude or GPT for answering. No lock-in to one model vendor.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Honest abstention</strong></td><td>Reason-coded refusals and a grounding guard, instead of plausible guesses.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Cost transparency</strong></td><td>Token usage on every answer, and zero-token-cost embeddings.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>SME-owned taxonomy</strong></td><td>Subject-matter experts own the vocabulary and review queue; IT owns the platform.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>Embeddable anywhere</strong></td><td>One script tag puts governed chat inside an intranet or customer portal, scoped by the host's identity token.</td><td><span class="badge av">Available</span></td></tr>
+          <tr><td><strong>SaaS model to scale</strong></td><td>A multi-tenant offering for SMBs alongside dedicated deployments for enterprises.</td><td><span class="badge rm">Roadmap</span></td></tr>
+          <tr><td><strong>Custom evaluation pipeline</strong></td><td>Combines RAGAS, DeepEval and Azure AI Evaluation metrics (faithfulness, answer relevance, context precision and recall) and gates releases on them.</td><td><span class="badge rm">Roadmap</span></td></tr>
+        </tbody>
+      </table></div>
+      <h3>Suggested additions to stand out</h3>
+      <ul>
+        <li><strong>Answer confidence score</strong> <span class="badge rm">Roadmap</span>: a per-answer faithfulness score from a hallucination-detection model, shown to users and usable as a threshold.</li>
+        <li><strong>Structured version and conflict signals</strong> <span class="badge rm">Roadmap</span>: "as of" dates and conflict flags in the API, not just in the answer text.</li>
+        <li><strong>Governed retrieval as an MCP server</strong> <span class="badge rm">Roadmap</span>: let any agent, such as Copilot or a Foundry agent, use RAG-OS retrieval while keeping its access policy.</li>
+        <li><strong>Domain packs</strong> <span class="badge rm">Roadmap</span>: pre-built taxonomy, ontology and evaluation sets per industry, such as mortgage servicing, insurance claims or HR, to shorten time-to-value.</li>
+        <li><strong>Answer audit trail</strong> <span class="badge rm">Roadmap</span>: an exportable record of who asked what and which documents informed the answer, for regulators.</li>
+      </ul>
+    </section>
+
+    <!-- ===================================================================== 9 -->
+    <section class="chapter" id="s-market">
+      <h2><span class="n">9</span>Similar products in market</h2>
+      <p>The enterprise knowledge-assistant market is crowded and moving quickly. The products below are the ones a buyer is most likely to compare RAG-OS with. Positioning reflects public information as of October 2026.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Product</th><th>What it is</th><th>Where RAG-OS differs</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Microsoft 365 Copilot / Copilot Studio</strong></td><td>Assistant across Microsoft 365 content, with Purview sensitivity labels shown on citations and inherited by agents.</td><td>Works with content outside Microsoft 365, applies a custom attribute policy (region, clearance), and can serve external portal users.</td></tr>
+          <tr><td><strong>Foundry IQ (Azure AI Search knowledge bases)</strong></td><td>A knowledge layer for agents: agentic retrieval over Azure AI Search with document-level permissions and an MCP server.</td><td>A building block, where RAG-OS is a finished product with ingestion operations, an SME taxonomy, an admin console and a chat UI. RAG-OS can adopt Foundry IQ underneath (roadmap).</td></tr>
+          <tr><td><strong>Glean</strong></td><td>A work-AI platform with a permissions-aware knowledge graph over 100+ SaaS apps. Strong in large enterprises.</td><td>Glean mirrors source ACLs; RAG-OS adds clearance and region policy independent of the source, runs in the customer's own Azure subscription, and costs less to run.</td></tr>
+          <tr><td><strong>Google Gemini Enterprise / Gemini Notebook Enterprise</strong> (formerly NotebookLM Enterprise)</td><td>Google Cloud's agent platform with permission-aware connectors; notebooks shared per notebook.</td><td>Azure-native; organisation-wide attribute policy instead of per-notebook sharing.</td></tr>
+          <tr><td><strong>Amazon Q Business / Amazon Quick Suite</strong></td><td>AWS's permission-aware enterprise assistant, now evolving into the agentic Quick Suite.</td><td>For Azure- and Microsoft-centric organisations; configurable models, including self-hosted embeddings.</td></tr>
+          <tr><td><strong>Atlassian Rovo</strong></td><td>Search, chat and agents over Jira, Confluence and 50+ connected apps; acts strictly within each user's permissions.</td><td>Not tied to a collaboration suite; designed for policy and handbook corpora with clearance levels.</td></tr>
+          <tr><td><strong>Hebbia (Matrix)</strong></td><td>Agentic document analysis for finance and legal, used by leading asset managers.</td><td>Horizontal and affordable; reaches verticals through SME taxonomy and ontology rather than a premium vertical product.</td></tr>
+          <tr><td><strong>Vectara</strong></td><td>RAG-as-a-service platform known for hallucination detection (the HHEM model) and runtime correction.</td><td>A complete governed product in the customer's tenant. A hallucination score is a candidate addition to RAG-OS's evaluation roadmap.</td></tr>
+          <tr><td><strong>Onyx</strong> (formerly Danswer)</td><td>Open-source enterprise search and chat with 40+ connectors and source-permission sync; self-hostable.</td><td>Azure-native operations at scale, attribute and clearance policy, and SME classification with a review queue.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout note"><p><strong>Positioning in one line:</strong> the market leaders compete on how many systems they connect to. RAG-OS competes on how precisely it controls who sees what, and on proving where every answer came from, inside infrastructure the customer already trusts.</p></div>
+    </section>
+
+    <!-- ===================================================================== 10 -->
+    <section class="chapter" id="s-usecases">
+      <h2><span class="n">10</span>Potential use cases</h2>
+      <p>The core product is a governed question-answering service. Because the knowledge base is indexed, classified and permission-tagged, the same foundation supports a family of higher-value applications.</p>
+
+      <h3>10.1 Knowledge-base assistant for SMBs (SaaS subscription) <span class="badge av">Core available</span> <span class="badge rm">SaaS roadmap</span></h3>
+      <p>Most SMBs keep their standard operating procedures across HR, Sales, IT, Legal, Finance and Training in scattered folders. RAG-OS makes them queryable, with reliable, cited answers and department-level privacy, as a subscription that needs no AI expertise to run.</p>
+      <ul>
+        <li><strong>Packaging:</strong> tiers by seats and document volume; usage-based add-ons, metered by the token figures the product already records.</li>
+        <li><strong>Onboarding:</strong> connect a folder or storage account, apply a starter taxonomy, and invite users.</li>
+      </ul>
+
+      <h3>10.2 Questionnaire generation for multiple verticals <span class="badge rm">Roadmap</span></h3>
+      <p>A searchable, classified knowledge base can be turned into assessments as well as answers. Every generated question is grounded in, and cites, a source passage.</p>
+      <div class="cards">
+        <div class="card"><h4>Question types</h4><ul><li>Objective (multiple choice)</li><li>Fill in the blanks</li><li>Match the columns</li><li>Descriptive / open questions</li></ul></div>
+        <div class="card"><h4>Verticals</h4><ul><li>Education: quizzes and exams from syllabus material</li><li>Hiring: online and offline interview sets from role profiles</li><li>Compliance and training certification</li><li>Fun quizzes and engagement</li></ul></div>
+        <div class="card"><h4>Evaluation</h4><p>Objective questions are marked automatically. Descriptive answers are scored against the cited source passages, and the evaluator's confidence decides how marks are allocated; low-confidence results go to a human reviewer.</p></div>
+      </div>
+
+      <h3>10.3 Form filling <span class="badge rm">Roadmap</span></h3>
+      <p>Use the indexed knowledge base to pre-fill structured forms, with a citation behind every value so a person can verify it before submitting.</p>
+      <ul>
+        <li>Legal forms and standard agreements</li>
+        <li>Tax forms</li>
+        <li>Application forms: licences, permits, grants, admissions, visas</li>
+        <li>Custom templated reports for compliance and audits</li>
+      </ul>
+
+      <h3>10.4 Personal assistants <span class="badge rm">Roadmap</span></h3>
+      <p>Individuals keep educational, financial, employment, property and household documents in one private, searchable space ("When does my home insurance renew?", "What was my gross salary in 2025?"). Combined with form filling, the personal knowledge base becomes the data source for everyday paperwork.</p>
+
+      <h3>10.5 Niche verticals: finance, insurance, healthcare <span class="badge rm">Roadmap</span></h3>
+      <p>The highest-value opportunities are narrow, rule-heavy processes where checking documents against a specific <em>version</em> of a specific guideline consumes skilled staff time. The same pattern applies to insurance claims, KYC and onboarding files, clinical prior-authorisation packets and grant applications. Subject-matter experts are the ones who spot these niches; RAG-OS gives them the tools to encode their judgement.</p>
+      <div class="callout">
+        <p><strong>Worked example: mortgage loss-mitigation document chase.</strong> A homeowner falls behind on payments and applies for hardship assistance. The servicer must decide whether the submitted package is complete against the relevant investor guideline, then state precisely what is missing. The judgement is <em>completeness against a specific version of a specific guide</em>.</p>
+      </div>
+      <p><strong>How RAG-OS addresses it:</strong></p>
+      <ol>
+        <li><strong>Versioned guideline corpus.</strong> Each investor guide is indexed with its effective dates, so the check runs against the version in force for the application.</li>
+        <li><strong>Taxonomy.</strong> SMEs define the document types: hardship statement, proof of income, bank statements, tax records, property and occupancy evidence.</li>
+        <li><strong>Ontology.</strong> SMEs define the relationships: <em>guideline version → requires → document type</em>, with conditions (for example, a self-employed borrower requires profit-and-loss evidence) and validity rules such as how recent a statement must be.</li>
+        <li><strong>Completeness agent.</strong> The agent classifies the submitted package, evaluates it against the ontology for that guideline version, and produces a missing-items list where every requirement cites the guideline page it comes from.</li>
+      </ol>
+    </section>
+
+    <!-- ===================================================================== 11 -->
+    <section class="chapter" id="s-future">
+      <h2><span class="n">11</span>Future scope and potential</h2>
+      <p>The roadmap moves in three steps: complete the enterprise product, then open the platform, then build workflows on top of it.</p>
+      <div class="phases">
+        <div class="phase"><h4>Next</h4><p class="when">Complete the enterprise product</p>
+          <ul>
+            <li>SharePoint connector with permission sync, then Google Drive and SFTP</li>
+            <li>OCR for scanned documents (Azure Content Understanding)</li>
+            <li>Evaluation pipeline (RAGAS, DeepEval, Azure AI Evaluation) as CI/CD release gates</li>
+            <li>Version-aware ranking, and structured conflict and "as of" signals</li>
+            <li>UI editors for taxonomy and access policy</li>
+            <li>Streaming answers; Bicep templates; private endpoints and VNet</li>
+          </ul></div>
+        <div class="phase"><h4>Later</h4><p class="when">Open the platform</p>
+          <ul>
+            <li>Multi-tenant SaaS control plane: tenant isolation, per-tenant configuration, metering and billing on recorded token usage</li>
+            <li>On-premises and confidential-compute model adapters</li>
+            <li>Publish as a Foundry agent for Teams and Copilot Studio; expose governed retrieval as an MCP server</li>
+            <li>Foundry IQ knowledge bases as an alternative retrieval engine</li>
+            <li>Purview sensitivity-label mapping; semantic cache and an API-gateway token budget</li>
+          </ul></div>
+        <div class="phase"><h4>Horizon</h4><p class="when">Workflows on governed knowledge</p>
+          <ul>
+            <li>Questionnaire generation and grading</li>
+            <li>Citation-backed form filling</li>
+            <li>Completeness-checking agents for regulated verticals</li>
+            <li>Ontology and knowledge-graph reasoning across documents</li>
+            <li>A marketplace of domain packs (taxonomy, ontology and evaluation sets)</li>
+            <li>Personal knowledge assistant edition</li>
+          </ul></div>
+      </div>
+      <h3>Market potential</h3>
+      <p>Three revenue streams build on one platform:</p>
+      <ul>
+        <li><strong>Dedicated enterprise deployments</strong> for regulated organisations that need the product inside their own subscription.</li>
+        <li><strong>SaaS subscriptions</strong> for SMBs that need a trustworthy SOP assistant without an AI team.</li>
+        <li><strong>Vertical solutions</strong> (domain packs and workflow agents) priced on the effort they save, such as hours of document chasing per mortgage file.</li>
+      </ul>
+    </section>
+
+    <!-- ===================================================================== 12 -->
+    <section class="chapter" id="s-appendix">
+      <h2><span class="n">12</span>Appendix</h2>
+      <h3>A. Technology stack</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Component</th><th>Choice</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>API and workers</td><td>Python 3.13, FastAPI, pydantic</td><td>One codebase for the API, ingestion workers and CLI; OpenAPI-documented</td></tr>
+          <tr><td>Embeddings</td><td>Hugging Face TEI + Qwen3-Embedding-0.6B</td><td>Self-hosted, multilingual vectors with no token cost</td></tr>
+          <tr><td>Answering LLM</td><td>Claude on Microsoft Foundry, or Azure OpenAI</td><td>Grounded, cited answer generation</td></tr>
+          <tr><td>Search</td><td>Azure AI Search</td><td>Hybrid vector and keyword retrieval with in-query security filters</td></tr>
+          <tr><td>Queue</td><td>Azure Service Bus</td><td>Reliable, idempotent ingestion with priority lanes and a dead-letter queue</td></tr>
+          <tr><td>State</td><td>Azure Database for PostgreSQL</td><td>Per-document status, runs and reporting at millions of rows</td></tr>
+          <tr><td>Files and configuration</td><td>Azure Blob Storage</td><td>Raw documents, versioned configuration, exports</td></tr>
+          <tr><td>Hosting</td><td>Azure Container Apps (incl. serverless GPU)</td><td>Separate, independently scaling query and ingestion compute</td></tr>
+          <tr><td>Identity and secrets</td><td>Microsoft Entra ID, Key Vault, managed identity</td><td>Sign-in, roles, attributes; no stored secrets</td></tr>
+          <tr><td>Observability</td><td>OpenTelemetry → Application Insights</td><td>Traces, logs and token metrics</td></tr>
+          <tr><td>Chat UI</td><td>TypeScript, MSAL, nginx</td><td>Chat, embeddable loader and admin console</td></tr>
+        </tbody>
+      </table></div>
+      <h3>B. Glossary</h3>
+      <div class="table-wrap"><table>
+        <tbody>
+          <tr><td class="nowrap"><strong>RAG</strong></td><td>Retrieval-augmented generation: answering with a language model from passages retrieved at question time, rather than from the model's memory.</td></tr>
+          <tr><td class="nowrap"><strong>ABAC / RBAC</strong></td><td>Attribute-based and role-based access control. RAG-OS uses roles for what a person can do and attributes for what a person can see.</td></tr>
+          <tr><td class="nowrap"><strong>Facet</strong></td><td>A controlled tag on a document, such as department, region or clearance, used for filtering and classification.</td></tr>
+          <tr><td class="nowrap"><strong>Taxonomy</strong></td><td>The SME-owned vocabulary of facets, values, synonyms and hierarchies.</td></tr>
+          <tr><td class="nowrap"><strong>Ontology</strong></td><td>The relationships between concepts in a domain, for example "guideline version requires document type".</td></tr>
+          <tr><td class="nowrap"><strong>Embedding profile</strong></td><td>The pinned model, revision, dimensions and prefixes used for both ingestion and queries.</td></tr>
+          <tr><td class="nowrap"><strong>Pre-filter</strong></td><td>An access filter applied inside the search query, so that forbidden content is never retrieved.</td></tr>
+          <tr><td class="nowrap"><strong>Abstention</strong></td><td>Declining to answer, with a reason, when the permitted evidence does not support an answer.</td></tr>
+          <tr><td class="nowrap"><strong>MCP</strong></td><td>Model Context Protocol: an open standard for connecting AI agents to tools and data.</td></tr>
+        </tbody>
+      </table></div>
+      <footer class="doc-end">RAG-OS Product Overview · v1.0 · 2 October 2026. Statuses reflect the product as built at this date. Market information is drawn from public sources and may change.</footer>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var params = new URLSearchParams(location.search);
+  var printMode = params.get("print") === "1";
+
+  // ---- theme -------------------------------------------------------------
+  function stored(){ try { return localStorage.getItem("ragos-overview-theme"); } catch(e){ return null; } }
+  function apply(v){ if(v==="light"||v==="dark"){ root.setAttribute("data-theme", v); } else { root.removeAttribute("data-theme"); } }
+  apply(printMode ? "light" : stored());
+  document.getElementById("themeBtn").addEventListener("click", function(){
+    var cur = root.getAttribute("data-theme");
+    var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = cur ? (cur === "dark" ? "light" : "dark") : (dark ? "light" : "dark");
+    apply(next);
+    try { localStorage.setItem("ragos-overview-theme", next); } catch(e){}
+  });
+
+  // ---- printable table of contents, built from the sidebar -----------------
+  var toc = document.getElementById("toc");
+  var pt = document.querySelector(".print-toc ol");
+  toc.querySelectorAll(":scope > ol > li").forEach(function(li){
+    var a = li.querySelector(":scope > a");
+    add("l1", a.getAttribute("href"), a.textContent.replace(/^(\d+)/, "$1. "));
+    li.querySelectorAll(":scope ol a").forEach(function(s){ add("l2", s.getAttribute("href"), s.textContent); });
+  });
+  function add(cls, href, text){
+    var item = document.createElement("li"); item.className = cls;
+    var link = document.createElement("a"); link.href = href;
+    var t = document.createElement("span"); t.className = "tt"; t.textContent = text;
+    link.appendChild(t); item.appendChild(link); pt.appendChild(item);
+  }
+
+  // ---- print / PDF ---------------------------------------------------------
+  document.getElementById("printBtn").addEventListener("click", function(){
+    var u = new URL(location.href); u.searchParams.set("print", "1"); location.href = u.toString();
+  });
+  if (printMode) {
+    root.classList.add("print-mode");
+    ["toc","themeBtn","tocToggle"].forEach(function(id){ var el = document.getElementById(id); if (el) el.remove(); });
+    document.querySelector(".skip").remove();
+    window.PagedConfig = { auto: true, after: function(){
+      root.setAttribute("data-paged", "done");
+      var bar = document.createElement("div"); bar.className = "print-bar";
+      bar.innerHTML = '<span>' + document.querySelectorAll(".pagedjs_page").length + ' pages</span>' +
+        '<button class="btn primary" type="button" id="doPrint">Print / Save as PDF</button>' +
+        '<button class="btn" type="button" id="back">Back to web view</button>';
+      document.body.appendChild(bar);
+      document.getElementById("doPrint").onclick = function(){ window.print(); };
+      document.getElementById("back").onclick = function(){
+        var u = new URL(location.href); u.searchParams.delete("print"); location.href = u.toString();
+      };
+    }};
+    var s = document.createElement("script");
+    s.src = "https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js";
+    s.onerror = function(){
+      root.classList.remove("print-mode");
+      alert("The page layout engine could not be loaded (offline?). Use your browser's Print command instead; page numbers will still appear, but the contents will not show page numbers.");
+    };
+    document.head.appendChild(s);
+    return;
+  }
+
+  // ---- sidebar on small screens -------------------------------------------
+  var toggle = document.getElementById("tocToggle");
+  toggle.addEventListener("click", function(){
+    var open = toc.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  toc.addEventListener("click", function(e){
+    if (e.target.closest("a") && window.innerWidth <= 1100) { toc.classList.remove("open"); toggle.setAttribute("aria-expanded","false"); }
+  });
+
+  // ---- scroll spy ----------------------------------------------------------
+  var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute("href").slice(1)] = a; });
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (en.isIntersecting && byId[en.target.id]) {
+          links.forEach(function(a){ a.classList.remove("active"); });
+          byId[en.target.id].classList.add("active");
+        }
+      });
+    }, { rootMargin: "-10% 0px -75% 0px" });
+    Object.keys(byId).forEach(function(id){ var el = document.getElementById(id); if (el) io.observe(el); });
+  }
+})();
+</script>
+</body>
+</html>

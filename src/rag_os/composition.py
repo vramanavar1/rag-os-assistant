@@ -28,6 +28,7 @@ from rag_os.application.services.access_policy import AccessPolicyEngine
 from rag_os.application.services.chunker import TokenChunker
 from rag_os.application.services.claims import ClaimsMapper
 from rag_os.application.services.directory_admin import DirectoryAdminService, extension_names
+from rag_os.application.services.directory_claims import DirectoryAttributes
 from rag_os.application.services.index_schema import IndexDocumentMapper, build_schema
 from rag_os.application.services.profile_guard import ProfileGuard
 from rag_os.application.services.tagging import TagResolver
@@ -113,6 +114,7 @@ class Container:
         # Both read the policy: the service for its master lists, the adapter for the extension names it writes.
         self.__dict__.pop("directory_admin", None)
         self.__dict__.pop("directory", None)
+        self.__dict__.pop("directory_attributes", None)
 
     async def reload_config(self, *, ensure_index: bool = True) -> bool:
         """Reload YAML config if any ETag changed. New policy attributes/facets are added to the index in place."""
@@ -305,6 +307,18 @@ class Container:
         )
         self._closables.append(d)
         return d
+
+    @cached_property
+    def directory_attributes(self) -> DirectoryAttributes | None:
+        """Fills in attribute claims an Entra token did not carry, or None when there is no directory to ask.
+
+        Gated on the directory adapter rather than a setting of its own: DIRECTORY is already off by default and
+        already the decision to let this deployment read the tenant, so a second switch would only add a way to
+        have one without the other. It costs nothing when every caller's token carries its claims - the common
+        case does not reach Graph at all.
+        """
+        d = self.directory
+        return None if d is None else DirectoryAttributes(d, self.domain.policy)
 
     @cached_property
     def directory_admin(self) -> DirectoryAdminService:

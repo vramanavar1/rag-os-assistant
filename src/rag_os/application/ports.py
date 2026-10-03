@@ -587,6 +587,16 @@ class DirectoryAdmin(ABC):
         """The one person with this address. Raises NotFound if there is none, Conflict if there are several."""
 
     @abstractmethod
+    async def read_user(self, object_id: str) -> DirectoryUser:
+        """The person with this object id, attributes included.
+
+        Separate from find_user because the caller already holds a trustworthy object id - it came from the
+        `oid` claim of a signed token - so there is nothing to resolve and no address to mis-parse. This is the
+        read the query path uses for a caller whose token carries no attribute claims at all, which is every
+        Microsoft-account guest: Entra does not emit directory extension claims for them.
+        """
+
+    @abstractmethod
     async def set_attributes(self, object_id: str, values: Mapping[str, str | None]) -> None:
         """Set attributes by POLICY attribute name. None clears one.
 
