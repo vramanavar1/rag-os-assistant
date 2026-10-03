@@ -66,6 +66,12 @@ sources:
     full_listing: false
     settings:
       allowed_roles: [admin, contributor]
+      # "Only me" on the upload form. Unticked (the default) means the document is readable by everyone whose
+      # Department, Region and Clearance match its tags; ticked means only its uploader can read it. Who may
+      # tick it is decided here, so it can be restricted per role without a release.
+      only_me:
+        default: false
+        allowed_roles: [admin, contributor]
     defaults:
       # No language default on purpose. There is no language detection in the pipeline, so a default here is an
       # assertion about content nobody checked - it labelled every German and Hindi upload English. The uploader

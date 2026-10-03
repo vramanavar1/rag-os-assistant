@@ -348,6 +348,10 @@ class IngestionStateStore(ABC):
         """Docs of the source not seen in this run -> DELETED. Returns their ids."""
 
     @abstractmethod
+    def mark_deleted(self, doc_ids: Sequence[str], *, stage: str, message: str) -> list[str]:
+        """These docs -> DELETED, with an event. Returns the ids that changed (already-deleted ones are skipped)."""
+
+    @abstractmethod
     def query(self, q: DocumentQuery) -> tuple[list[DocumentRecord], str | None]: ...
 
     @abstractmethod

@@ -41,6 +41,7 @@ from rag_os.application.use_cases.purge import Purge
 from rag_os.application.use_cases.scheduler import Reconcile, SchedulerTick
 from rag_os.domain.access import AccessPolicy
 from rag_os.domain.classification import FacetSchema, PathRules
+from rag_os.domain.documents import TagSet
 from rag_os.domain.embedding import EmbeddingProfile
 from rag_os.domain.errors import ConfigError
 from rag_os.domain.ingestion import SourcesFile
@@ -274,9 +275,17 @@ class Container:
         s = self.settings
         if not (s.query_trace_enabled and s.query_trace_near_miss):
             return None
+        state = self.state
+
+        def doc_tags(doc_ids: list[str]) -> dict[str, TagSet]:
+            # The index will not return access tags (they are non-retrievable), so the values shown beside the
+            # index's verdict - and the misconfiguration checks - come from what ingestion recorded.
+            return {d: rec.tags for d in doc_ids if (rec := state.get(d)) is not None}
+
         return NearMissProbe(index=self.index, embedder=self.embed_query, engine=self.engine,
-                             facets=self.domain.facets, thresholds=self.relevance_bar, top=s.retrieval_top_k,
-                             candidates=s.retrieval_candidates, semantic=s.search_semantic)
+                             facets=self.domain.facets, thresholds=self.relevance_bar,
+                             retrievable={f.name for f in self.schema.fields if f.retrievable}, doc_tags=doc_tags,
+                             top=s.retrieval_top_k, candidates=s.retrieval_candidates, semantic=s.search_semantic)
 
     @cached_property
     def jwt(self) -> JwtValidator:

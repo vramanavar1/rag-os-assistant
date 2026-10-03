@@ -171,7 +171,20 @@ export const reviewView: View = async (ctx: ViewContext) => {
   mount(
     ctx.root,
     pageHeader('Review queue', h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { count = 0; void load(); } }, 'Refresh')),
-    h('p', { class: 'hint' }, 'Low-confidence or conflicting classifications. Correct the facets (and optionally the access tags), then approve.'),
+    h(
+      'div',
+      { class: 'notice' },
+      h('p', null, h('strong', null, 'What is here: '), 'documents where the automatic classifier was unsure about Document type or Topic — its best match scored below CLASSIFIER_MIN_SCORE (0.30, so the facet was left empty) or was within CLASSIFIER_MARGIN (0.03) of the runner-up. Documents your folders, manifest or upload picks already tagged never come here.'),
+      h('p', null, h('strong', null, 'They are already searchable. '), 'Waiting here never hides a document from answers. Approving fixes its Document type / Topic filters and freezes them; it does not change who can read it unless you also edit the access tags.'),
+      h(
+        'p',
+        null,
+        h('strong', null, 'Not here: '),
+        'a document with no Department or Region. Those are never auto-classified, so they never queue — find them in ',
+        h('a', { href: '#/documents' }, 'Documents'),
+        ' (red "invisible" badge in the Access column).',
+      ),
+    ),
     list,
     h('div', { class: 'load-more' }, moreBtn),
   );

@@ -318,6 +318,48 @@ class AccessPolicyEngine:
 
     # ------------------------------------------------------------------ troubleshooting (query traces)
 
+    def attribute_clauses(self, principal: Principal) -> dict[str, str | None]:
+        """Each attribute's own clause, exactly as `decide()` builds it, so the INDEX can judge them one at a time.
+
+        None means the attribute can never pass for this caller (a required value is missing, or there is no
+        way to match without one). An administrator gets "true" for everything: the filter does not apply.
+        The ACL fields are not retrievable from Azure AI Search, so asking the index "does this document pass
+        this clause?" is the only way to evaluate a document's access there - and it is the authoritative way,
+        because it is the same OData the real query runs.
+        """
+        out: dict[str, str | None] = {}
+        for name in self.policy.combine.all_of:
+            rule = self.policy.attribute(name)
+            if principal.is_admin:
+                out[name] = "true"
+                continue
+            pv = self._principal_values(rule, principal)
+            if pv is None:
+                if rule.required:
+                    out[name] = None
+                elif rule.is_numeric:
+                    out[name] = f"{rule.field} le 0"
+                elif rule.wildcard and rule.match != MatchKind.EXACT:
+                    out[name] = f"{rule.field}/any(v: v eq '{odata_quote(rule.wildcard)}')"
+                else:
+                    out[name] = None
+                continue
+            out[name] = self._clause(rule, pv)
+        for name in self.policy.combine.grant_any_of:
+            rule = self.policy.attribute(name)
+            if principal.is_admin:
+                out[name] = "true"
+                continue
+            pv = self._principal_values(rule, principal)
+            out[name] = None if pv is None else self._clause(rule, pv, allow_wildcard=False)
+        return out
+
+    def combine_verdicts(self, passed: Mapping[str, bool]) -> bool:
+        """`all_of` all pass, or any `grant_any_of` passes - the shape `decide()` gives the filter."""
+        all_of = self.policy.combine.all_of
+        return (bool(all_of) and all(passed.get(n, False) for n in all_of)) or any(
+            passed.get(n, False) for n in self.policy.combine.grant_any_of)
+
     def _label(self, rule: AttributeRule) -> str:
         return rule.label or rule.name.replace("_", " ").title()
 

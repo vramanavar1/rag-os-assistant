@@ -19,11 +19,12 @@ from rag_os.api.schemas import ExportRequest, RetryRequest, TagUpdate
 from rag_os.application.ports import DocumentQuery
 from rag_os.composition import Container
 from rag_os.domain.access import Principal
-from rag_os.domain.documents import DocumentRecord, DocumentStatus, ReviewStatus, TagSet, tags_hash
+from rag_os.domain.documents import PRIVATE_SOURCE_KEY, DocumentRecord, DocumentStatus, ReviewStatus, TagSet, tags_hash
 from rag_os.domain.errors import NotFound, NotSupported, ValidationFailed
 from rag_os.domain.ingestion import IngestionControls, IngestMessage, Lane, MessageMode
 
 log = logging.getLogger(__name__)
+audit = logging.getLogger("rag_os.audit")
 router = APIRouter(prefix="/api/admin", tags=["admin: ingestion"])
 admin = require_role("admin")
 reviewer = require_role("admin", "reviewer", "taxonomy_editor")
@@ -277,6 +278,24 @@ async def review_queue(after: str | None = None, limit: int = Query(default=50, 
     return {"items": [i.model_dump(mode="json") for i in items], "next": nxt}
 
 
+@router.delete("/documents/{doc_id}", summary="Delete one document: out of the index now, freed by the next purge")
+async def delete_document(doc_id: str, principal: Principal = Depends(admin),
+                          c: Container = Depends(get_container)) -> dict[str, Any]:
+    """The same path discovery takes for a file that disappeared from its source: mark DELETED (with an event
+    naming who did it), then a DELETE message removes its chunks from the index. Staged bytes and the state row
+    are freed later by the purge, so the document stays visible as Deleted until then."""
+    rec = await asyncio.to_thread(c.state.get, doc_id)
+    if rec is None:
+        raise NotFound("document not found")
+    changed = await asyncio.to_thread(c.state.mark_deleted, [doc_id], stage="admin",
+                                      message=f"deleted by {principal.display_name or principal.subject}")
+    if changed:
+        await c.queue.send([IngestMessage(doc_id=doc_id, version_key="deleted", source_id=rec.source_id,
+                                          lane=Lane.PRIORITY, mode=MessageMode.DELETE)])
+        audit.info("document deleted", extra={"doc_id": doc_id, "by": principal.subject})
+    return {"doc_id": doc_id, "deleted": bool(changed)}
+
+
 @router.post("/documents/{doc_id}/tags", response_model=DocumentRecord, summary="Set/approve facets (and ACL: admin)")
 async def set_tags(doc_id: str, body: TagUpdate, principal: Principal = Depends(reviewer),
                    c: Container = Depends(get_container)) -> DocumentRecord:
@@ -298,6 +317,11 @@ async def set_tags(doc_id: str, body: TagUpdate, principal: Principal = Depends(
             raise ValidationFailed("only admins can change document ACLs")
         acl = c.engine.validate_doc_acl(body.acl)
     sources = {**rec.tags.sources, **{f"facet:{k}": f"review:{principal.subject}" for k in facets}}
+    if body.acl is not None:
+        # An administrator setting access tags decides who reads the document; record it, so a document made
+        # private by leaving Department/Region empty here is not later mistaken for a mis-tagged one.
+        shared = any(acl.get(n) not in (None, []) for n in c.domain.policy.combine.all_of)
+        sources[PRIVATE_SOURCE_KEY] = "shared" if shared else "private"
     tags = TagSet(facets=new_facets, acl=acl, sources=sources)
     updated = c.state.update_tags(doc_id, tags, ReviewStatus.APPROVED.value if body.approve else None)
     if updated.indexed_version:

@@ -223,6 +223,18 @@ export interface UploadAccepted {
   facet_sources?: Record<string, string>;
   /** Facets the path rules supplied. Empty with relative_path set means no rule matched - the wrong-root case. */
   facets_from_path?: string[];
+  /** Who may read it: the document's access tags. */
+  access?: Record<string, string[] | number>;
+  /** 'private' (Only me) or 'shared' (everyone the access tags match). */
+  visibility?: 'private' | 'shared' | null;
+}
+
+/** GET /api/uploads/options - what the upload form offers this caller. */
+export interface UploadOptions {
+  only_me: { allowed: boolean; default: boolean };
+  clearance: { name: string; label: string; levels: { value: number; label: string }[]; default: number | null; min: number | null } | null;
+  required: { name: string; label: string }[];
+  can_share_widely: boolean;
 }
 
 export interface LaneDepth {
@@ -404,6 +416,8 @@ export interface NearMissDoc {
   score: number;
   reranker_score: number | null;
   allowed: boolean;
+  /** Declared Only me at upload: withheld from everyone but its uploader on purpose. */
+  private: boolean;
   checks: Record<string, AttributeCheck>;
   problems: string[];
 }

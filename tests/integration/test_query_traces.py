@@ -15,14 +15,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from rag_os.api.app import create_app
-from rag_os.application.ports import LlmResult, RetrievalResult
+from rag_os.application.ports import LlmResult, RetrievalResult, SearchRequest
 from rag_os.application.services.query_trace import TraceRecorder
 from rag_os.composition import Container
 from rag_os.domain.access import Principal
-from rag_os.domain.answers import Answer
+from rag_os.domain.answers import Answer, SearchHit
+from rag_os.domain.documents import TagSet
 from rag_os.domain.errors import DependencyUnavailable
 from rag_os.domain.trace import QueryTrace, StageStatus, Verdict
 from rag_os.infrastructure.search.in_memory import InMemorySearchIndex
@@ -37,11 +39,30 @@ NOWHERE_Q = "zzqx flux capacitor quantum"
 PTO = "hr/us/policies/pto-policy.txt"
 
 
+def behave_like_azure(c: Container) -> None:
+    """Make the in-memory index refuse a $select of a non-retrievable field, as Azure AI Search does (HTTP 400).
+
+    The access tags are non-retrievable by design. The first version of the near-miss probe selected them; the
+    in-memory index happily returned them, so every test passed while the probe failed on every real refusal.
+    """
+    hidden = {f.name for f in c.schema.fields if not f.retrievable}
+    real = c.index.search
+
+    async def search(request: SearchRequest) -> list[SearchHit]:
+        bad = sorted(hidden & set(request.select or []))
+        if bad:
+            raise DependencyUnavailable("search query failed", detail={"not_retrievable": bad})
+        return await real(request)
+
+    c.index.search = search  # type: ignore[method-assign]
+
+
 @pytest.fixture()
 async def traced(settings: Settings) -> AsyncIterator[Container]:
     c = Container(settings.model_copy(update={"retrieval_min_score": BAR}))
     await c.bootstrap()
     await ingest_sample(c)
+    behave_like_azure(c)
     yield c
     await c.aclose()
 
@@ -60,16 +81,25 @@ async def ask(c: Container, p: Principal, q: str) -> tuple[Answer, QueryTrace]:
     return answer, rec.finish(answer)
 
 
-def retag(c: Container, path: str, **fields: Any) -> None:
-    """Rewrite a document's access tags in the index, the way a mis-tagged upload would have written them."""
+def retag(c: Container, path: str, *, index_only: bool = False, **acl: Any) -> str:
+    """Set a document's access tags the way a mis-tagged upload would have: in the index AND in the recorded tags
+    (both are written together by ingestion). `index_only` makes the two disagree, which is drift."""
     idx = c.index
     assert isinstance(idx, InMemorySearchIndex)
-    hit = 0
+    fields = {c.domain.policy.attribute(name).field: value for name, value in acl.items()}
+    doc_ids = set()
     for doc in idx.docs.values():
         if doc["path"] == path:
             doc.update(fields)
-            hit += 1
-    assert hit, path
+            doc_ids.add(doc["doc_id"])
+    assert len(doc_ids) == 1, path
+    doc_id = doc_ids.pop()
+    if not index_only:
+        rec = c.state.get(doc_id)
+        assert rec is not None
+        new_acl = {k: v for k, v in {**rec.tags.acl, **acl}.items() if v not in ([], None)}
+        c.state.update_tags(doc_id, TagSet(facets=rec.tags.facets, acl=new_acl, sources=rec.tags.sources), None)
+    return doc_id
 
 
 # --------------------------------------------------------------------------- verdicts on the real pipeline
@@ -117,7 +147,7 @@ async def test_not_in_corpus(traced: Container) -> None:
 
 async def test_upload_that_inherited_the_uploaders_tags_is_misconfiguration(traced: Container) -> None:
     # What an IT administrator's upload of an HR document looks like: classified HR, tagged IT / Global / 3.
-    retag(traced, PTO, acl_department=["IT"], acl_region=["Global"], acl_clearance=3)
+    retag(traced, PTO, department=["IT"], region=["Global"], clearance=3)
     _, t = await ask(traced, hr_amer(traced), WITHHELD_Q)
     assert t.verdict == Verdict.MISCONFIGURATION and t.is_problem
     assert t.failed_stage == "access" and t.stage("access").status == StageStatus.FAIL
@@ -127,11 +157,35 @@ async def test_upload_that_inherited_the_uploaders_tags_is_misconfiguration(trac
 
 
 async def test_document_without_a_region_tag_is_misconfiguration(traced: Container) -> None:
-    retag(traced, PTO, acl_region=[])
+    retag(traced, PTO, region=[])
     _, t = await ask(traced, person(traced, departments=["HR"], regions=["US"], clearance=2), WITHHELD_Q)
     assert t.verdict == Verdict.MISCONFIGURATION
     pto = next(d for d in t.near_miss.docs if d.path == PTO)
     assert any("no Region access tag" in p for p in pto.problems)
+
+
+async def test_index_and_recorded_tags_disagree_is_drift(traced: Container) -> None:
+    retag(traced, PTO, index_only=True, region=["UK"])  # the index says UK; ingestion recorded US
+    _, t = await ask(traced, person(traced, departments=["HR"], regions=["US"], clearance=2), WITHHELD_Q)
+    pto = next(d for d in t.near_miss.docs if d.path == PTO)
+    assert not pto.allowed and not pto.checks["region"].passed
+    assert "index says no" in pto.checks["region"].note and "recorded tags say yes" in pto.checks["region"].note
+    assert any("differ from the tags recorded" in p for p in pto.problems)
+    assert t.verdict == Verdict.MISCONFIGURATION
+
+
+async def test_a_chunk_not_marked_current_is_named(traced: Container) -> None:
+    """The is_current flag, checked rather than assumed: a relevant chunk wrongly marked not-current is found."""
+    idx = traced.index
+    assert isinstance(idx, InMemorySearchIndex)
+    for doc in idx.docs.values():
+        if doc["path"] == PTO:
+            doc["is_current"] = False
+    _, t = await ask(traced, person(traced, departments=["HR"], regions=["US"], clearance=2), WITHHELD_Q)
+    pto = next(d for d in t.near_miss.docs if d.path == PTO)
+    assert not pto.allowed and not pto.checks["is_current"].passed
+    assert any("not marked current" in p for p in pto.problems)
+    assert t.verdict == Verdict.MISCONFIGURATION
 
 
 async def test_account_without_department_is_misconfiguration(traced: Container) -> None:
@@ -303,3 +357,136 @@ def test_trace_store_path(tmp_path: Path) -> None:
                  search_backend="in_memory", embedding_profile="test-fake-256", otel_enabled=False,
                  _env_file=None)  # type: ignore[call-arg]
     assert Container(s).traces.engine.url.database.endswith("x.db")
+
+
+# --------------------------------------------------------------------------- uploads: Only me / shared by tags
+
+BENEFITS = b"Retirement Savings - 401(k). The company matches 401(k) contributions up to 5 percent of salary."
+
+
+def add_principal(c: Container, pid: str, claims: dict[str, Any], roles: list[str]) -> None:
+    """A dev principal for this test only - e.g. the uploader from the report, whose token has no department."""
+    path = Path(c.settings.config_dir) / "dev" / "principals.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["principals"].append({"id": pid, "display_name": pid, "claims": claims, "roles": roles})
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+def upload(client: TestClient, headers: dict[str, str], name: str, body: bytes = BENEFITS, **form: str) -> Any:
+    return client.post("/api/uploads", headers=headers, files={"file": (name, body, "text/plain")}, data=form or None)
+
+
+async def drain_queue(c: Container) -> None:
+    from rag_os.infrastructure.queue.in_memory import InMemoryQueue
+
+    q = c.queue
+    assert isinstance(q, InMemoryQueue)
+    while msgs := await q.receive(50, 0):
+        for m in msgs:
+            await c.processor.handle(m.message)
+            await q.complete(m)
+
+
+def test_upload_options(client: TestClient) -> None:
+    sme = token(client, "sme-reviewer")
+    opts = client.get("/api/uploads/options", headers=sme).json()
+    assert opts["only_me"] == {"allowed": True, "default": False}
+    assert opts["clearance"]["default"] == 2 and opts["clearance"]["min"] == 2  # a contributor may only raise it
+    assert [lv["value"] for lv in opts["clearance"]["levels"]] == [0, 1, 2, 3]
+    assert {"name": "department", "label": "Department"} in opts["required"]
+    assert [r["name"] for r in opts["required"]] == ["department", "region"]
+    admin = client.get("/api/uploads/options", headers=token(client, "admin")).json()
+    assert admin["clearance"]["min"] is None and admin["can_share_widely"]
+
+
+async def test_the_reported_upload_is_refused_instead_of_becoming_invisible(client: TestClient,
+                                                                           traced: Container) -> None:
+    """The 401(k) report: an administrator whose token has no department or region uploads Benefits.pdf. It used
+    to be indexed with empty tags - readable by nobody but the uploader. Now it is refused until tagged, or
+    stored as deliberately private."""
+    add_principal(traced, "admin-no-attrs", {"employee_id": "E777"}, ["rag.admin"])
+    adm = token(client, "admin-no-attrs")
+    r = upload(client, adm, "Benefits.txt")
+    assert r.status_code == 422 and "Choose a Department" in r.json()["title"]
+
+    ok = upload(client, adm, "Benefits.txt", facets='{"department": ["HR"], "region": ["Global"]}', clearance="1")
+    assert ok.status_code == 202, ok.text
+    body = ok.json()
+    assert body["visibility"] == "shared"
+    assert body["access"]["department"] == ["HR"] and body["access"]["region"] == ["Global"]
+    assert body["access"]["clearance"] == 1 and body["access"]["employee_id"] == ["E777"]
+    await drain_queue(traced)
+
+    # The person from the report can now read it.
+    answer, t = await ask(traced, hr_amer(traced), "Tell me about the 401(k) match")
+    assert not answer.refused and t.verdict == Verdict.ANSWERED, t.diagnosis
+    assert any(c.doc_id == body["doc_id"] for c in answer.citations)
+
+
+async def test_only_me_is_private_and_traced_as_deliberate(client: TestClient, traced: Container) -> None:
+    sme = token(client, "sme-reviewer")
+    r = upload(client, sme, "my-notes.txt", body=b"Zebra quartz memo: my private zebra quartz notes.", only_me="true",
+               facets='{"department": ["HR"], "region": ["US"]}')
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["visibility"] == "private" and set(body["access"]) - {"clearance"} == {"employee_id"}
+    await drain_queue(traced)
+
+    rec = traced.state.get(body["doc_id"])
+    assert rec is not None and rec.tags.sources["visibility"] == "private"
+    # Someone who matches its classification still cannot read it - and the trace says that is on purpose.
+    _, t = await ask(traced, person(traced, departments=["HR"], regions=["US"], clearance=2),
+                     "zebra quartz memo")
+    mine = next(d for d in t.near_miss.docs if d.doc_id == body["doc_id"])
+    assert mine.private and not mine.allowed and not mine.problems
+    assert t.verdict == Verdict.WITHHELD_BY_POLICY and not t.is_problem
+
+
+def test_a_contributor_pick_outside_their_scope_classifies_but_does_not_widen(client: TestClient) -> None:
+    sme = token(client, "sme-reviewer")  # HR / Global / 2
+    body = upload(client, sme, "legal.txt", body=b"some legal text",
+                  facets='{"department": ["Legal"]}', clearance="0").json()
+    assert body["facets"]["department"] == ["Legal"], "the pick still classifies the document"
+    assert body["access"]["department"] == ["HR"], "but the audience stays within the uploader's department"
+    assert body["access"]["clearance"] != 0, "and a lower clearance than their own is not theirs to grant"
+
+
+def test_only_me_can_be_restricted_by_role(client: TestClient, traced: Container) -> None:
+    cfg = traced.domain.sources.get("uploads")
+    assert cfg is not None
+    cfg.settings["only_me"] = {"default": False, "allowed_roles": ["admin"]}
+    sme = token(client, "sme-reviewer")
+    assert upload(client, sme, "x.txt", body=b"x", only_me="true").status_code == 403
+    assert client.get("/api/uploads/options", headers=sme).json()["only_me"]["allowed"] is False
+    assert upload(client, sme, "y.txt", body=b"y").status_code == 202  # unticked is unaffected
+
+
+def test_only_me_without_an_employee_id_is_refused(client: TestClient, traced: Container) -> None:
+    add_principal(traced, "no-id", {"departments": ["HR"], "regions": ["UK"], "clearance": 1}, ["rag.contributor"])
+    r = upload(client, token(client, "no-id"), "z.txt", body=b"z", only_me="true")
+    assert r.status_code == 422 and "employee id" in r.json()["title"]
+
+
+async def test_admin_can_fix_tags_and_delete_a_document(client: TestClient, traced: Container) -> None:
+    admin, hr = token(client, "admin"), token(client, "hr-emea")
+    add_principal(traced, "admin-no-attrs", {"employee_id": "E777"}, ["rag.admin"])
+    adm = token(client, "admin-no-attrs")
+    first = upload(client, adm, "a.txt", body=b"duplicate benefits text one", only_me="true").json()
+    second = upload(client, adm, "b.txt", body=b"duplicate benefits text two", only_me="true").json()
+    await drain_queue(traced)
+
+    fixed = client.post(f"/api/admin/documents/{first['doc_id']}/tags", headers=admin,
+                        json={"acl": {"department": ["HR"], "region": ["Global"], "clearance": 1}, "approve": False})
+    assert fixed.status_code == 200 and fixed.json()["tags"]["sources"]["visibility"] == "shared"
+
+    assert client.delete(f"/api/admin/documents/{second['doc_id']}", headers=hr).status_code == 403
+    gone = client.delete(f"/api/admin/documents/{second['doc_id']}", headers=admin)
+    assert gone.status_code == 200 and gone.json()["deleted"] is True
+    await drain_queue(traced)
+    idx = traced.index
+    assert isinstance(idx, InMemorySearchIndex)
+    assert not [d for d in idx.docs.values() if d["doc_id"] == second["doc_id"]]
+    rec = traced.state.get(second["doc_id"])
+    assert rec is not None and rec.status.value == "DELETED"
+    assert client.delete(f"/api/admin/documents/{second['doc_id']}", headers=admin).json()["deleted"] is False
+    assert client.delete("/api/admin/documents/nope", headers=admin).status_code == 404

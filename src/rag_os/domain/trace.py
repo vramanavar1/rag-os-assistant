@@ -106,6 +106,8 @@ class NearMissDoc(BaseModel):
     score: float
     reranker_score: float | None = None
     allowed: bool
+    private: bool = False
+    """Declared "Only me" at upload: withheld from everyone but its uploader on purpose."""
     checks: dict[str, AttributeCheck] = Field(default_factory=dict)
     problems: list[str] = Field(default_factory=list)
     """Misconfiguration evidence on THIS document (missing required tag, facet and access tag disagree)."""

@@ -161,7 +161,7 @@ class AnswerQuery:
                 trace.set("access", StageStatus.FAIL, "No access: the account lacks a required attribute",
                           deny_all=True, attributes_used=list(decision.attributes_used))
                 await self._near_miss(trace, principal, question, self.expander.expand(question),
-                                      self.combine(CURRENT_FILTER, facet), None)
+                                      facet or "", None)
             return Answer(answer=NO_ACCESS_MESSAGE, refused=True, refusal_reason="no_access", usage=usage,
                           correlation_id=correlation_id, timings_ms={"total": (time.perf_counter() - t0) * 1000})
         odata = self.combine(CURRENT_FILTER, decision.odata, facet)
@@ -207,7 +207,7 @@ class AnswerQuery:
         if not hits:
             timings["total"] = (time.perf_counter() - t0) * 1000
             if trace is not None:
-                await self._near_miss(trace, principal, search_q, keyword_q, self.combine(CURRENT_FILTER, facet),
+                await self._near_miss(trace, principal, search_q, keyword_q, facet or "",
                                       retrieval.vector)
             return Answer(answer=NOT_FOUND_MESSAGE, refused=True, refusal_reason="no_relevant_context", usage=usage,
                           timings_ms=timings, correlation_id=correlation_id)
@@ -302,7 +302,11 @@ class AnswerQuery:
 
     async def _near_miss(self, trace: TraceRecorder, principal: Principal, text: str, keyword_q: str,
                          base_filter: str, vector: list[float] | None) -> None:
-        """Run the probe for a refused question. A probe failure never affects the answer."""
+        """Run the probe for a refused question. A probe failure never affects the answer.
+
+        `base_filter` is the caller's facet filter only - no access clause and no is_current, so a relevant chunk
+        that is wrongly marked not-current is found and reported instead of silently missing from both searches.
+        """
         nm = trace.trace.near_miss
         if trace.bypass:
             nm.skipped_reason = "not needed: an administrator's search is already unfiltered"

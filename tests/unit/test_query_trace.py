@@ -283,3 +283,39 @@ def test_summary_flags_failing_expectations() -> None:
     s = summarise([], since=datetime.now(UTC), minutes=60, expectations=[e], problem_rate=0.1, error_rate=0.05,
                   p95_ms=15000)
     assert s["status"] == "fail" and s["failing_expectations"][0]["detail"] == "did not cite benefits"
+
+
+# --------------------------------------------------------------------------- per-attribute clauses (index-side verdicts)
+
+
+def test_attribute_clauses_compose_into_the_real_filter() -> None:
+    """Joined the way decide() joins them, the per-attribute clauses ARE the filter - so the index judging them one
+    at a time cannot disagree with the query that ran."""
+    for p in (HR_AMER, person(department=["HR"], region=["UK"]), person(region=["AMER"], employee_id=["E1"]),
+              person(department=["HR"], region=["AMER"], employee_id=["E9"])):
+        clauses = ENGINE.attribute_clauses(p)
+        all_of = [clauses[n] for n in POLICY.combine.all_of]
+        grants = [clauses[n] for n in POLICY.combine.grant_any_of if clauses[n] is not None]
+        parts = ([f"({' and '.join(all_of)})"] if all(c is not None for c in all_of) else []) + [f"({g})" for g in grants]
+        assert (" or ".join(parts) or "__deny_all__") == ENGINE.decide(p).odata, p.attributes
+
+
+def test_attribute_clauses_agree_with_the_predicate_per_attribute() -> None:
+    from rag_os.infrastructure.search.odata_eval import compile_filter
+
+    doc = {"acl_department": ["HR"], "acl_region": ["US"], "acl_clearance": 1, "acl_employee_id": ["E9"]}
+    acl = {"department": ["HR"], "region": ["US"], "clearance": 1, "employee_id": ["E9"]}
+    local = ENGINE.explain_document(HR_AMER, acl)
+    for name, clause in ENGINE.attribute_clauses(HR_AMER).items():
+        index_says = clause is not None and compile_filter(clause)(doc)
+        assert index_says == local[name].passed, name
+    verdicts = {n: c is not None and compile_filter(c)(doc) for n, c in ENGINE.attribute_clauses(HR_AMER).items()}
+    assert ENGINE.combine_verdicts(verdicts) == ENGINE.allows(HR_AMER, acl)  # the employee_id share lets them in
+
+
+def test_attribute_clauses_admin_and_missing_values() -> None:
+    admin = Principal(subject="a", issuer_kind="entra", roles={"admin"})
+    assert set(ENGINE.attribute_clauses(admin).values()) == {"true"}
+    no_dept = ENGINE.attribute_clauses(person(region=["AMER"]))
+    assert no_dept["department"] is None and no_dept["clearance"] == "acl_clearance le 0"
+    assert no_dept["employee_id"] is None

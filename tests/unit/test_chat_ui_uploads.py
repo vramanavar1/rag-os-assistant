@@ -224,3 +224,13 @@ def test_no_language_default_is_asserted_for_uploads() -> None:
     settings = [ln for ln in block.group(0).splitlines() if not ln.lstrip().startswith("#")]
     assert not [ln for ln in settings if "language" in ln], (
         "the uploads source sets a language facet again; every non-English upload would be mislabelled")
+
+
+def test_only_me_is_unticked_unless_configured_and_always_sent() -> None:
+    """Only me defaults to false: an upload is for the people its tags describe. The box starts unticked, only the
+    server's configured default may tick it, and the choice is always sent so the server never has to guess."""
+    body = function_body(source("upload.ts"), "createUploadWidget", "upload.ts")
+    decl = body[body.index("const onlyMe = h("):].split(";")[0]
+    assert "checked" not in decl, "the Only me box must not be ticked by default in markup"
+    assert "onlyMe.checked = o.only_me.default" in body, "only the configured default may tick it"
+    assert "form.append('only_me'" in body, "the choice is always sent"

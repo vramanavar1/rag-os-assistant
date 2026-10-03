@@ -86,6 +86,13 @@ class ReviewStatus(StrEnum):
     APPROVED = "APPROVED"
 
 
+# Provenance key recording who may read a document, as declared when it was tagged: "private" (Only me - its
+# uploader's individual share and nothing else) or "shared" (everyone its access tags match). Kept with the other
+# provenance so it travels with the tags, survives a re-tag, and lets a deliberately private document be told
+# apart from one whose access tags were left empty by mistake.
+PRIVATE_SOURCE_KEY = "visibility"  # not "acl:...": that prefix is per-attribute provenance
+
+
 class TagSet(BaseModel):
     """Classification + ACL values assigned to a document, with provenance per key."""
 
@@ -113,6 +120,8 @@ class TagSet(BaseModel):
             if av is not None and av != []:
                 acl[k] = av
                 sources[f"acl:{k}"] = other.sources.get(f"acl:{k}", source_name)
+        if PRIVATE_SOURCE_KEY in other.sources:  # a declared visibility travels with the access tags it describes
+            sources[PRIVATE_SOURCE_KEY] = other.sources[PRIVATE_SOURCE_KEY]
         return TagSet(facets=facets, acl=acl, sources=sources)
 
 

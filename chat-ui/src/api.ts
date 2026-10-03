@@ -101,7 +101,7 @@ async function toApiError(res: Response, correlationId: string): Promise<ApiErro
         if (Array.isArray(b.detail)) {
           problem.errors = problem.errors ?? b.detail;
           problem.detail = 'The request was not valid.';
-        } else if (b.detail !== undefined && typeof b.detail !== 'string') {
+        } else if (b.detail != null && typeof b.detail !== 'string') { // null is "no detail", not the text "null"
           problem.detail = JSON.stringify(b.detail);
         }
       }

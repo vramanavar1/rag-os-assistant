@@ -2,7 +2,7 @@
 import type { ApiClient } from '../api';
 import { fmtDate, fmtNum, h, mount, shortId, type Child } from '../dom';
 import { correlationTag, problemBox, statusBadge, toast, toastError } from '../ui';
-import type { DocumentDetail, FacetsResponse, Me, PublicConfig, Source } from '../types';
+import type { DocumentDetail, DocumentRecord, FacetsResponse, Me, PublicConfig, Source, UploadOptions } from '../types';
 
 export interface ViewContext {
   api: ApiClient;
@@ -176,7 +176,55 @@ function tagTable(title: string, entries: Record<string, unknown> | undefined): 
   );
 }
 
-export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () => void): void {
+// ---------------------------------------------------------------- who can read a document
+
+type Required = { name: string; label: string }[];
+let requiredCache: Promise<Required> | null = null;
+/** The access attributes a document must carry for anyone (beyond individual shares) to read it. */
+export function getRequiredAccess(api: ApiClient): Promise<Required> {
+  requiredCache ??= api
+    .get<UploadOptions>('/api/uploads/options')
+    .then((o) => o.required)
+    .catch(() => {
+      requiredCache = null;
+      return [{ name: 'department', label: 'Department' }, { name: 'region', label: 'Region' }];
+    });
+  return requiredCache;
+}
+
+/** Required access tags this document lacks - unless it was deliberately made private (Only me). */
+export function missingAccess(rec: Pick<DocumentRecord, 'tags'>, required: Required): string[] {
+  const acl = (rec.tags?.acl ?? {}) as Record<string, unknown>;
+  if (rec.tags?.sources?.visibility === 'private') return [];
+  return required.filter((r) => acl[r.name] === undefined || (Array.isArray(acl[r.name]) && !(acl[r.name] as unknown[]).length)).map((r) => r.label);
+}
+
+/** "HR · Global · 1", "Only me", or a red badge naming the missing tags (the document nobody can read). */
+export function accessSummary(rec: Pick<DocumentRecord, 'tags'>, required: Required, onFix?: () => void): HTMLElement {
+  const missing = missingAccess(rec, required);
+  if (missing.length) {
+    const badge = h(
+      onFix ? 'button' : 'span',
+      { class: 'badge tone-critical', title: 'No one but administrators and people it is shared with individually can read this document. Select to fix.' },
+      `No ${missing.join(', ')}: invisible`,
+    );
+    if (onFix) badge.addEventListener('click', (ev) => (ev.stopPropagation(), onFix()));
+    return badge;
+  }
+  if (rec.tags?.sources?.visibility === 'private') return h('span', { class: 'badge tone-neutral', title: 'Only its uploader can read it' }, 'Only me');
+  const acl = (rec.tags?.acl ?? {}) as Record<string, string[] | number>;
+  // Policy order (department · region · clearance), not storage order; `*` means open to everyone.
+  const order = [...required.map((r) => r.name), ...Object.keys(acl)];
+  const parts = [...new Set(order)]
+    .filter((k) => k !== 'employee_id' && acl[k] !== undefined)
+    .map((k) => {
+      const v = acl[k]!;
+      return Array.isArray(v) ? v.map((x) => (x === '*' ? 'All' : x)).join('/') : String(v);
+    });
+  return h('span', { class: 'small', title: JSON.stringify(acl) }, parts.join(' · ') || '—');
+}
+
+export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () => void, opts: { focusAccess?: boolean; onChanged?: () => void } = {}): void {
   const body = h('div', { class: 'dialog-body' }, loading());
   const closeBtn = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'aria-label': 'Close' }, '×');
   const dialog = h(
@@ -198,8 +246,13 @@ export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () =
 
   const load = async () => {
     try {
-      const d = await api.get<DocumentDetail>(`/api/admin/ingestion/documents/${encodeURIComponent(docId)}`);
+      const [d, required] = await Promise.all([
+        api.get<DocumentDetail>(`/api/admin/ingestion/documents/${encodeURIComponent(docId)}`),
+        getRequiredAccess(api),
+      ]);
       const r = d.record;
+      const editor = accessEditor(api, r, () => { opts.onChanged?.(); void load(); }, required);
+      if (opts.focusAccess || missingAccess(r, required).length) editor.open = true;
       const retry = h('button', { type: 'button', class: 'btn' }, 'Retry this document');
       retry.addEventListener('click', async () => {
         retry.disabled = true;
@@ -208,7 +261,7 @@ export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () =
       });
       mount(
         body,
-        h('div', { class: 'doc-title' }, h('strong', null, r.title || r.path), statusBadge(r.status)),
+        h('div', { class: 'doc-title' }, h('strong', null, r.title || r.path), statusBadge(r.status), accessSummary(r, required)),
         r.status === 'FAILED' || r.error_message
           ? h('div', { class: 'problem' }, h('strong', null, r.error_type || 'Error'), r.error_message ? h('pre', { class: 'pre-wrap' }, r.error_message) : null)
           : null,
@@ -231,6 +284,7 @@ export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () =
           ['Updated', fmtDate(r.updated_at)],
           ['Indexed', fmtDate(r.indexed_at)],
         ]),
+        editor,
         tagTable('Facets', r.tags?.facets),
         tagTable('Access tags (ACL)', r.tags?.acl),
         tagTable('Tag provenance', r.tags?.sources),
@@ -250,11 +304,87 @@ export function openDocumentDialog(api: ApiClient, docId: string, onClose?: () =
               ),
             )
           : h('p', { class: 'muted' }, 'No events recorded.'),
-        h('div', { class: 'dialog-actions' }, retry),
+        h('div', { class: 'dialog-actions' }, deleteButton(api, r.doc_id, r.title || r.path, () => { opts.onChanged?.(); dialog.close(); }), retry),
       );
     } catch (err) {
       mount(body, problemBox(err));
     }
   };
   void load();
+}
+
+// ---------------------------------------------------------------- access tags + delete (administrators)
+
+const ACCESS_KEYS = ['department', 'region', 'clearance'];
+
+/** Edit who may read a document. Saves through /tags, which re-tags the index in place (no re-embedding). */
+function accessEditor(api: ApiClient, r: DocumentDetail['record'], reload: () => void, required: Required): HTMLDetailsElement {
+  const acl = (r.tags?.acl ?? {}) as Record<string, string[] | number>;
+  const keys = [...new Set([...required.map((x) => x.name), ...ACCESS_KEYS, ...Object.keys(acl)])];
+  const inputs = new Map<string, HTMLInputElement>();
+  const fields = keys.map((k) => {
+    const v = acl[k];
+    const input = h('input', {
+      id: `acl-${k}`,
+      type: k === 'clearance' ? 'number' : 'text',
+      min: k === 'clearance' ? 0 : null,
+      value: Array.isArray(v) ? v.join(', ') : v === undefined ? '' : String(v),
+      placeholder: k === 'clearance' ? 'e.g. 1' : 'comma separated, e.g. HR',
+    });
+    inputs.set(k, input);
+    return h('div', { class: 'field' }, h('label', { for: input.id }, k), input);
+  });
+  const visibility = r.tags?.sources?.visibility;
+  const save = h('button', { type: 'submit', class: 'btn' }, 'Save access tags');
+  const form = h(
+    'form',
+    {
+      class: 'stack',
+      onsubmit: async (ev: SubmitEvent) => {
+        ev.preventDefault();
+        const next: Record<string, string[] | number> = {};
+        for (const [k, input] of inputs) {
+          const raw = input.value.trim();
+          if (!raw) continue;
+          next[k] = k === 'clearance' ? Number(raw) : raw.split(',').map((x) => x.trim()).filter(Boolean);
+        }
+        save.disabled = true;
+        try {
+          await api.post(`/api/admin/documents/${encodeURIComponent(r.doc_id)}/tags`, { acl: next, approve: false });
+          toast('Access tags saved. The index is re-tagged in place within seconds.', { kind: 'success' });
+          reload();
+        } catch (err) {
+          toastError(err, 'Could not save access tags');
+        } finally {
+          save.disabled = false;
+        }
+      },
+    },
+    h('p', { class: 'hint' }, 'Who may read this document. Department and Region are required for anyone but the people it is shared with individually (employee_id) to read it. Administrators only.'),
+    h('div', { class: 'row' }, fields),
+    h('div', null, save),
+  );
+  return h(
+    'details',
+    { class: 'access-editor' },
+    h('summary', null, 'Edit access tags', visibility ? h('span', { class: 'muted small' }, ` · currently ${visibility === 'private' ? 'private (Only me)' : 'shared by tags'}`) : null),
+    form,
+  );
+}
+
+function deleteButton(api: ApiClient, docId: string, name: string, done: () => void): HTMLElement {
+  const btn = h('button', { type: 'button', class: 'btn btn-danger' }, 'Delete document');
+  btn.addEventListener('click', async () => {
+    if (!confirm(`Delete "${name}"? It leaves the index now; its stored copy is freed by the next purge.`)) return;
+    btn.disabled = true;
+    try {
+      await api.delete(`/api/admin/documents/${encodeURIComponent(docId)}`);
+      toast('Document deleted.', { kind: 'success' });
+      done();
+    } catch (err) {
+      toastError(err, 'Delete failed');
+      btn.disabled = false;
+    }
+  });
+  return btn;
 }

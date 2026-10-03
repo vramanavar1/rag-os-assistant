@@ -10,23 +10,25 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 from rag_os.application.ports import EmbeddingProvider, SearchIndex, SearchRequest
-from rag_os.application.services.access_policy import AccessPolicyEngine
+from rag_os.application.services.access_policy import AccessPolicyEngine, odata_quote
 from rag_os.application.services.index_schema import BASE_SELECT
 from rag_os.application.services.prompts import GUARD_REFUSALS
 from rag_os.application.services.relevance import apply_relevance_bar
 from rag_os.domain.access import Principal
 from rag_os.domain.answers import Answer, SearchHit
 from rag_os.domain.classification import FacetSchema
+from rag_os.domain.documents import PRIVATE_SOURCE_KEY, TagSet
 from rag_os.domain.errors import RagOsError
 from rag_os.domain.trace import (
     STAGES,
     VERDICT_LABELS,
+    AttributeCheck,
     NearMiss,
     NearMissDoc,
     QueryTrace,
@@ -161,34 +163,42 @@ def _blame(t: QueryTrace) -> str:
 
 
 class NearMissProbe:
-    """The caller's search again, with ONLY the access clause removed.
+    """The caller's search again, with ONLY the access clause removed - and then the index asked, attribute by
+    attribute, whether each relevant document passes.
 
     Same query text, same vector, same facet filters, same candidate count, same semantic setting and the same
     relevance bar - so a document that shows up here and not in the caller's results is missing because of
-    access, and for no other reason. Each such document is then evaluated attribute by attribute with the
-    policy's own predicate.
+    access (or because it is not current, which is checked too), and for no other reason.
+
+    Access tags are not retrievable from the index (by design), so they are never selected. The verdict for
+    each attribute comes from the index evaluating that attribute's own clause - the same OData the real query
+    uses, so it cannot disagree with it. The tag VALUES shown next to a verdict, and the misconfiguration checks,
+    come from the tags recorded in the state store; if those disagree with the index, that is reported too.
 
     The results describe documents the caller may not read. They go into an administrator-only trace and
     nowhere else.
     """
 
     def __init__(self, *, index: SearchIndex, embedder: EmbeddingProvider, engine: AccessPolicyEngine,
-                 facets: FacetSchema, thresholds: dict[str, float], top: int = 8, candidates: int = 50,
-                 semantic: bool = True) -> None:
+                 facets: FacetSchema, thresholds: dict[str, float], retrievable: set[str] | None = None,
+                 doc_tags: Callable[[list[str]], dict[str, TagSet]] | None = None, top: int = 8,
+                 candidates: int = 50, semantic: bool = True) -> None:
         self.index = index
         self.embedder = embedder
         self.engine = engine
+        self.facets = facets
         self.thresholds = thresholds
+        self.doc_tags = doc_tags
         self.top = top
         self.candidates = candidates
         self.semantic = semantic
-        policy = engine.policy
-        self._acl = {a.name: (a.field, a.is_numeric) for a in policy.attributes}
+        acl_names = {a.name for a in engine.policy.attributes}
         # A facet that shares its name with an access attribute (department, region) is what lets a document's
         # classification be compared with its access tag.
-        self._facet_fields = {f.name: f.field for f in facets.facets if f.name in self._acl}
-        self.select = list(dict.fromkeys(
-            [*BASE_SELECT, *(f for f, _ in self._acl.values()), *self._facet_fields.values()]))
+        self._facet_fields = {f.name: f.field for f in facets.facets if f.name in acl_names}
+        wanted = [*BASE_SELECT, "is_current", *self._facet_fields.values()]
+        # Never a non-retrievable field: Azure rejects the whole query (400) if one is named in $select.
+        self.select = [f for f in dict.fromkeys(wanted) if retrievable is None or f in retrievable]
 
     async def run(self, principal: Principal, *, text: str, keyword_query: str, base_filter: str | None,
                   vector: list[float] | None) -> NearMiss:
@@ -199,30 +209,75 @@ class NearMissProbe:
             candidates=self.candidates, semantic=self.semantic, select=self.select))
         kept, dropped = apply_relevance_bar(hits, self.thresholds.get("min_reranker_score", 0.0),
                                             self.thresholds.get("min_score", 0.0))
-        docs: dict[str, NearMissDoc] = {}
-        for h in kept:
-            if h.doc_id in docs:  # one row per document; ranked order, so the first chunk is the best one
-                continue
-            acl = self._doc_acl(h)
-            facets = {name: list(h.fields.get(field) or []) for name, field in self._facet_fields.items()}
-            allowed = self.engine.allows(principal, {k: v for k, v in acl.items() if v is not None})
-            docs[h.doc_id] = NearMissDoc(
-                doc_id=h.doc_id, chunk_id=h.chunk_id, title=h.title, path=h.path, page=h.page, score=h.score,
-                reranker_score=h.reranker_score, allowed=allowed,
-                checks=self.engine.explain_document(principal, acl),
-                problems=[] if allowed else self.engine.document_problems(acl, facets))
-        return NearMiss(ran=True, relevance_bar=dict(self.thresholds), docs=list(docs.values()),
-                        below_bar=len(dropped))
+        best: dict[str, SearchHit] = {}
+        for h in kept:  # one row per document; ranked order, so the first chunk is the best one
+            best.setdefault(h.doc_id, h)
+        if not best:
+            return NearMiss(ran=True, relevance_bar=dict(self.thresholds), below_bar=len(dropped))
 
-    def _doc_acl(self, h: SearchHit) -> dict[str, list[str] | int | None]:
+        passed = await self._index_verdicts(principal, list(best.values()), vector)
+        recorded = self.doc_tags(list(best)) if self.doc_tags else {}
+        docs = [self._row(principal, h, passed, recorded.get(doc_id)) for doc_id, h in best.items()]
+        return NearMiss(ran=True, relevance_bar=dict(self.thresholds), docs=docs, below_bar=len(dropped))
+
+    async def _index_verdicts(self, principal: Principal, hits: list[SearchHit],
+                              vector: list[float]) -> dict[str, set[str]]:
+        """{attribute: doc_ids whose chunk passes that attribute's clause}, as judged by the index."""
+        ids = " or ".join(f"chunk_id eq '{odata_quote(h.chunk_id)}'" for h in hits)
+        out: dict[str, set[str]] = {}
+        for name, clause in self.engine.attribute_clauses(principal).items():
+            if clause is None:
+                out[name] = set()
+                continue
+            res = await self.index.search(SearchRequest(
+                text=None, vector=vector, odata_filter=f"({ids}) and ({clause})", top=len(hits),
+                candidates=max(self.candidates, len(hits)), semantic=False, select=["chunk_id", "doc_id"]))
+            out[name] = {r.doc_id for r in res}
+        return out
+
+    def _row(self, principal: Principal, h: SearchHit, passed: dict[str, set[str]],
+             tags: TagSet | None) -> NearMissDoc:
         acl: dict[str, list[str] | int | None] = {}
-        for name, (field, numeric) in self._acl.items():
-            v = h.fields.get(field)
-            if numeric:
-                acl[name] = int(v) if isinstance(v, int | float) and not isinstance(v, bool) else None
-            else:
-                acl[name] = [str(x) for x in v] if isinstance(v, list) and v else None
-        return acl
+        facets: dict[str, list[str]] = {}
+        private = False
+        if tags is not None:
+            clean = self.engine.validate_doc_acl(tags.acl)
+            acl = {a.name: clean.get(a.name) for a in self.engine.policy.attributes}
+            facets = self.facets.expand_for_index(tags.facets)
+            private = tags.sources.get(PRIVATE_SOURCE_KEY) == "private"
+        else:  # not in the state store: classification can still be read from the index
+            facets = {name: list(h.fields.get(field) or []) for name, field in self._facet_fields.items()}
+        local = self.engine.explain_document(principal, acl)
+        verdicts = {name: h.doc_id in docs for name, docs in passed.items()}
+        checks: dict[str, AttributeCheck] = {}
+        for name, ok in verdicts.items():
+            base = local.get(name) or AttributeCheck(passed=ok)
+            note = base.note if not ok else ""
+            if tags is None:
+                note = note or ("" if ok else "the index says no (tags not recorded in the state store)")
+            elif ok != base.passed:
+                note = (f"the index says {'yes' if ok else 'no'}, the recorded tags say "
+                        f"{'yes' if base.passed else 'no'}")
+            checks[name] = base.model_copy(update={"passed": ok, "note": note})
+        current = h.fields.get("is_current")
+        if current is not True and "is_current" in self.select:
+            checks["is_current"] = AttributeCheck(passed=False, doc_values=None, caller_values=None,
+                                                  note="this chunk is not marked current, so every search skips it")
+        allowed = self.engine.combine_verdicts(verdicts) and checks.get("is_current", AttributeCheck(passed=True)).passed
+
+        problems: list[str] = []
+        if "is_current" in checks:
+            problems.append("The document's chunks are not marked current (is_current is not true), so every search "
+                            "skips them. Re-ingest it.")
+        if tags is not None and not allowed:
+            if any(c.note.startswith("the index says") for c in checks.values()):
+                problems.append("The access tags in the index differ from the tags recorded for this document. "
+                                "Re-tag it (Edit access tags) or re-ingest it.")
+            if not private:
+                problems.extend(self.engine.document_problems(acl, facets))
+        return NearMissDoc(doc_id=h.doc_id, chunk_id=h.chunk_id, title=h.title, path=h.path, page=h.page,
+                           score=h.score, reranker_score=h.reranker_score, allowed=allowed, private=private,
+                           checks=checks, problems=problems)
 
 
 # --------------------------------------------------------------------------- verdict and diagnosis
@@ -303,7 +358,10 @@ def build_diagnosis(t: QueryTrace) -> list[str]:
         for d in nm.docs[:5]:
             failing = [f"{k} ({c.note})" for k, c in d.checks.items() if not c.passed and c.note]
             where = f"'{d.title or d.path}'" + (f" page {d.page}" if d.page else "")
-            if d.allowed:
+            if d.private:
+                out.append(f"{where} is relevant but private to its uploader (Only me was ticked at upload) - "
+                           f"withheld on purpose.")
+            elif d.allowed:
                 out.append(f"{where} is relevant AND this person may read it, yet their own search did not return "
                            f"it. That points at an inconsistency between the access filter and the index - report "
                            f"it with this trace id.")

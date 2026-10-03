@@ -521,6 +521,19 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .facet-pickers .field { min-width: 150px; }
 .facet-pickers .hint { margin: 0 0 8px; }
 
+/* ------------------------------------------------------------------ upload access + document access editor */
+
+.upload-access { display: flex; flex-direction: column; gap: 6px; }
+.upload-access .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.upload-access .hint { margin: 0; }
+.audience { margin-top: 2px; }
+.access-editor { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; }
+.access-editor summary { cursor: pointer; font-weight: 600; }
+.access-editor form { margin-top: 8px; }
+.access-editor .row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn-danger { color: var(--critical-text); border-color: var(--critical); }
+.btn-danger:hover:not(:disabled) { background: var(--critical-soft); }
+
 /* ------------------------------------------------------------------ query traces */
 
 .tile.tone-warning { border-top-color: var(--warning); background: var(--surface); color: var(--ink); }

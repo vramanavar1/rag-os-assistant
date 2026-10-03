@@ -20,7 +20,7 @@ import type {
   TraceStage,
   TraceSummary,
 } from '../types';
-import { autoRefresh, code, dataTable, kv, pageHeader, type View, type ViewContext } from './common';
+import { autoRefresh, code, dataTable, kv, openDocumentDialog, pageHeader, type View, type ViewContext } from './common';
 
 const STAGE_TONE: Record<StageStatus, string> = { ok: 'good', warn: 'warning', fail: 'critical', skipped: 'muted' };
 const STAGE_ICON: Record<StageStatus, string> = { ok: '✓', warn: '!', fail: '✕', skipped: '·' };
@@ -420,7 +420,7 @@ async function traceDetail(ctx: ViewContext, key: string): Promise<void> {
     content,
     summaryCard(t),
     pipeline(t),
-    nearMissCard(t),
+    nearMissCard(ctx, t),
     t.stages.map((s) => stageCard(t, s)),
     expectationCard(ctx, t),
   );
@@ -503,7 +503,7 @@ function checkCell(c: AttributeCheck | undefined): HTMLElement {
   );
 }
 
-function nearMissCard(t: QueryTrace): HTMLElement | null {
+function nearMissCard(ctx: ViewContext, t: QueryTrace): HTMLElement | null {
   const nm = t.near_miss;
   if (t.outcome === 'answered') return null;
   if (!nm.ran) {
@@ -540,7 +540,7 @@ function nearMissCard(t: QueryTrace): HTMLElement | null {
                 h(
                   'tr',
                   null,
-                  h('td', null, h('div', { class: 'doc-cell' }, h('strong', { class: 'truncate', title: d.title }, d.title || d.path), h('span', { class: 'small muted break' }, `${d.path}${d.page ? ` · page ${d.page}` : ''}`), h('a', { class: 'small', href: `#/documents/${encodeURIComponent(d.doc_id)}` }, 'Open document'))),
+                  h('td', null, h('div', { class: 'doc-cell' }, h('strong', { class: 'truncate', title: d.title }, d.title || d.path), h('span', { class: 'small muted break' }, `${d.path}${d.page ? ` · page ${d.page}` : ''}`), h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => openDocumentDialog(ctx.api, d.doc_id, undefined, { focusAccess: !d.allowed }) }, d.allowed ? 'Open document' : 'Open / fix access tags'), d.private ? h('span', { class: 'badge tone-neutral' }, 'Only me') : null)),
                   h('td', { class: 'num' }, d.reranker_score != null ? `${fmtValue(d.reranker_score)} (rerank)` : fmtValue(d.score)),
                   h('td', null, d.allowed ? h('span', { class: 'badge tone-critical', title: 'This person may read it, yet their search did not return it' }, 'yes - missing!') : h('span', { class: 'badge tone-neutral' }, 'no')),
                   attrs.map((a) => checkCell(d.checks[a])),

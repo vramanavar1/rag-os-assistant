@@ -21,6 +21,7 @@ no per-token embedding cost.
 9. [Configuration at a glance](#9-configuration-at-a-glance)
     * [What RAG-OS reads from a document](#what-rag-os-reads-from-a-document)
     * [When a document stays unclassified](#when-a-document-stays-unclassified)
+    * [The review queue: why a document is there, and what it changes](#the-review-queue-why-a-document-is-there-and-what-it-changes)
 10. [Using the product](#10-using-the-product)
 11. [User query handling scenarios](#11-user-query-handling-scenarios)
     * [Conflict handling: two sources that disagree](#conflict-handling-two-sources-that-disagree)
@@ -309,6 +310,58 @@ the document in place, without re-embedding.
 > required access attribute, the document is silently invisible. **Before enabling a source, ingest a sample and
 > open `/admin` → Documents grouped by facet: what you are looking for is the empty bucket.**
 
+#### The review queue: why a document is there, and what it changes
+
+**What it is for.** The review queue is a *quality backlog for classification* — the business facets
+**Document type** and **Topic** — where the automatic classifier was not sure of its answer. It is **not** an
+approval gate, and it is **not** about access: a document in the queue is already embedded, indexed and
+answerable by everyone its access tags allow.
+
+**What puts a document there.** Both conditions must hold:
+
+1. A facet marked `classify: true` in `facets.yaml` (`doc_type`, `topic`) is still **empty** after every rule
+   layer: source defaults, folder path rules, sidecar, manifest row and the upload form. Anything those layers
+   fill in is never sent to the classifier.
+2. The classifier then compares the document with each value of that facet and is unsure. Either the best
+   match scored below `CLASSIFIER_MIN_SCORE` (0.30), so the facet is **left empty**, or the best two are within
+   `CLASSIFIER_MARGIN` (0.03) of each other, so the best is **assigned as a guess**. The document is marked
+   `PENDING`.
+
+**Why you see only a few.** Every document whose Document type and Topic come from folders, the manifest or
+the upload form skips the classifier entirely, and every confident, unambiguous classification is accepted
+without review. Queue size measures how much your rules leave unsaid; tag well and it stays empty.
+
+**What it can never catch.** Department and Region are *not* `classify: true`, so a document missing them is
+never offered to the classifier and **never enters the queue**, even though no one can read it. Find those on
+Admin > Documents: the **Access** column shows a red *"No Department, Region: invisible"* badge. Select it to
+open **Edit access tags**.
+
+**Scenarios** (A and D are from this deployment's data; the scores in B and C are illustrative):
+
+| Scenario | Classifier | In the queue? | Can a permitted user get answers from it? | What that user notices |
+|---|---|---|---|---|
+| **A.** `hr/uk/policies/parental-leave-policy.md`. The folder sets Department HR, Region UK and Document type Policy; `manifest.csv` sets Topic Leave. | not run: nothing left empty | no | yes | Nothing. Answers cite it, and the Topic = Leave filter finds it. |
+| **B.** An upload with Department and Region picked but no Document type or Topic. The classifier scores Topic *Benefits* 0.58 and *Leave* 0.565 (margin 0.015 < 0.03). | assigns *Benefits* as a guess | **yes**: tagged *and* pending | **yes, immediately** | Answers cite it. It shows under Topic = Benefits, the guess. If the right topic was Leave, filtering by Leave misses it until a reviewer corrects it. |
+| **C.** As B, but the best Document type score is 0.22 (< 0.30). | assigns **nothing** for Document type | **yes**: empty and pending | **yes** | Answers cite it, but it is **missing** whenever the user narrows by Document type (e.g. Policy), and absent from that facet's counts. |
+| **D.** `Benefits.pdf` as first uploaded: Department and Region empty. | not offered: those are not `classify: true` | **no** | **no one** but its uploader | "No grounded answer". Query traces names the cause; the Documents Access column flags it. The review queue never will. |
+
+**Approved versus not yet approved.** For the person asking a question, the only differences are the facet
+filters:
+
+| | Not yet approved (`PENDING`) | Approved by a reviewer |
+|---|---|---|
+| Retrieved and cited in answers | yes | yes, identical |
+| Who may read it | from its access tags; the classifier never sets access | the same, unless an *admin* also edited the access tags while approving |
+| Document type / Topic filters and counts | the classifier's guess, or empty | the reviewer's values |
+| When the file changes and is re-ingested | the classifier's values are carried over and not re-guessed | frozen: never re-classified, never overwritten by re-discovery |
+| What approving costs | — | a re-tag: index fields are updated in place, with no re-parse and no re-embed |
+| Expiry, auto-approval, reminders | none: `PENDING` stays until someone acts | — |
+
+**Who works it.** `rag.reviewer`, `rag.sme` and administrators can approve facets; only administrators may change
+access tags there. `review_status` lives in the state database only. It is not an index field and appears
+nowhere in the query path, which is why waiting in the queue can never hide a document. More depth:
+[classification guide §5–6](docs/classification-guide.md).
+
 ## 10. Using the product
 
 * **Chat.** Ask in natural language, narrow the search with facet filters, open citations to see the passage,
@@ -327,7 +380,28 @@ the document in place, without re-embedding.
   already holds (or acquires one on-behalf-of). The loader passes it to the iframe with `postMessage`; tokens never
   appear in URLs. Add the host origin to `EMBED_ORIGINS`. Details are in [Deployment.md](Deployment.md).
 * **Upload.** Contributors and admins can upload from the chat or admin UI (`POST /api/uploads`). An upload gets a
-  `tracking_id`, is processed on the **priority lane** and is visible to the uploader's own scope by default.
+  `tracking_id` and is processed on the **priority lane**.
+* **Who can read an upload.** The upload form has an **Only me (private)** box, **unticked by default**.
+  * **Unticked:** the document is readable by everyone whose Department, Region and Clearance match its access
+    tags. Each tag comes from, in order:
+    1. the Department and Region pickers and the Clearance select;
+    2. the upload source's default (`clearance: 1` in `sources.yaml`);
+    3. the uploader's own attribute.
+
+    The folder never sets access, because the browser supplies it. An upload that would leave a *required* tag
+    (Department, Region) empty is refused with the reason, rather than becoming a document nobody can read. An
+    administrator's picks set the audience as given. A contributor's picks may only narrow their own scope;
+    a wider pick still classifies the document, but its audience stays theirs. The panel shows the result,
+    e.g. "Visible to HR · Global · Internal".
+  * **Ticked:** only the uploader can read it (their individual `employee_id` share). It is recorded as
+    deliberately private, so Query traces does not report it as mis-tagged.
+  * **Who may tick it** is configuration (`sources.yaml` → `uploads.settings.only_me.allowed_roles`), so it can
+    be restricted per role without a release.
+* **Admin > Documents** lists every document with its **Doc ID** (select to copy) and **Access**: who may read
+  it ("HR · Global · 1", *Only me*, or a red *"No Department, Region: invisible"* badge).
+* **Correcting a document.** Open a document (or select its red badge): **Edit access tags** re-tags the index in
+  place without re-embedding, and opens by itself when a required tag is missing. **Delete document** removes it
+  from the index; the purge frees its storage later.
 * **How an upload gets its facets.** Three sources, weakest first:
   1. **the folder it came from.** Choose *choose a folder* (or drop a folder) and the browser sends the path
      relative to the folder you picked, which `path-rules.yaml` reads exactly as it does for a crawl. **Pick the
@@ -1351,20 +1425,32 @@ outcome is. On any trace, record *Expected: answer (must cite these documents)* 
 outcome matches and every required document is cited. All expectations are replayed every
 `QUERY_EXPECTATION_REPLAY_HOURS` (24), and a failure turns the health strip red.
 
-**Worked example.** An HR / AMER / clearance-2 user asks about the 401(k) plan and gets no answer. The trace
-might show any of these:
-* *Suspected misconfiguration*, with the near-miss row for `Benefits.pdf` red on Department and Clearance and
-  the note "classified Department HR but its access tag says IT". The file was uploaded by an IT administrator,
-  and an upload takes the uploader's access tags.
-* *Suspected misconfiguration*, "the document has no Region access tag". The file was crawled from `HR/`
-  without a region folder, so it is invisible to everyone.
+**Worked example (what actually happened).** An HR / AMER / clearance-2 user asks about the 401(k) plan and
+gets no answer.
+* `is_current` was not the cause: every chunk is written with `is_current = true`, and stale versions are
+  deleted, not flagged. The near-miss check also searches without `is_current` and would name any chunk not
+  marked current.
+* `Benefits.pdf` had been uploaded, before the Only me box existed, by an administrator whose token carried no
+  Department or Region. Uploads then copied the uploader's attributes, so both copies were indexed with
+  **empty** Department and Region tags, and only the uploader could read them.
+* The trace shows *Suspected misconfiguration*, "The document has no Department access tag". The fix is Admin >
+  Documents > **Edit access tags** (HR · Global · 1); then delete the duplicate copy. Uploads are now refused
+  in this situation unless a Department and Region are picked, or Only me is ticked.
+
+Other things the trace can show:
+* "classified Department HR but its access tag says IT": an access tag that contradicts the classification.
+* "the access tags in the index differ from the tags recorded": re-tag or re-ingest the document.
 * *Withheld by access policy*, red only on Region (`US`; the caller reaches `AMER, Global`). That is the policy
   working as configured, because hierarchy runs upward only.
 * *Suspected misconfiguration* on the User context stage: "the account has no Department". The token carries
   no department claim yet; sign in again, or see [section 13](#13-entra-user-attributes-and-claims).
 
-Record *Expected: answer, must cite Benefits.pdf*, fix the tags (sidecar, manifest or folder), re-ingest,
-then press **Replay**.
+Record *Expected: answer, must cite Benefits.pdf*, fix the tags, then press **Replay**.
+
+The access tags are deliberately **not retrievable** from the search index. So the near-miss check asks the
+index to evaluate each attribute's own filter clause for each relevant document; that is the same OData the
+real query runs, so the verdict cannot disagree with it. The tag values shown beside each verdict come from the
+tags recorded at ingestion.
 
 ## 15. Scaling and operations
 

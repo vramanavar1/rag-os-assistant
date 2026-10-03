@@ -243,6 +243,7 @@
       <ol class="sub">
         <li><a href="#what-gets-read">What gets read</a></li>
         <li><a href="#unclassified">When it stays unclassified</a></li>
+        <li><a href="#review-queue-explained">The review queue explained</a></li>
       </ol>
     </li>
     <li><a href="#10-using-the-product"><span class="num">10</span>Using the product</a></li>
@@ -630,6 +631,76 @@ README.html          this document (self-contained; regenerate nothing, just ope
       attribute, the document is silently invisible. <strong>Before enabling a source, ingest a sample and open
       <code>/admin</code> → Documents grouped by facet: what you are looking for is the empty bucket.</strong></p>
   </div>
+
+  <h4 id="review-queue-explained">The review queue: why a document is there, and what it changes</h4>
+  <p><strong>What it is for.</strong> The review queue is a <em>quality backlog for classification</em> — the
+    business facets <strong>Document type</strong> and <strong>Topic</strong> — where the automatic classifier was not
+    sure of its answer. It is <strong>not</strong> an approval gate, and it is <strong>not</strong> about access: a
+    document in the queue is already embedded, indexed and answerable by everyone its access tags allow.</p>
+  <p><strong>What puts a document there.</strong> Both conditions must hold:</p>
+  <ol>
+    <li>A facet marked <code>classify: true</code> in <code>facets.yaml</code> (<code>doc_type</code>,
+      <code>topic</code>) is still <strong>empty</strong> after every rule layer: source defaults, folder path rules,
+      sidecar, manifest row and the upload form. Anything those layers fill in is never sent to the
+      classifier.</li>
+    <li>The classifier then compares the document with each value of that facet and is unsure. Either the best
+      match scored below <code>CLASSIFIER_MIN_SCORE</code> (0.30), so the facet is <strong>left empty</strong>, or the
+      best two are within <code>CLASSIFIER_MARGIN</code> (0.03) of each other, so the best is <strong>assigned as a
+      guess</strong>. The document is marked <code>PENDING</code>.</li>
+  </ol>
+  <p><strong>Why you see only a few.</strong> Every document whose Document type and Topic come from folders, the
+    manifest or the upload form skips the classifier entirely, and every confident, unambiguous classification is
+    accepted without review. Queue size measures how much your rules leave unsaid.</p>
+  <div class="callout warn"><p><strong>What it can never catch.</strong> Department and Region are not
+    <code>classify: true</code>, so a document missing them is never offered to the classifier and <strong>never
+    enters the queue</strong>, even though no one can read it. Find those on Admin &gt; Documents: the
+    <strong>Access</strong> column shows a red <em>"No Department, Region: invisible"</em> badge. Select it to open
+    <strong>Edit access tags</strong>.</p></div>
+  <p><strong>Scenarios</strong> (A and D are from this deployment's data; the scores in B and C are
+    illustrative):</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Scenario</th><th>Classifier</th><th>In the queue?</th><th>Can a permitted user get answers from it?</th><th>What that user notices</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A.</strong> <code>hr/uk/policies/parental-leave-policy.md</code>. The folder sets Department HR,
+        Region UK and Document type Policy; <code>manifest.csv</code> sets Topic Leave.</td><td>not run: nothing left
+        empty</td><td>no</td><td>yes</td><td>Nothing. Answers cite it, and the Topic = Leave filter finds it.</td></tr>
+      <tr><td><strong>B.</strong> An upload with Department and Region picked but no Document type or Topic. The
+        classifier scores Topic <em>Benefits</em> 0.58 and <em>Leave</em> 0.565 (margin 0.015 &lt; 0.03).</td><td>assigns
+        <em>Benefits</em> as a guess</td><td><strong>yes</strong>: tagged and pending</td><td><strong>yes,
+        immediately</strong></td><td>Answers cite it. It shows under Topic = Benefits, the guess. If the right topic was
+        Leave, filtering by Leave misses it until a reviewer corrects it.</td></tr>
+      <tr><td><strong>C.</strong> As B, but the best Document type score is 0.22 (&lt; 0.30).</td><td>assigns
+        <strong>nothing</strong> for Document type</td><td><strong>yes</strong>: empty and pending</td><td><strong>yes</strong></td>
+        <td>Answers cite it, but it is <strong>missing</strong> whenever the user narrows by Document type (e.g.
+        Policy), and absent from that facet's counts.</td></tr>
+      <tr><td><strong>D.</strong> <code>Benefits.pdf</code> as first uploaded: Department and Region empty.</td><td>not
+        offered: those are not <code>classify: true</code></td><td><strong>no</strong></td><td><strong>no one</strong> but
+        its uploader</td><td>"No grounded answer". Query traces names the cause; the Documents Access column flags it.
+        The review queue never will.</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Approved versus not yet approved.</strong> For the person asking a question, the only differences are
+    the facet filters:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th>Not yet approved (<code>PENDING</code>)</th><th>Approved by a reviewer</th></tr></thead>
+    <tbody>
+      <tr><td>Retrieved and cited in answers</td><td>yes</td><td>yes, identical</td></tr>
+      <tr><td>Who may read it</td><td>from its access tags; the classifier never sets access</td><td>the same, unless
+        an <em>admin</em> also edited the access tags while approving</td></tr>
+      <tr><td>Document type / Topic filters and counts</td><td>the classifier's guess, or empty</td><td>the
+        reviewer's values</td></tr>
+      <tr><td>When the file changes and is re-ingested</td><td>the classifier's values are carried over and not
+        re-guessed</td><td>frozen: never re-classified, never overwritten by re-discovery</td></tr>
+      <tr><td>What approving costs</td><td>—</td><td>a re-tag: index fields are updated in place, with no re-parse
+        and no re-embed</td></tr>
+      <tr><td>Expiry, auto-approval, reminders</td><td>none: <code>PENDING</code> stays until someone acts</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Who works it.</strong> <code>rag.reviewer</code>, <code>rag.sme</code> and administrators can approve
+    facets; only administrators may change access tags there. <code>review_status</code> lives in the state
+    database only. It is not an index field and appears nowhere in the query path, which is why waiting in the
+    queue can never hide a document. More depth:
+    <a href="docs/classification-guide.md">classification guide §5–6</a>.</p>
 </div>
 
 <div class="wrap">
@@ -651,8 +722,28 @@ README.html          this document (self-contained; regenerate nothing, just ope
       iframe with <code>postMessage</code>; tokens never appear in URLs. Add the host origin to
       <code>EMBED_ORIGINS</code>. Details are in <a href="Deployment.md">Deployment.md</a>.</li>
     <li><strong>Upload.</strong> Contributors and admins can upload from the chat or admin UI
-      (<code>POST /api/uploads</code>). An upload gets a <code>tracking_id</code>, is processed on the
-      <strong>priority lane</strong> and is visible to the uploader's own scope by default.</li>
+      (<code>POST /api/uploads</code>). An upload gets a <code>tracking_id</code> and is processed on the
+      <strong>priority lane</strong>.</li>
+    <li><strong>Who can read an upload.</strong> The upload form has an <strong>Only me (private)</strong> box,
+      <strong>unticked by default</strong>.
+      <ul>
+        <li><strong>Unticked:</strong> readable by everyone whose Department, Region and Clearance match its access
+          tags. Each tag comes from the pickers and the Clearance select, then the upload source's default, then
+          the uploader's own attribute; the folder never sets access. An upload that would leave a required tag
+          empty is refused with the reason. A contributor's picks may only narrow their own scope; an
+          administrator's set the audience as given. The panel shows the result, e.g. "Visible to HR &middot;
+          Global &middot; Internal".</li>
+        <li><strong>Ticked:</strong> only the uploader can read it, and it is recorded as deliberately private.</li>
+        <li><strong>Who may tick it</strong> is configuration:
+          <code>sources.yaml</code> &rarr; <code>uploads.settings.only_me.allowed_roles</code>.</li>
+      </ul>
+    </li>
+    <li><strong>Admin &gt; Documents</strong> lists every document with its <strong>Doc ID</strong> (select to copy)
+      and <strong>Access</strong>: who may read it ("HR &middot; Global &middot; 1", <em>Only me</em>, or a red
+      <em>"No Department, Region: invisible"</em> badge).</li>
+    <li><strong>Correcting a document.</strong> Open a document (or select its red badge): <strong>Edit access
+      tags</strong> re-tags the index in place and opens by itself when a required tag is missing;
+      <strong>Delete document</strong> removes it from the index.</li>
     <li><strong>How an upload gets its facets.</strong> Three sources, weakest first:
       <ol>
         <li><strong>the folder it came from.</strong> Choose <em>choose a folder</em> (or drop a folder) and the
@@ -1710,10 +1801,15 @@ az rest --method patch --url https://graph.microsoft.com/v1.0/users/priya@contos
     only if the outcome matches and every required document is cited. All expectations are replayed every
     <code>QUERY_EXPECTATION_REPLAY_HOURS</code> (24), and a failure turns the health strip red.</p>
   <p><strong>Worked example.</strong> An HR / AMER / clearance-2 user asks about the 401(k) plan and gets no answer.
-    The trace names the cause: an upload that carries its IT uploader's access tags (red on Department and
-    Clearance); a crawled file with no Region tag; a document tagged <code>US</code>, which an AMER caller does not
-    reach because hierarchy runs upward only; or an account with no Department claim. Record <em>Expected: answer,
-    must cite Benefits.pdf</em>, fix the tags, re-ingest, then press Replay.</p>
+    <code>is_current</code> was not the cause: every chunk carries <code>is_current = true</code>. The file had been
+    uploaded by an administrator whose token had no Department or Region, so it was indexed with empty
+    Department and Region tags, and only the uploader could read it. The trace reports "The document has no
+    Department access tag"; Admin &gt; Documents &gt; <strong>Edit access tags</strong> fixes it. Such uploads are now
+    refused unless a Department and Region are picked, or Only me is ticked. Record <em>Expected: answer, must cite
+    Benefits.pdf</em>, fix the tags, then press Replay.</p>
+  <p>The access tags are deliberately not retrievable from the index. The near-miss check therefore asks the
+    index to evaluate each attribute's own filter clause, the same OData the real query runs, and shows the tag
+    values recorded at ingestion beside each verdict.</p>
 
   <h2 id="15-scaling-and-operations"><span class="n">15</span>Scaling and operations<a class="anchor" href="#15-scaling-and-operations">#</a></h2>
   <div class="cards">

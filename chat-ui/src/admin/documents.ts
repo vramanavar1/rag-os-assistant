@@ -2,10 +2,10 @@
 // CSV export and the upload widget. Deep link: #/documents/<doc_id>.
 import { isAbortError } from '../api';
 import { fmtAgo, fmtBytes, fmtNum, h, mount, show } from '../dom';
-import { problemBox, statusBadge, toast, toastError } from '../ui';
+import { copyTag, problemBox, statusBadge, toast, toastError } from '../ui';
 import { createUploadWidget } from '../upload';
 import { PIPELINE_STATUSES, type DocumentRecord, type Page } from '../types';
-import { dataTable, getFacets, openDocumentDialog, pageHeader, retryDocs, sourceSelect, type View, type ViewContext } from './common';
+import { accessSummary, dataTable, getFacets, getRequiredAccess, openDocumentDialog, pageHeader, retryDocs, sourceSelect, type View, type ViewContext } from './common';
 
 const PAGE_SIZE = 50;
 
@@ -73,7 +73,7 @@ export const documentsView: View = async (ctx: ViewContext) => {
   // ---- filter form
   const statusSel = h('select', { id: 'doc-status', name: 'status' }, h('option', { value: '' }, 'Any status'), PIPELINE_STATUSES.map((s) => h('option', { value: s }, s)));
   statusSel.value = status;
-  const [sourceSel, facetSel] = await Promise.all([sourceSelect(ctx.api, 'doc-source', sourceId), facetSelect(ctx, facet)]);
+  const [sourceSel, facetSel, required] = await Promise.all([sourceSelect(ctx.api, 'doc-source', sourceId), facetSelect(ctx, facet), getRequiredAccess(ctx.api)]);
   if (ctx.signal.aborted) return;
   const textInput = h('input', { id: 'doc-q', name: 'q', type: 'search', value: text, placeholder: 'Title or path contains…', maxlength: 200 });
   const filterForm = h(
@@ -125,9 +125,9 @@ export const documentsView: View = async (ctx: ViewContext) => {
     updateSelection();
   });
 
-  const openDoc = (docId: string) => {
+  const openDoc = (docId: string, focusAccess = false) => {
     history.replaceState(null, '', `#/documents/${encodeURIComponent(docId)}${q.toString() ? `?${q.toString()}` : ''}`);
-    openDocumentDialog(ctx.api, docId, () => history.replaceState(null, '', listHash(q)));
+    openDocumentDialog(ctx.api, docId, () => history.replaceState(null, '', listHash(q)), { focusAccess, onChanged: () => void reload() });
   };
 
   const renderTable = () => {
@@ -150,6 +150,8 @@ export const documentsView: View = async (ctx: ViewContext) => {
           label: 'Document',
           render: (r) => h('div', { class: 'doc-cell' }, h('strong', { class: 'truncate', title: r.title || r.path }, r.title || r.path.split('/').pop() || r.path), h('span', { class: 'mono muted truncate', title: r.path }, r.path)),
         },
+        { label: 'Doc ID', render: (r) => copyTag(r.doc_id, null, 'Copy document ID', 12) },
+        { label: 'Access', render: (r) => accessSummary(r, required, () => openDoc(r.doc_id, true)) },
         { label: 'Source', render: (r) => r.source_id },
         { label: 'Status', render: (r) => statusBadge(r.status) },
         { label: 'Stage', render: (r) => r.stage || '—' },

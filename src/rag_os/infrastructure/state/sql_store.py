@@ -448,12 +448,22 @@ class SqlStateStore(IngestionStateStore):
                     )
                 )
             ]
-            for i in range(0, len(ids), 1000):
-                c.execute(update(documents).where(documents.c.doc_id.in_(ids[i:i + 1000])).values(
-                    status=DocumentStatus.DELETED.value, updated_at=_now()))
-            for d in ids:
-                self._event(c, d, DocumentStatus.DELETED, stage="discovery", message="not found at source")
+            self._mark_deleted(c, ids, "discovery", "not found at source")
         return ids
+
+    def mark_deleted(self, doc_ids: Sequence[str], *, stage: str, message: str) -> list[str]:
+        with self.engine.begin() as c:
+            ids = [r[0] for r in c.execute(select(documents.c.doc_id).where(
+                documents.c.doc_id.in_(list(doc_ids)), documents.c.status != DocumentStatus.DELETED.value))]
+            self._mark_deleted(c, ids, stage, message)
+        return ids
+
+    def _mark_deleted(self, c: Connection, ids: list[str], stage: str, message: str) -> None:
+        for i in range(0, len(ids), 1000):
+            c.execute(update(documents).where(documents.c.doc_id.in_(ids[i:i + 1000])).values(
+                status=DocumentStatus.DELETED.value, updated_at=_now()))
+        for d in ids:
+            self._event(c, d, DocumentStatus.DELETED, stage=stage, message=message)
 
     @staticmethod
     def _filters(q: DocumentQuery, *, with_status: bool = True) -> list[Any]:

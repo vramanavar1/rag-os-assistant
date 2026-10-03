@@ -53,6 +53,10 @@ class UploadResponse(BaseModel):
     duplicate_of: str | None = Field(
         default=None,
         description="set when these exact bytes were already uploaded by you: nothing new was ingested")
+    access: dict[str, list[str] | int] = Field(
+        default_factory=dict, description="who may read it: the document's access tags (department, region, ...)")
+    visibility: str | None = Field(
+        default=None, description="'private' (Only me) or 'shared' (everyone the access tags match)")
 
 
 class UploadSummary(BaseModel):

@@ -32,20 +32,26 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 export function correlationTag(id: string): HTMLElement {
+  return copyTag(id, 'Correlation ID', 'Copy correlation ID (quote it when reporting a problem)');
+}
+
+/** A click-to-copy id. `short` shows only the first n characters; the full id is in the tooltip and copied. */
+export function copyTag(id: string, label: string | null, title: string, short?: number): HTMLElement {
+  const shown = short && id.length > short + 1 ? `${id.slice(0, short)}…` : id;
   const btn: HTMLButtonElement = h(
     'button',
     {
       type: 'button',
       class: 'corr',
-      title: 'Copy correlation ID (quote it when reporting a problem)',
+      title: short ? `${title}: ${id}` : title,
       onclick: async () => {
         const ok = await copyText(id);
         btn.dataset.copied = ok ? 'true' : 'false';
         window.setTimeout(() => delete btn.dataset.copied, 1500);
       },
     },
-    h('span', { class: 'corr-label' }, 'Correlation ID '),
-    h('code', null, id),
+    label ? h('span', { class: 'corr-label' }, `${label} `) : null,
+    h('code', null, shown),
   );
   return btn;
 }

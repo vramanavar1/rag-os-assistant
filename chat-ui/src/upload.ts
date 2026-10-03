@@ -7,7 +7,7 @@
 import { isAbortError, type ApiClient } from './api';
 import { fmtBytes, h, mount, show } from './dom';
 import { problemBox, statusBadge } from './ui';
-import { TERMINAL_STATUSES, type DocumentRecord, type Facet, type FacetsResponse, type UploadAccepted } from './types';
+import { TERMINAL_STATUSES, type DocumentRecord, type Facet, type FacetsResponse, type UploadAccepted, type UploadOptions } from './types';
 
 // Three limits govern an upload and they have to agree: nginx (client_max_body_size 60m, in
 // nginx/default.conf.template), the API (upload_max_mb, default 50, in settings.py) and this one. The
@@ -60,6 +60,49 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
   const pickers = h('div', { class: 'facet-pickers', hidden: true });
   const selects = new Map<string, HTMLSelectElement>();
 
+  // ---- who can read it. Unticked (the default) = everyone whose Department, Region and Clearance match the
+  // document's tags; ticked = only the uploader. Shown once /api/uploads/options says what this caller may do.
+  const onlyMe = h('input', { type: 'checkbox', id: `only-me-${idSuffix}` });
+  const clearanceSel = h('select', { id: `clearance-${idSuffix}`, name: 'clearance' });
+  const clearanceField = h('div', { class: 'field', hidden: true }, h('label', { for: clearanceSel.id }, 'Clearance'), clearanceSel);
+  const onlyMeField = h('div', { class: 'check inline', hidden: true }, onlyMe, h('label', { for: onlyMe.id }, 'Only me (private)'));
+  const accessHint = h('p', { class: 'hint' });
+  const access = h(
+    'fieldset',
+    { class: 'upload-access', hidden: true },
+    h('legend', null, 'Who can read it'),
+    h('div', { class: 'row' }, onlyMeField, clearanceField),
+    accessHint,
+  );
+  const syncAccess = () => {
+    clearanceField.hidden = onlyMe.checked || !clearanceSel.options.length;
+    mount(
+      accessHint,
+      onlyMe.checked
+        ? 'Only you can read it. The tags below still classify it.'
+        : 'Everyone whose Department, Region and Clearance match its tags can read it. Set Department and Region below (or upload from a folder named after them).',
+    );
+  };
+  onlyMe.addEventListener('change', syncAccess);
+
+  async function loadAccess(): Promise<void> {
+    try {
+      const o = await api.get<UploadOptions>('/api/uploads/options');
+      onlyMe.checked = o.only_me.default;
+      onlyMeField.hidden = !o.only_me.allowed;
+      if (o.clearance) {
+        const levels = o.clearance.levels.filter((l) => o.clearance!.min === null || l.value >= o.clearance!.min);
+        mount(clearanceSel, levels.map((l) => h('option', { value: String(l.value) }, `${l.value} · ${l.label}`)));
+        if (o.clearance.default !== null) clearanceSel.value = String(o.clearance.default);
+        mount(clearanceField.querySelector('label')!, o.clearance.label);
+      }
+      access.hidden = false;
+      syncAccess();
+    } catch {
+      // Without options the server still applies its defaults (shared, the uploader's own clearance).
+    }
+  }
+
   const zone = h(
     'div',
     { class: 'dropzone' },
@@ -72,7 +115,7 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
       h('label', { for: folderInput.id, class: 'link-button' }, 'choose a folder'),
       '.',
     ),
-    h('p', { class: 'hint' }, `PDF, Office, text, CSV, JSON, XML … up to ${MAX_MB} MB each. Files are indexed with your identity's access tags.`),
+    h('p', { class: 'hint' }, `PDF, Office, text, CSV, JSON, XML … up to ${MAX_MB} MB each. Who can read them is set below.`),
     // Which folder you pick is load-bearing and not at all obvious: a browser only reports the path *below*
     // the folder you choose, so choosing `policies` sends one segment and matches nothing.
     h('p', { class: 'hint' }, 'Pick the top folder (e.g. HR, not HR/UK/policies) — tags come from the folders inside it.'),
@@ -206,6 +249,8 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
       if (relativePath) form.append('relative_path', relativePath);
       const chosen = chosenFacets();
       if (chosen) form.append('facets', chosen);
+      form.append('only_me', onlyMe.checked ? 'true' : 'false');
+      if (!onlyMe.checked && clearanceSel.value) form.append('clearance', clearanceSel.value);
       accepted = await api.request<UploadAccepted>('POST', '/api/uploads', { body: form, timeoutMs: 15 * 60_000 });
     } catch (err) {
       if (isAbortError(err)) return;
@@ -238,8 +283,22 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
     }
   }
 
+  /** Who can read it, as the server decided - which may be narrower than what was picked (see /api/uploads). */
+  function audience(accepted: UploadAccepted): HTMLElement | null {
+    if (accepted.visibility === 'private') return h('div', { class: 'audience' }, h('strong', null, 'Private to you'));
+    const a = accepted.access ?? {};
+    const parts = Object.entries(a)
+      .filter(([k]) => k !== 'employee_id')
+      .map(([k, v]) => `${k} ${Array.isArray(v) ? v.join('/') : v}`);
+    return parts.length ? h('div', { class: 'audience' }, 'Visible to ', h('strong', null, parts.join(' · '))) : null;
+  }
+
   /** What got tagged, and where it came from. Says so when a folder produced nothing at all. */
   function describeTags(accepted: UploadAccepted): HTMLElement {
+    return h('span', null, tagSummary(accepted), audience(accepted));
+  }
+
+  function tagSummary(accepted: UploadAccepted): HTMLElement {
     const facets = accepted.facets ?? {};
     const sources = accepted.facet_sources ?? {};
     const names = Object.keys(facets).sort();
@@ -325,5 +384,6 @@ export function createUploadWidget(api: ApiClient, opts: UploadWidgetOptions = {
   }
 
   if (opts.facetPickers) void loadPickers();
-  return h('section', { class: 'upload', 'aria-label': 'Upload documents' }, zone, pickers, list);
+  void loadAccess();
+  return h('section', { class: 'upload', 'aria-label': 'Upload documents' }, zone, access, pickers, list);
 }
