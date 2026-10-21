@@ -1,0 +1,177 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e5]:
+    - generic [ref=f1e12]: RAG-OS — Feature Comparison
+    - generic [ref=f1e20]:
+      - generic:
+        - main
+  - main [ref=f1e28]:
+    - generic [ref=f1e29]:
+      - paragraph [ref=f1e30]: Competitive analysis · v1.0 · 9 October 2026
+      - heading "RAG-OS vs Azure Foundry IQ & AI Search" [level=1] [ref=f1e31]
+      - paragraph [ref=f1e32]: What Microsoft's platform building blocks provide, what RAG-OS adds on top of them, and how the two work together. The comparison is dated, because preview features change quickly.
+      - list [ref=f1e33]:
+        - listitem [ref=f1e34]: Version 1.0
+        - listitem [ref=f1e35]: Date 9 October 2026
+        - listitem [ref=f1e36]: Audience Prospects and partners
+        - listitem [ref=f1e37]: Azure status checked 9 October 2026
+      - list [ref=f1e38]:
+        - listitem [ref=f1e39]:
+          - generic [ref=f1e40]: Policy-based access
+          - text: Department, region hierarchy, clearance and personal shares, enforced inside every search. Access is denied by default.
+        - listitem [ref=f1e41]:
+          - generic [ref=f1e42]: Governed classification
+          - text: Layered tagging, an SME review queue and a record of where every tag came from.
+        - listitem [ref=f1e43]:
+          - generic [ref=f1e44]: Grounded answers
+          - text: Page-level citations, and an abstention when the permitted evidence doesn't support an answer.
+        - listitem [ref=f1e45]:
+          - generic [ref=f1e46]: Runs in your tenant
+          - text: Your Azure subscription, keyless managed identity, and models on Microsoft Foundry.
+  - generic [ref=f1e49]:
+    - generic [ref=f1e56]: RAG-OS — Feature Comparison
+    - main [ref=f1e66]:
+      - navigation "Contents" [ref=f1e67]:
+        - heading "Contents" [level=2] [ref=f1e68]
+        - list [ref=f1e69]:
+          - listitem [ref=f1e70]:
+            - link "1. Executive summary" [ref=f1e71] [cursor=pointer]:
+              - /url: "#s-summary"
+          - listitem [ref=f1e73]:
+            - link "2. How to read this document" [ref=f1e74] [cursor=pointer]:
+              - /url: "#s-read"
+          - listitem [ref=f1e76]:
+            - link "3. Where each sits" [ref=f1e77] [cursor=pointer]:
+              - /url: "#s-layers"
+          - listitem [ref=f1e79]:
+            - link "4. Head-to-head comparison" [ref=f1e80] [cursor=pointer]:
+              - /url: "#s-h2h"
+          - listitem [ref=f1e82]:
+            - link "5. Feature catalogue" [ref=f1e83] [cursor=pointer]:
+              - /url: "#s-catalogue"
+          - listitem [ref=f1e85]:
+            - link "5.1 Access control" [ref=f1e86] [cursor=pointer]:
+              - /url: "#s-cat-access"
+          - listitem [ref=f1e88]:
+            - link "5.2 Classification" [ref=f1e89] [cursor=pointer]:
+              - /url: "#s-cat-class"
+          - listitem [ref=f1e91]:
+            - link "5.3 Retrieval and answers" [ref=f1e92] [cursor=pointer]:
+              - /url: "#s-cat-retrieval"
+          - listitem [ref=f1e94]:
+            - link "5.4 Operations" [ref=f1e95] [cursor=pointer]:
+              - /url: "#s-cat-ops"
+          - listitem [ref=f1e97]:
+            - link "5.5 Channels" [ref=f1e98] [cursor=pointer]:
+              - /url: "#s-cat-channels"
+          - listitem [ref=f1e100]:
+            - link "6. Purview labels with access policy" [ref=f1e101] [cursor=pointer]:
+              - /url: "#s-purview"
+          - listitem [ref=f1e103]:
+            - link "6.1 How RAG-OS will use labels" [ref=f1e104] [cursor=pointer]:
+              - /url: "#s-pv-how"
+          - listitem [ref=f1e106]:
+            - link "6.2 Two ways to honour labels" [ref=f1e107] [cursor=pointer]:
+              - /url: "#s-pv-compare"
+          - listitem [ref=f1e109]:
+            - link "6.3 Purview references" [ref=f1e110] [cursor=pointer]:
+              - /url: "#s-pv-refs"
+          - listitem [ref=f1e112]:
+            - link "7. Where RAG-OS stands out" [ref=f1e113] [cursor=pointer]:
+              - /url: "#s-standout"
+          - listitem [ref=f1e115]:
+            - link "7.1 Current gaps and roadmap" [ref=f1e116] [cursor=pointer]:
+              - /url: "#s-gaps"
+          - listitem [ref=f1e118]:
+            - link "8. Use-case fit" [ref=f1e119] [cursor=pointer]:
+              - /url: "#s-fit"
+          - listitem [ref=f1e121]:
+            - link "9. Roadmap alignment" [ref=f1e122] [cursor=pointer]:
+              - /url: "#s-roadmap"
+          - listitem [ref=f1e124]:
+            - link "10. Market context" [ref=f1e125] [cursor=pointer]:
+              - /url: "#s-market"
+          - listitem [ref=f1e127]:
+            - link "10.1 Other considerations" [ref=f1e128] [cursor=pointer]:
+              - /url: "#s-consider"
+          - listitem [ref=f1e130]:
+            - link "11. References" [ref=f1e131] [cursor=pointer]:
+              - /url: "#s-refs"
+  - generic [ref=f1e135]:
+    - generic [ref=f1e142]: RAG-OS — Feature Comparison
+    - main [ref=f1e152]:
+      - generic [ref=f1e153]:
+        - heading "1Executive summary" [level=2] [ref=f1e154]
+        - paragraph [ref=f1e155]:
+          - text: Azure offers
+          - strong [ref=f1e156]: platform building blocks
+          - text: . RAG-OS is a
+          - strong [ref=f1e157]: governed knowledge product built on them
+          - text: . RAG-OS already runs on Azure AI Search and Microsoft Foundry models, and its roadmap adopts Foundry IQ underneath. The two work together; this is not an either/or choice.
+        - generic [ref=f1e158]:
+          - generic [ref=f1e159]:
+            - heading "Microsoft Foundry IQ" [level=4] [ref=f1e160]
+            - paragraph [ref=f1e161]:
+              - text: A managed knowledge layer over
+              - strong [ref=f1e162]: Azure AI Search agentic retrieval
+              - text: . A
+              - emphasis [ref=f1e163]: knowledge base
+              - text: wraps up to 10
+              - emphasis [ref=f1e164]: knowledge sources
+              - text: (3 on the Free tier). GA was announced on 2 June 2026, and the first stable API is 2026-04-01. GA covers extractive retrieval at minimal effort over search-index, Blob, OneLake and Web sources. LLM query planning, answer synthesis, SharePoint, Work IQ and document-level permissions are still in
+              - generic [ref=f1e165]: Preview
+              - text: .
+          - generic [ref=f1e166]:
+            - heading "AI Search document-level access" [level=4] [ref=f1e167]
+            - paragraph [ref=f1e168]:
+              - strong [ref=f1e169]: Security filters
+              - text: (a string field matched with
+              - code [ref=f1e170]: search.in
+              - text: ) are
+              - generic [ref=f1e171]: Native GA
+              - text: . The native, Entra-token-enforced options are all
+              - generic [ref=f1e172]: Preview
+              - text: ": ADLS Gen2 ACL and RBAC-scope ingestion, SharePoint ACL ingestion, Purview sensitivity labels, and query-time enforcement through"
+              - code [ref=f1e173]: x-ms-query-source-authorization
+              - text: .
+          - generic [ref=f1e174]:
+            - heading "RAG-OS" [level=4] [ref=f1e175]
+            - paragraph [ref=f1e176]:
+              - text: A knowledge assistant that runs in your Azure subscription. It adds an
+              - strong [ref=f1e177]: attribute-based access policy
+              - text: ","
+              - strong [ref=f1e178]: SME-governed classification
+              - text: ","
+              - strong [ref=f1e179]: answers that cite their sources or abstain
+              - text: ", per-query token cost and tracing, and an embeddable chat. It uses the GA security-filter pattern Microsoft recommends for custom policy, and extends it."
+        - heading "Key takeaways" [level=3] [ref=f1e180]
+        - list [ref=f1e181]:
+          - listitem [ref=f1e182]:
+            - strong [ref=f1e183]: Different layers, not substitutes.
+            - text: Foundry IQ and AI Search retrieve content and trim results by identity. RAG-OS sits above them and decides
+            - emphasis [ref=f1e184]: who should see what
+            - text: ","
+            - emphasis [ref=f1e185]: how documents are classified
+            - text: and
+            - emphasis [ref=f1e186]: when not to answer
+            - text: .
+          - listitem [ref=f1e187]:
+            - strong [ref=f1e188]: Identity trimming versus policy.
+            - text: Azure's native access matches users, groups, RBAC scope, SharePoint groups and Purview labels, and a match on any one grants access. It has no hierarchy or clearance logic. RAG-OS compiles department, region hierarchy, clearance and personal-share rules into a filter applied inside every search, and denies access by default. Azure ANDs a caller's filter with its own permission filter, so the two can be combined.
+          - listitem [ref=f1e189]:
+            - strong [ref=f1e190]: Classification is the open space.
+            - text: The Foundry IQ documentation we reviewed has no taxonomy authoring, document classification or human review queue. RAG-OS provides layered tagging, cost-capped auto-classification, an SME review queue and a source recorded for every tag.
+  - generic [ref=f1e193]:
+    - generic [ref=f1e200]: RAG-OS — Feature Comparison
+    - main [ref=f1e210]:
+      - list [ref=f1e212]:
+        - listitem [ref=f1e213]:
+          - strong [ref=f1e214]: Azure is stronger in several areas, and this document says so.
+          - text: Those areas are agentic query planning and multi-source fan-out, first-party Microsoft 365 / SharePoint / OneLake reach, a native MCP endpoint for every knowledge base, a Microsoft-run service with no app to operate, a route to Purview labels and native ACLs, and the first 50M agentic tokens free each month.
+        - listitem [ref=f1e215]:
+          - strong [ref=f1e216]: Maturity matters for governance.
+          - text: "Document-level permissions in Foundry IQ are Preview only: they aren't in the stable 2026-04-01 API. Microsoft's documentation also describes cases where knowledge-base retrieval returns"
+          - emphasis [ref=f1e217]: unfiltered
+          - text: results, for example when the user token is omitted. The APIs are changing fast. RAG-OS gives customers a stable product contract and can adopt these native features as they reach GA.
+        - listitem [ref=f1e218]:
+          - strong [ref=f1e219]: The roadmap is built to work together with Azure.
+          - text: Planned work includes SharePoint through native ACL ingestion, Foundry IQ as an alternative retriever, Purview labels mapped to clearance levels, RAG-OS as an MCP server, and publishing as a Foundry agent for Teams and Copilot Studio.

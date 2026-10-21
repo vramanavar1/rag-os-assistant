@@ -67,10 +67,10 @@ no per-token embedding cost.
 *Figure 1 — System architecture. Bigger, with a navigation sidebar, copy buttons and print styling, in [README.html](README.html).*
 
 **Why queries stay fast while millions of documents ingest:**
-1. The query and ingestion paths run on **separate compute** (different workload profiles).
+1. The query and ingestion paths run on **separate compute**: different workload profiles on the Dedicated plan, or separate apps with reserved per-replica CPU and memory on the [Consumption plan](#15-scaling-and-operations).
 2. Each path has **its own embedding pool**, so queries never wait behind document batches.
 3. **Queue back-pressure** limits the load: KEDA `maxReplicas` × worker concurrency caps writes to Search and PostgreSQL.
-4. **Search is protected** by ≥2 replicas, batched writes with a concurrency cap and adaptive backoff. `Scale-SearchReplicas.ps1` adds replicas for backfills.
+4. **Search is protected** by ≥2 replicas, batched writes with a concurrency cap and adaptive backoff. `Scale-SearchReplicas.ps1` adds replicas for backfills, and `Set-CostSavingMode.ps1` removes the warm capacity while the environment is idle (see [Scaling and operations](#15-scaling-and-operations)).
 5. A **priority lane** keeps interactive uploads ahead of bulk backfills.
 6. **Operator controls** pause or throttle ingestion from the admin page.
 
@@ -1555,6 +1555,29 @@ tags recorded at ingestion.
   3. Sync the source off-peak.
   4. Watch `/admin` → Runs.
   5. Scale back.
+* **Dedicated or Consumption plan.** Each tier runs on Dedicated D-series nodes by default, and they bill around
+  the clock. Set `QueryPlan` and/or `IngestPlan = 'Consumption'` in the psd1 and run step 07 to move that tier to
+  the per-second Consumption profile. 07 deletes the emptied Dedicated profile, and switching back re-adds it.
+  Replicas keep the same CPU/memory, so per-request speed should not change. To prove it, run
+  `10-loadtest.ps1 -SaveBaseline` before the switch and `-CompareToBaseline` after it, which gives PASS or FAIL
+  on retrieval p95. Estimates and the procedure:
+  [Deployment.md: Dedicated or Consumption plan](Deployment.md#dedicated-or-consumption-plan).
+* **Cost saving while idle.** `Set-CostSavingMode.ps1` takes out the capacity that is kept warm on purpose
+  (dedicated nodes, app replicas, the second Search replica, PostgreSQL compute). One command puts it back:
+  ```powershell
+  ./infra/scripts/Set-CostSavingMode.ps1 -Env dev                   # Status: what is running, and what undid a saving
+  ./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode ScaleDown   # still reachable; the first request cold-starts
+  ./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode Hibernate   # everything stopped, Dedicated plan fee -> $0 (-WhatIf: dry run)
+  ./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode Resume      # restores the recorded state exactly
+  ```
+  The state before the first change is recorded in `infra/env/<env>.costsaver.json`, which is what makes Resume
+  exact. Hibernate also deletes the Dedicated workload profiles, after moving their stopped apps and jobs to the
+  Consumption profile. That stops the Dedicated plan management fee (~$73/month), which is billed for as long as any
+  Dedicated profile exists. Resume re-adds the profiles exactly as they were and moves everything back. Allow 5-10
+  extra minutes for that. Watch for two things that undo a saving: Azure starts a stopped PostgreSQL server again after 7 days, and
+  a step 07 deploy re-applies the psd1 replica and node values. Re-running the mode handles both. Details,
+  caveats and a scheduling example are in
+  [Deployment.md: Cost saving](Deployment.md#cost-saving-scale-down-hibernate-resume).
 * **Changing the embedding model.** A new profile means a new fingerprint, so a new index — you never
   re-embed in place, and the old index keeps serving while the new one fills. Changing the profile now marks
   every document as needing re-indexing, so discovery re-queues the whole corpus. The cutover is a deploy,

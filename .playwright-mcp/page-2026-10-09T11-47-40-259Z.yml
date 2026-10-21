@@ -1,0 +1,2530 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#content"
+  - button "Toggle light or dark theme" [ref=e3] [cursor=pointer]: ◐ Theme
+  - generic [ref=e4]:
+    - navigation "Table of contents" [ref=e5]:
+      - generic [ref=e6]: RAG-OS
+      - paragraph [ref=e9]: Feature comparison · v1.0 · October 2026
+      - button "Print / Save as PDF" [ref=e11] [cursor=pointer]
+      - list [ref=e12]:
+        - listitem [ref=e13]:
+          - link "1 Executive summary" [ref=e14] [cursor=pointer]:
+            - /url: "#s-summary"
+            - generic [ref=e15]: "1"
+            - text: Executive summary
+        - listitem [ref=e16]:
+          - link "2 How to read this document" [ref=e17] [cursor=pointer]:
+            - /url: "#s-read"
+            - generic [ref=e18]: "2"
+            - text: How to read this document
+        - listitem [ref=e19]:
+          - link "3 Where each sits" [ref=e20] [cursor=pointer]:
+            - /url: "#s-layers"
+            - generic [ref=e21]: "3"
+            - text: Where each sits
+        - listitem [ref=e22]:
+          - link "4 Head-to-head comparison" [ref=e23] [cursor=pointer]:
+            - /url: "#s-h2h"
+            - generic [ref=e24]: "4"
+            - text: Head-to-head comparison
+        - listitem [ref=e25]:
+          - link "5 Feature catalogue" [ref=e26] [cursor=pointer]:
+            - /url: "#s-catalogue"
+            - generic [ref=e27]: "5"
+            - text: Feature catalogue
+          - list [ref=e28]:
+            - listitem [ref=e29]:
+              - link "5.1 Access control" [ref=e30] [cursor=pointer]:
+                - /url: "#s-cat-access"
+            - listitem [ref=e31]:
+              - link "5.2 Classification" [ref=e32] [cursor=pointer]:
+                - /url: "#s-cat-class"
+            - listitem [ref=e33]:
+              - link "5.3 Retrieval and answers" [ref=e34] [cursor=pointer]:
+                - /url: "#s-cat-retrieval"
+            - listitem [ref=e35]:
+              - link "5.4 Operations" [ref=e36] [cursor=pointer]:
+                - /url: "#s-cat-ops"
+            - listitem [ref=e37]:
+              - link "5.5 Channels" [ref=e38] [cursor=pointer]:
+                - /url: "#s-cat-channels"
+        - listitem [ref=e39]:
+          - link "6 Purview labels with access policy" [ref=e40] [cursor=pointer]:
+            - /url: "#s-purview"
+            - generic [ref=e41]: "6"
+            - text: Purview labels with access policy
+          - list [ref=e42]:
+            - listitem [ref=e43]:
+              - link "6.1 How RAG-OS will use labels" [ref=e44] [cursor=pointer]:
+                - /url: "#s-pv-how"
+            - listitem [ref=e45]:
+              - link "6.2 Two ways to honour labels" [ref=e46] [cursor=pointer]:
+                - /url: "#s-pv-compare"
+            - listitem [ref=e47]:
+              - link "6.3 Purview references" [ref=e48] [cursor=pointer]:
+                - /url: "#s-pv-refs"
+        - listitem [ref=e49]:
+          - link "7 Where RAG-OS stands out" [ref=e50] [cursor=pointer]:
+            - /url: "#s-standout"
+            - generic [ref=e51]: "7"
+            - text: Where RAG-OS stands out
+          - list [ref=e52]:
+            - listitem [ref=e53]:
+              - link "7.1 Current gaps and roadmap" [ref=e54] [cursor=pointer]:
+                - /url: "#s-gaps"
+        - listitem [ref=e55]:
+          - link "8 Use-case fit" [ref=e56] [cursor=pointer]:
+            - /url: "#s-fit"
+            - generic [ref=e57]: "8"
+            - text: Use-case fit
+        - listitem [ref=e58]:
+          - link "9 Roadmap alignment" [ref=e59] [cursor=pointer]:
+            - /url: "#s-roadmap"
+            - generic [ref=e60]: "9"
+            - text: Roadmap alignment
+        - listitem [ref=e61]:
+          - link "10 Market context" [ref=e62] [cursor=pointer]:
+            - /url: "#s-market"
+            - generic [ref=e63]: "10"
+            - text: Market context
+          - list [ref=e64]:
+            - listitem [ref=e65]:
+              - link "10.1 Other considerations" [ref=e66] [cursor=pointer]:
+                - /url: "#s-consider"
+        - listitem [ref=e67]:
+          - link "11 References" [ref=e68] [cursor=pointer]:
+            - /url: "#s-refs"
+            - generic [ref=e69]: "11"
+            - text: References
+    - main [ref=e70]:
+      - generic [ref=e71]:
+        - paragraph [ref=e72]: Competitive analysis · v1.0 · 9 October 2026
+        - heading "RAG-OS vs Azure Foundry IQ & AI Search" [level=1] [ref=e73]
+        - paragraph [ref=e74]: What Microsoft's platform building blocks provide, what RAG-OS adds on top of them, and how the two work together. The comparison is dated, because preview features change quickly.
+        - list [ref=e75]:
+          - listitem [ref=e76]: Version 1.0
+          - listitem [ref=e77]: Date 9 October 2026
+          - listitem [ref=e78]: Audience Prospects and partners
+          - listitem [ref=e79]: Azure status checked 9 October 2026
+        - list [ref=e80]:
+          - listitem [ref=e81]:
+            - generic [ref=e82]: Policy-based access
+            - text: Department, region hierarchy, clearance and personal shares, enforced inside every search. Access is denied by default.
+          - listitem [ref=e83]:
+            - generic [ref=e84]: Governed classification
+            - text: Layered tagging, an SME review queue and a record of where every tag came from.
+          - listitem [ref=e85]:
+            - generic [ref=e86]: Grounded answers
+            - text: Page-level citations, and an abstention when the permitted evidence doesn't support an answer.
+          - listitem [ref=e87]:
+            - generic [ref=e88]: Runs in your tenant
+            - text: Your Azure subscription, keyless managed identity, and models on Microsoft Foundry.
+      - generic [ref=e89]:
+        - heading "1Executive summary" [level=2] [ref=e90]
+        - paragraph [ref=e91]:
+          - text: Azure offers
+          - strong [ref=e92]: platform building blocks
+          - text: . RAG-OS is a
+          - strong [ref=e93]: governed knowledge product built on them
+          - text: . RAG-OS already runs on Azure AI Search and Microsoft Foundry models, and its roadmap adopts Foundry IQ underneath. The two work together; this is not an either/or choice.
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - heading "Microsoft Foundry IQ" [level=4] [ref=e96]
+            - paragraph [ref=e97]:
+              - text: A managed knowledge layer over
+              - strong [ref=e98]: Azure AI Search agentic retrieval
+              - text: . A
+              - emphasis [ref=e99]: knowledge base
+              - text: wraps up to 10
+              - emphasis [ref=e100]: knowledge sources
+              - text: (3 on the Free tier). GA was announced on 2 June 2026, and the first stable API is 2026-04-01. GA covers extractive retrieval at minimal effort over search-index, Blob, OneLake and Web sources. LLM query planning, answer synthesis, SharePoint, Work IQ and document-level permissions are still in
+              - generic [ref=e101]: Preview
+              - text: .
+          - generic [ref=e102]:
+            - heading "AI Search document-level access" [level=4] [ref=e103]
+            - paragraph [ref=e104]:
+              - strong [ref=e105]: Security filters
+              - text: (a string field matched with
+              - code [ref=e106]: search.in
+              - text: ) are
+              - generic [ref=e107]: Native GA
+              - text: . The native, Entra-token-enforced options are all
+              - generic [ref=e108]: Preview
+              - text: ": ADLS Gen2 ACL and RBAC-scope ingestion, SharePoint ACL ingestion, Purview sensitivity labels, and query-time enforcement through"
+              - code [ref=e109]: x-ms-query-source-authorization
+              - text: .
+          - generic [ref=e110]:
+            - heading "RAG-OS" [level=4] [ref=e111]
+            - paragraph [ref=e112]:
+              - text: A knowledge assistant that runs in your Azure subscription. It adds an
+              - strong [ref=e113]: attribute-based access policy
+              - text: ","
+              - strong [ref=e114]: SME-governed classification
+              - text: ","
+              - strong [ref=e115]: answers that cite their sources or abstain
+              - text: ", per-query token cost and tracing, and an embeddable chat. It uses the GA security-filter pattern Microsoft recommends for custom policy, and extends it."
+        - heading "Key takeaways" [level=3] [ref=e116]
+        - list [ref=e117]:
+          - listitem [ref=e118]:
+            - strong [ref=e119]: Different layers, not substitutes.
+            - text: Foundry IQ and AI Search retrieve content and trim results by identity. RAG-OS sits above them and decides
+            - emphasis [ref=e120]: who should see what
+            - text: ","
+            - emphasis [ref=e121]: how documents are classified
+            - text: and
+            - emphasis [ref=e122]: when not to answer
+            - text: .
+          - listitem [ref=e123]:
+            - strong [ref=e124]: Identity trimming versus policy.
+            - text: Azure's native access matches users, groups, RBAC scope, SharePoint groups and Purview labels, and a match on any one grants access. It has no hierarchy or clearance logic. RAG-OS compiles department, region hierarchy, clearance and personal-share rules into a filter applied inside every search, and denies access by default. Azure ANDs a caller's filter with its own permission filter, so the two can be combined.
+          - listitem [ref=e125]:
+            - strong [ref=e126]: Classification is the open space.
+            - text: The Foundry IQ documentation we reviewed has no taxonomy authoring, document classification or human review queue. RAG-OS provides layered tagging, cost-capped auto-classification, an SME review queue and a source recorded for every tag.
+          - listitem [ref=e127]:
+            - strong [ref=e128]: Azure is stronger in several areas, and this document says so.
+            - text: Those areas are agentic query planning and multi-source fan-out, first-party Microsoft 365 / SharePoint / OneLake reach, a native MCP endpoint for every knowledge base, a Microsoft-run service with no app to operate, a route to Purview labels and native ACLs, and the first 50M agentic tokens free each month.
+          - listitem [ref=e129]:
+            - strong [ref=e130]: Maturity matters for governance.
+            - text: "Document-level permissions in Foundry IQ are Preview only: they aren't in the stable 2026-04-01 API. Microsoft's documentation also describes cases where knowledge-base retrieval returns"
+            - emphasis [ref=e131]: unfiltered
+            - text: results, for example when the user token is omitted. The APIs are changing fast. RAG-OS gives customers a stable product contract and can adopt these native features as they reach GA.
+          - listitem [ref=e132]:
+            - strong [ref=e133]: The roadmap is built to work together with Azure.
+            - text: Planned work includes SharePoint through native ACL ingestion, Foundry IQ as an alternative retriever, Purview labels mapped to clearance levels, RAG-OS as an MCP server, and publishing as a Foundry agent for Teams and Copilot Studio.
+      - generic [ref=e134]:
+        - heading "2How to read this document" [level=2] [ref=e135]
+        - paragraph [ref=e136]: Each capability carries a status badge. RAG-OS badges describe the product as built. Azure badges describe what Microsoft documents for that capability.
+        - note "Badge legend" [ref=e137]:
+          - generic [ref=e138]: RAG-OS status
+          - generic [ref=e139]:
+            - generic [ref=e140]: Available
+            - text: built and running today
+          - generic [ref=e141]:
+            - generic [ref=e142]: Partial
+            - text: works, with known limits stated
+          - generic [ref=e143]:
+            - generic [ref=e144]: Roadmap
+            - text: planned, not yet built
+          - generic [ref=e145]: Azure status
+          - generic [ref=e146]:
+            - generic [ref=e147]: Native GA
+            - text: generally available (not preview)
+          - generic [ref=e148]:
+            - generic [ref=e149]: Preview
+            - text: "documented but in preview: no SLA, preview terms apply, may change"
+          - generic [ref=e150]:
+            - generic [ref=e151]: Build-it-yourself
+            - text: possible, but you write and run the code
+          - generic [ref=e152]:
+            - generic [ref=e153]: Not offered
+            - text: not provided, or not found in the documentation reviewed
+          - generic [ref=e154]: Use-case fit (section 8)
+          - generic [ref=e155]:
+            - generic [ref=e156]: Strong
+            - text: fits largely out of the box
+          - generic [ref=e157]:
+            - generic [ref=e158]: Partial
+            - text: foundation in place, gaps remain
+          - generic [ref=e159]:
+            - generic [ref=e160]: Build
+            - text: a substantial custom build is needed
+        - generic [ref=e161]:
+          - paragraph [ref=e162]:
+            - strong [ref=e163]: Date stamp.
+            - text: We checked Azure status against Microsoft Learn, the Azure blogs and public GitHub samples on
+            - strong [ref=e164]: 9 October 2026
+            - text: . The latest data-plane APIs at that date were stable
+            - code [ref=e165]: 2026-04-01
+            - text: and preview
+            - code [ref=e166]: 2026-08-01-preview
+            - text: . Preview features change quickly, so check the linked pages before you make decisions.
+          - paragraph [ref=e167]:
+            - strong [ref=e168]: "\"Not offered\" means not found."
+            - text: It means we found no such feature in the documentation we reviewed. It is not a statement from Microsoft. Where a gap can be closed with custom code, we use
+            - emphasis [ref=e169]: Build-it-yourself
+            - text: instead.
+          - paragraph [ref=e170]:
+            - strong [ref=e171]: Scope.
+            - text: "\"Foundry IQ\" means knowledge bases and knowledge sources (Azure AI Search agentic retrieval). \"AI Search document-level access\" means the security-filter pattern and the native ACL, RBAC-scope, SharePoint and Purview options."
+      - generic [ref=e172]:
+        - heading "3Where each sits" [level=2] [ref=e173]
+        - paragraph [ref=e174]: RAG-OS is a governance layer between the channels people use and the Azure retrieval and model services underneath. Azure AI Search is the retrieval engine today. Foundry IQ can be added underneath as an alternative retriever without changing the governance layer above it.
+        - figure [ref=e175]:
+          - generic [ref=e176]:
+            - 'img "Where RAG-OS sits on Azure: channels, governance layer, retrieval, models and sources Five stacked layers. Channels: portal embed (available), Teams and Copilot Studio and MCP clients (roadmap). The RAG-OS governance layer: access policy, classification, grounding and tracing behind a governed API. Retrieval: Azure AI Search today, with Foundry IQ knowledge bases as an optional, roadmap retriever that runs on Azure AI Search. Models: Microsoft Foundry models and embeddings. Sources: local folders, Azure Blob and uploads today; SharePoint, Google Drive and SFTP on the roadmap." [ref=e178]':
+              - generic [ref=e179]: Where RAG-OS sits on Azure
+              - generic [ref=e181]: CHANNELS
+              - generic [ref=e182]: where people ask
+              - generic [ref=e184]: Portal embed
+              - generic [ref=e185]: one script tag · Entra token
+              - generic [ref=e187]: Teams · Copilot Studio
+              - generic [ref=e188]: via Foundry agent · roadmap
+              - generic [ref=e190]: MCP clients
+              - generic [ref=e191]: governed MCP server · roadmap
+              - generic [ref=e193]: RAG-OS
+              - generic [ref=e194]: governance layer
+              - generic [ref=e195]: in your subscription
+              - generic [ref=e197]: Governed API · every request carries the user's Entra identity
+              - generic [ref=e199]: Access policy
+              - generic [ref=e200]: ABAC · default deny
+              - generic [ref=e202]: Classification
+              - generic [ref=e203]: layers · SME review
+              - generic [ref=e205]: Grounding
+              - generic [ref=e206]: citations · abstain
+              - generic [ref=e208]: Tracing
+              - generic [ref=e209]: tokens · correlation
+              - generic [ref=e211]: RETRIEVAL
+              - generic [ref=e212]: Azure platform
+              - generic [ref=e214]: Azure AI Search
+              - generic [ref=e215]: hybrid + semantic · pre-filtered · today
+              - generic [ref=e217]: Foundry IQ knowledge bases
+              - generic [ref=e218]: agentic retrieval · optional · roadmap
+              - generic [ref=e220]: MODELS
+              - generic [ref=e221]: Microsoft Foundry
+              - generic [ref=e222]: or self-hosted
+              - generic [ref=e224]: Answer models on Foundry
+              - generic [ref=e225]: Claude · Azure OpenAI GPT · keyless
+              - generic [ref=e227]: Embeddings (one profile)
+              - generic [ref=e228]: self-hosted Qwen3 or Azure OpenAI
+              - generic [ref=e230]: SOURCES
+              - generic [ref=e231]: ingested, classified,
+              - generic [ref=e232]: access-tagged
+              - generic [ref=e234]: Available connectors
+              - generic [ref=e235]: local folders · Azure Blob · uploads
+              - generic [ref=e237]: Roadmap connectors
+              - generic [ref=e238]: SharePoint (native ACLs) · Drive · SFTP
+              - generic [ref=e239]: available today
+              - generic [ref=e240]: roadmap or optional
+            - generic [ref=e241]: Figure 1. The layers, top to bottom. RAG-OS owns the governance layer. Azure provides retrieval and models. Dashed items are on the roadmap or optional; Foundry IQ itself runs on Azure AI Search.
+        - list [ref=e242]:
+          - listitem [ref=e243]:
+            - strong [ref=e244]: "Today:"
+            - text: RAG-OS compiles each user's access policy into a filter that Azure AI Search applies inside hybrid and semantic search, then sends only the permitted passages to a model on Microsoft Foundry.
+          - listitem [ref=e245]:
+            - strong [ref=e246]: "With Foundry IQ (roadmap):"
+            - text: a RAG-OS-built index can be wrapped as a
+            - emphasis [ref=e247]: search-index knowledge source
+            - text: ", so agentic planning and multi-source fan-out sit under the same policy, classification and grounding layer."
+          - listitem [ref=e248]:
+            - strong [ref=e249]: "With native ACLs (roadmap):"
+            - text: for SharePoint, source permissions come from Azure's native ACL ingestion, and RAG-OS ANDs its attribute policy on top.
+      - generic [ref=e250]:
+        - heading "4Head-to-head comparison" [level=2] [ref=e251]
+        - paragraph [ref=e252]: Each cell gives a short description and a status. The Foundry IQ column covers knowledge bases and knowledge sources. The AI Search column covers document-level access on a search index you build yourself. On narrow screens, the table scrolls sideways.
+        - region "Head-to-head comparison table" [ref=e253]:
+          - table [ref=e254]:
+            - rowgroup [ref=e255]:
+              - row [ref=e256]:
+                - columnheader "Dimension" [ref=e257]
+                - columnheader "RAG-OS" [ref=e258]
+                - columnheader "Foundry IQ" [ref=e259]
+                - columnheader "AI Search document-level access" [ref=e260]
+            - rowgroup [ref=e261]:
+              - row [ref=e262]:
+                - columnheader "Document classification and taxonomy" [ref=e263]
+              - row [ref=e265]:
+                - cell "SME-owned taxonomy" [ref=e266]
+                - cell "Facets (department, hierarchical region and topic, document type, confidentiality, language) with synonyms, descriptions and parents. Validated for cycles and depth. Available" [ref=e267]:
+                  - text: Facets (department, hierarchical region and topic, document type, confidentiality, language) with synonyms, descriptions and parents. Validated for cycles and depth.
+                  - generic [ref=e268]: Available
+                - cell "No taxonomy authoring found. Built-in metadata extraction only. Not offered" [ref=e270]:
+                  - text: No taxonomy authoring found. Built-in metadata extraction only.
+                  - generic [ref=e271]: Not offered
+                - cell "You design the index fields and populate them. Build-it-yourself" [ref=e273]:
+                  - text: You design the index fields and populate them.
+                  - generic [ref=e274]: Build-it-yourself
+              - row [ref=e276]:
+                - cell "Layered tagging" [ref=e277]
+                - 'cell "Seven layers, cheapest first: source defaults, path rules, sidecar, Excel manifest, upload form, then classifiers. Available" [ref=e278]':
+                  - text: "Seven layers, cheapest first: source defaults, path rules, sidecar, Excel manifest, upload form, then classifiers."
+                  - generic [ref=e279]: Available
+                - cell "Generated pipelines follow a fixed template, and Microsoft advises against editing them. Not offered" [ref=e281]:
+                  - text: Generated pipelines follow a fixed template, and Microsoft advises against editing them.
+                  - generic [ref=e282]: Not offered
+                - cell "Your own skillset or push pipeline. Build-it-yourself" [ref=e284]:
+                  - text: Your own skillset or push pipeline.
+                  - generic [ref=e285]: Build-it-yourself
+              - row [ref=e287]:
+                - cell "Auto-classification" [ref=e288]
+                - cell "An embedding classifier reuses the search vectors, at zero LLM tokens. An optional LLM classifier handles close calls under a token cap. Available" [ref=e289]:
+                  - text: An embedding classifier reuses the search vectors, at zero LLM tokens. An optional LLM classifier handles close calls under a token cap.
+                  - generic [ref=e290]: Available
+                - cell "None found. A custom Web API skill drops SharePoint ACL inheritance and skips Purview-labelled documents. Not offered" [ref=e292]:
+                  - text: None found. A custom Web API skill drops SharePoint ACL inheritance and skips Purview-labelled documents.
+                  - generic [ref=e293]: Not offered
+                - cell "Custom skill. It can't be combined with native ACL or label ingestion in the same indexer pipeline. Build-it-yourself" [ref=e295]:
+                  - text: Custom skill. It can't be combined with native ACL or label ingestion in the same indexer pipeline.
+                  - generic [ref=e296]: Build-it-yourself
+              - row [ref=e298]:
+                - cell "Review queue and provenance" [ref=e299]
+                - cell "Low-confidence tags go to SME review. Approved tags are frozen. Each facet records its source and confidence. Available" [ref=e300]:
+                  - text: Low-confidence tags go to SME review. Approved tags are frozen. Each facet records its source and confidence.
+                  - generic [ref=e301]: Available
+                - cell "No human review queue found. Not offered" [ref=e303]:
+                  - text: No human review queue found.
+                  - generic [ref=e304]: Not offered
+                - cell "Not part of the service. Build-it-yourself" [ref=e306]:
+                  - text: Not part of the service.
+                  - generic [ref=e307]: Build-it-yourself
+              - row [ref=e309]:
+                - cell "Ontology" [ref=e310]
+                - cell "Ontology and knowledge-graph reasoning across documents. Roadmap" [ref=e311]:
+                  - text: Ontology and knowledge-graph reasoning across documents.
+                  - generic [ref=e312]: Roadmap
+                - cell "The Fabric Ontology knowledge source answers from an ontology modelled in Fabric IQ (structured data). Preview" [ref=e314]:
+                  - text: The Fabric Ontology knowledge source answers from an ontology modelled in Fabric IQ (structured data).
+                  - generic [ref=e315]: Preview
+                - cell "Not part of the service. Build-it-yourself" [ref=e317]:
+                  - text: Not part of the service.
+                  - generic [ref=e318]: Build-it-yourself
+              - row [ref=e320]:
+                - columnheader "User query filtering and access control" [ref=e321]
+              - row [ref=e323]:
+                - cell "Access model" [ref=e324]
+                - 'cell "Declarative attribute policy: (department AND region AND clearance) OR personal share. New attributes are added in configuration. Available" [ref=e325]':
+                  - text: "Declarative attribute policy:"
+                  - emphasis [ref=e326]: (department AND region AND clearance) OR personal share
+                  - text: . New attributes are added in configuration.
+                  - generic [ref=e327]: Available
+                - 'cell "Identity trimming only: users, groups, RBAC scope, SharePoint groups and Purview labels. Attribute rules are OData the caller writes (baseFilter / filterAddOn). Preview Build-it-yourself" [ref=e329]':
+                  - text: "Identity trimming only: users, groups, RBAC scope, SharePoint groups and Purview labels. Attribute rules are OData the caller writes ("
+                  - code [ref=e330]: baseFilter
+                  - text: /
+                  - code [ref=e331]: filterAddOn
+                  - text: ).
+                  - generic [ref=e332]:
+                    - generic [ref=e333]: Preview
+                    - generic [ref=e334]: Build-it-yourself
+                - cell "Security filters are GA. Native permissionFilter fields (userIds, groupIds, rbacScope) grant access when any one matches. Native GA Preview" [ref=e335]:
+                  - text: Security filters are GA. Native
+                  - code [ref=e336]: permissionFilter
+                  - text: fields (userIds, groupIds, rbacScope) grant access when any one matches.
+                  - generic [ref=e337]:
+                    - generic [ref=e338]: Native GA
+                    - generic [ref=e339]: Preview
+              - row [ref=e340]:
+                - cell "Hierarchy and clearance" [ref=e341]
+                - cell "Region expands upward (UK, then EMEA, then Global). A document's level must be at or below the user's clearance. A document with no level is denied. Available" [ref=e342]:
+                  - text: Region expands upward (UK, then EMEA, then Global). A document's level must be at or below the user's clearance. A document with no level is denied.
+                  - generic [ref=e343]: Available
+                - cell "No hierarchy or level logic. Encode it in your own filter. Build-it-yourself" [ref=e345]:
+                  - text: No hierarchy or level logic. Encode it in your own filter.
+                  - generic [ref=e346]: Build-it-yourself
+                - cell "No hierarchy or level logic. Encode it in a security filter. Build-it-yourself" [ref=e348]:
+                  - text: No hierarchy or level logic. Encode it in a security filter.
+                  - generic [ref=e349]: Build-it-yourself
+              - row [ref=e351]:
+                - cell "Source ACL sync" [ref=e352]
+                - cell "Access tags come from policy, upload and admin. SharePoint permission sync through native ACL ingestion is planned. Roadmap" [ref=e353]:
+                  - text: Access tags come from policy, upload and admin. SharePoint permission sync through native ACL ingestion is planned.
+                  - generic [ref=e354]: Roadmap
+                - cell "Permission ingestion for Blob / ADLS Gen2 and indexed SharePoint. Not in the stable 2026-04-01 API. Preview" [ref=e356]:
+                  - text: Permission ingestion for Blob / ADLS Gen2 and indexed SharePoint. Not in the stable 2026-04-01 API.
+                  - generic [ref=e357]: Preview
+                - cell "ADLS Gen2 POSIX-like ACLs and RBAC scope, plus SharePoint ACLs. Changes need a re-sync. Preview" [ref=e359]:
+                  - text: ADLS Gen2 POSIX-like ACLs and RBAC scope, plus SharePoint ACLs. Changes need a re-sync.
+                  - generic [ref=e360]: Preview
+              - row [ref=e362]:
+                - cell "Purview sensitivity labels" [ref=e363]
+                - cell "Labels read at ingestion and mapped, through a customer-reviewed table, to clearance and confidentiality. The same access policy enforces them, and citations show label badges (section 6). Roadmap" [ref=e364]:
+                  - text: Labels read at ingestion and mapped, through a customer-reviewed table, to clearance and confidentiality. The same access policy enforces them, and citations show label badges (section 6).
+                  - generic [ref=e365]: Roadmap
+                - cell "Labels are ingested and enforced, and returned per reference. Preview" [ref=e367]:
+                  - text: Labels are ingested and enforced, and returned per reference.
+                  - generic [ref=e368]: Preview
+                - cell "Built-in indexer sources only (Blob, ADLS Gen2, SharePoint, OneLake). Single tenant, no guests. A Global Administrator or Privileged Role Administrator grants the roles, and the setting can't be reversed. GA targeted for October 2026. Preview" [ref=e370]:
+                  - text: Built-in indexer sources only (Blob, ADLS Gen2, SharePoint, OneLake). Single tenant, no guests. A Global Administrator or Privileged Role Administrator grants the roles, and the setting can't be reversed. GA targeted for October 2026.
+                  - generic [ref=e371]: Preview
+              - row [ref=e373]:
+                - cell "Enforcement point" [ref=e374]
+                - cell "Pre-filter inside Azure AI Search on every search, facet and listing call. Restricted text never reaches the model. Available" [ref=e375]:
+                  - text: Pre-filter inside Azure AI Search on every search, facet and listing call. Restricted text never reaches the model.
+                  - generic [ref=e376]: Available
+                - cell "The user's token goes in x-ms-query-source-authorization, and the service trims results. Preview" [ref=e378]:
+                  - text: The user's token goes in
+                  - code [ref=e379]: x-ms-query-source-authorization
+                  - text: ", and the service trims results."
+                  - generic [ref=e380]: Preview
+                - cell "The service enforces either a token header (Preview) or a security filter the app adds (GA). Native GA Preview" [ref=e382]:
+                  - text: The service enforces either a token header (Preview) or a security filter the app adds (GA).
+                  - generic [ref=e383]:
+                    - generic [ref=e384]: Native GA
+                    - generic [ref=e385]: Preview
+              - row [ref=e386]:
+                - cell "Default-deny vs fail-open" [ref=e387]
+                - cell "Missing required attributes mean deny-all, and the search never runs. Claim values are allow-list validated, which blocks filter injection. Available" [ref=e388]:
+                  - text: Missing required attributes mean deny-all, and the search never runs. Claim values are allow-list validated, which blocks filter injection.
+                  - generic [ref=e389]: Available
+                - cell "Per Microsoft's docs, indexed sources return unfiltered results if the user token is omitted, or if permission ingestion wasn't set up when the source was created. Preview" [ref=e391]:
+                  - text: Per Microsoft's docs, indexed sources return
+                  - strong [ref=e392]: unfiltered
+                  - text: results if the user token is omitted, or if permission ingestion wasn't set up when the source was created.
+                  - generic [ref=e393]: Preview
+                - cell "Direct search without a token returns only public documents. An ACL evaluation failure returns a 5xx error (fails closed). Preview" [ref=e395]:
+                  - text: Direct search without a token returns only public documents. An ACL evaluation failure returns a 5xx error (fails closed).
+                  - generic [ref=e396]: Preview
+              - row [ref=e398]:
+                - cell "Explain access" [ref=e399]
+                - cell "An explain command prints the exact filter. An admin-only near-miss probe explains refusals. Available" [ref=e400]:
+                  - text: An explain command prints the exact filter. An admin-only near-miss probe explains refusals.
+                  - generic [ref=e401]: Available
+                - cell "No explain API. Elevated read isn't available on knowledge-base retrieval. Not offered" [ref=e403]:
+                  - text: No explain API. Elevated read isn't available on knowledge-base retrieval.
+                  - generic [ref=e404]: Not offered
+                - cell "No explain-why-denied API. The elevated-read header allows manual comparison. Preview" [ref=e406]:
+                  - text: No explain-why-denied API. The elevated-read header allows manual comparison.
+                  - generic [ref=e407]: Preview
+              - row [ref=e409]:
+                - cell "Admin bypass and audit" [ref=e410]
+                - cell "Bypass needs the Entra app role rag.admin and is always audit-logged. Available" [ref=e411]:
+                  - text: Bypass needs the Entra app role
+                  - code [ref=e412]: rag.admin
+                  - text: and is always audit-logged.
+                  - generic [ref=e413]: Available
+                - cell "No bypass on retrieval. Not offered" [ref=e415]:
+                  - text: No bypass on retrieval.
+                  - generic [ref=e416]: Not offered
+                - cell "Elevated read with a Contributor role. Purview audit entries are written only for elevated reads on Purview indexes. Preview" [ref=e418]:
+                  - text: Elevated read with a Contributor role. Purview audit entries are written only for elevated reads on Purview indexes.
+                  - generic [ref=e419]: Preview
+              - row [ref=e421]:
+                - cell "Identity providers" [ref=e422]
+                - 'cell "Microsoft Entra ID: app roles decide what people can do, and directory attributes decide what they can see. Attributes are administered through Microsoft Graph. Available" [ref=e423]':
+                  - text: "Microsoft Entra ID: app roles decide what people can do, and directory attributes decide what they can see. Attributes are administered through Microsoft Graph."
+                  - generic [ref=e424]: Available
+                - cell "Entra tokens. Work IQ uses an on-behalf-of exchange. Preview" [ref=e426]:
+                  - text: Entra tokens. Work IQ uses an on-behalf-of exchange.
+                  - generic [ref=e427]: Preview
+                - cell "Native options take Entra object IDs only. Security filters work with any identity system. Native GA Preview" [ref=e429]:
+                  - text: Native options take Entra object IDs only. Security filters work with any identity system.
+                  - generic [ref=e430]:
+                    - generic [ref=e431]: Native GA
+                    - generic [ref=e432]: Preview
+              - row [ref=e433]:
+                - columnheader "Ingestion, connectors and formats" [ref=e434]
+              - row [ref=e436]:
+                - cell "Connectors" [ref=e437]
+                - cell "Local folders, Azure Blob (keyless) and UI / API upload today. SharePoint, Google Drive and SFTP / FTPS are planned. Available Roadmap" [ref=e438]:
+                  - text: Local folders, Azure Blob (keyless) and UI / API upload today. SharePoint, Google Drive and SFTP / FTPS are planned.
+                  - generic [ref=e439]:
+                    - generic [ref=e440]: Available
+                    - generic [ref=e441]: Roadmap
+                - cell "Search index, Blob, OneLake and Web are GA. SharePoint (indexed and remote), Work IQ, Fabric, SQL, File and MCP are Preview. Native GA Preview" [ref=e442]:
+                  - text: Search index, Blob, OneLake and Web are GA. SharePoint (indexed and remote), Work IQ, Fabric, SQL, File and MCP are Preview.
+                  - generic [ref=e443]:
+                    - generic [ref=e444]: Native GA
+                    - generic [ref=e445]: Preview
+                - cell "Indexers and the push API. The ACL-aware ADLS Gen2 and SharePoint indexers are Preview. Native GA Preview" [ref=e446]:
+                  - text: Indexers and the push API. The ACL-aware ADLS Gen2 and SharePoint indexers are Preview.
+                  - generic [ref=e447]:
+                    - generic [ref=e448]: Native GA
+                    - generic [ref=e449]: Preview
+              - row [ref=e450]:
+                - cell "File formats and OCR" [ref=e451]
+                - cell "PDF (page-aware, text layer), DOCX, TXT / MD, CSV / TSV, XLSX / XLSM / XLS, JSON / JSONL / JSONP and XML. OCR, PPTX and legacy DOC are planned. Available Roadmap" [ref=e452]:
+                  - text: PDF (page-aware, text layer), DOCX, TXT / MD, CSV / TSV, XLSX / XLSM / XLS, JSON / JSONL / JSONP and XML. OCR, PPTX and legacy DOC are planned.
+                  - generic [ref=e453]:
+                    - generic [ref=e454]: Available
+                    - generic [ref=e455]: Roadmap
+                - cell "Built-in extraction. Layout-aware ingestion through Content Understanding is Preview. Native GA Preview" [ref=e456]:
+                  - text: Built-in extraction. Layout-aware ingestion through Content Understanding is Preview.
+                  - generic [ref=e457]:
+                    - generic [ref=e458]: Native GA
+                    - generic [ref=e459]: Preview
+                - cell "Assembled from indexers and skillsets. Build-it-yourself" [ref=e460]:
+                  - text: Assembled from indexers and skillsets.
+                  - generic [ref=e461]: Build-it-yourself
+              - row [ref=e463]:
+                - cell "Change detection" [ref=e464]
+                - 'cell "Version key plus content hash: no re-embedding when content is unchanged, and tag-only changes merge in place. Deletions propagate. Ingestion can be paused or throttled. Available" [ref=e465]':
+                  - text: "Version key plus content hash: no re-embedding when content is unchanged, and tag-only changes merge in place. Deletions propagate. Ingestion can be paused or throttled."
+                  - generic [ref=e466]: Available
+                - cell "Ingestion schedule (minimum 5 minutes) and a status API with per-document errors. Native GA" [ref=e468]:
+                  - text: Ingestion schedule (minimum 5 minutes) and a status API with per-document errors.
+                  - generic [ref=e469]: Native GA
+                - cell "Indexer schedules. ACL changes need a touch, /resetdocs or /resync. Native GA Preview" [ref=e471]:
+                  - text: Indexer schedules. ACL changes need a touch,
+                  - code [ref=e472]: /resetdocs
+                  - text: or
+                  - code [ref=e473]: /resync
+                  - text: .
+                  - generic [ref=e474]:
+                    - generic [ref=e475]: Native GA
+                    - generic [ref=e476]: Preview
+              - row [ref=e477]:
+                - columnheader "Retrieval" [ref=e478]
+              - row [ref=e480]:
+                - cell "Hybrid and semantic ranking" [ref=e481]
+                - cell "Keyword and vector search (k=50), then the semantic ranker. A relevance bar applies and the top 8 passages are kept. Synonym expansion and follow-up condensation. Available" [ref=e482]:
+                  - text: Keyword and vector search (k=50), then the semantic ranker. A relevance bar applies and the top 8 passages are kept. Synonym expansion and follow-up condensation.
+                  - generic [ref=e483]: Available
+                - cell "Subqueries run as keyword, vector or hybrid searches, each reranked by the semantic ranker. Native GA" [ref=e485]:
+                  - text: Subqueries run as keyword, vector or hybrid searches, each reranked by the semantic ranker.
+                  - generic [ref=e486]: Native GA
+                - cell "Hybrid search and the semantic ranker. Native GA" [ref=e488]:
+                  - text: Hybrid search and the semantic ranker.
+                  - generic [ref=e489]: Native GA
+              - row [ref=e491]:
+                - cell "Agentic query planning" [ref=e492]
+                - cell "Planned by adopting Foundry IQ as an alternative retriever. Roadmap" [ref=e493]:
+                  - text: Planned by adopting Foundry IQ as an alternative retriever.
+                  - generic [ref=e494]: Roadmap
+                - cell "LLM planning at low, medium or auto effort is Preview. The GA scope is minimal effort (no LLM). Preview" [ref=e496]:
+                  - text: LLM planning at low, medium or auto effort is Preview. The GA scope is minimal effort (no LLM).
+                  - generic [ref=e497]: Preview
+                - cell "Comes through Foundry IQ agentic retrieval. Preview" [ref=e499]:
+                  - text: Comes through Foundry IQ agentic retrieval.
+                  - generic [ref=e500]: Preview
+              - row [ref=e502]:
+                - cell "Multi-source fan-out" [ref=e503]
+                - cell "One governed index today. Multi-source through Foundry IQ is planned. Roadmap" [ref=e504]:
+                  - text: One governed index today. Multi-source through Foundry IQ is planned.
+                  - generic [ref=e505]: Roadmap
+                - cell "Up to 10 knowledge sources per knowledge base, merged and reranked. Native GA" [ref=e507]:
+                  - text: Up to 10 knowledge sources per knowledge base, merged and reranked.
+                  - generic [ref=e508]: Native GA
+                - cell "Several indexes, merged by your app. Build-it-yourself" [ref=e510]:
+                  - text: Several indexes, merged by your app.
+                  - generic [ref=e511]: Build-it-yourself
+              - row [ref=e513]:
+                - columnheader "Answer quality" [ref=e514]
+              - row [ref=e516]:
+                - cell "Citations" [ref=e517]
+                - cell "Page-level [n] citations with heading and snippet, de-duplicated. Available" [ref=e518]:
+                  - text: Page-level
+                  - code [ref=e519]: "[n]"
+                  - text: citations with heading and snippet, de-duplicated.
+                  - generic [ref=e520]: Available
+                - cell "A references array is GA. Inline citations through answer synthesis, and citationUrl, are Preview. Native GA Preview" [ref=e522]:
+                  - text: A references array is GA. Inline citations through answer synthesis, and
+                  - code [ref=e523]: citationUrl
+                  - text: ", are Preview."
+                  - generic [ref=e524]:
+                    - generic [ref=e525]: Native GA
+                    - generic [ref=e526]: Preview
+                - cell "Returns documents. Citations are up to your app. Build-it-yourself" [ref=e527]:
+                  - text: Returns documents. Citations are up to your app.
+                  - generic [ref=e528]: Build-it-yourself
+              - row [ref=e530]:
+                - cell "Abstention and grounding guard" [ref=e531]
+                - cell "Abstains without calling the model when nothing passes. Uncited answers are refused. Every refusal carries a reason code. Available" [ref=e532]:
+                  - text: Abstains without calling the model when nothing passes. Uncited answers are refused. Every refusal carries a reason code.
+                  - generic [ref=e533]: Available
+                - cell "Reranker threshold and answer instructions. No control that refuses uncited answers was found. Preview" [ref=e535]:
+                  - text: Reranker threshold and answer instructions. No control that refuses uncited answers was found.
+                  - generic [ref=e536]: Preview
+                - cell "Up to your app. Build-it-yourself" [ref=e538]:
+                  - text: Up to your app.
+                  - generic [ref=e539]: Build-it-yourself
+              - row [ref=e541]:
+                - cell "Conflicts and versions" [ref=e542]
+                - cell "Effective dates are included in the prompt, and conflicts are reported in prose. A structured conflict flag and an \"as of\" filter are planned. Partial" [ref=e543]:
+                  - text: Effective dates are included in the prompt, and conflicts are reported in prose. A structured conflict flag and an "as of" filter are planned.
+                  - generic [ref=e544]: Partial
+                - cell "Freshness-policy boosting. Preview" [ref=e546]:
+                  - text: Freshness-policy boosting.
+                  - generic [ref=e547]: Preview
+                - cell "Filters and scoring you design. Build-it-yourself" [ref=e549]:
+                  - text: Filters and scoring you design.
+                  - generic [ref=e550]: Build-it-yourself
+              - row [ref=e552]:
+                - columnheader "Embeddings, models and data residency" [ref=e553]
+              - row [ref=e555]:
+                - cell "Embeddings" [ref=e556]
+                - cell "One pinned profile shared by ingestion and query, so they can't drift apart. Self-hosted Qwen3-Embedding-0.6B (no per-token cost) or Azure OpenAI text-embedding-3-small. Available" [ref=e557]:
+                  - text: One pinned profile shared by ingestion and query, so they can't drift apart. Self-hosted Qwen3-Embedding-0.6B (no per-token cost) or Azure OpenAI text-embedding-3-small.
+                  - generic [ref=e558]: Available
+                - cell "Generated pipelines accept Azure OpenAI embeddings only. A self-hosted model needs your own index with a custom vectorizer. Native GA Build-it-yourself" [ref=e560]:
+                  - text: Generated pipelines accept Azure OpenAI embeddings only. A self-hosted model needs your own index with a custom vectorizer.
+                  - generic [ref=e561]:
+                    - generic [ref=e562]: Native GA
+                    - generic [ref=e563]: Build-it-yourself
+                - cell "Any supported vectorizer. Keeping ingestion and query on the same model is your job. Native GA" [ref=e564]:
+                  - text: Any supported vectorizer. Keeping ingestion and query on the same model is your job.
+                  - generic [ref=e565]: Native GA
+              - row [ref=e567]:
+                - cell "Answer models" [ref=e568]
+                - cell "Claude on Foundry or Azure OpenAI GPT, with separate answer and utility roles. Available" [ref=e569]:
+                  - text: Claude on Foundry or Azure OpenAI GPT, with separate answer and utility roles.
+                  - generic [ref=e570]: Available
+                - cell "Knowledge-base planning and synthesis accept Azure OpenAI GPT models only. MCP clients such as Claude can call the knowledge base. Preview" [ref=e572]:
+                  - text: Knowledge-base planning and synthesis accept Azure OpenAI GPT models only. MCP clients such as Claude can call the knowledge base.
+                  - generic [ref=e573]: Preview
+                - cell "No model inside. You choose the model in your app. Build-it-yourself" [ref=e575]:
+                  - text: No model inside. You choose the model in your app.
+                  - generic [ref=e576]: Build-it-yourself
+              - row [ref=e578]:
+                - cell "Data residency" [ref=e579]
+                - cell "Runs in your subscription. Only entitled passages reach the model. Embeddings can stay inside the deployment. Available" [ref=e580]:
+                  - text: Runs in your subscription. Only entitled passages reach the model. Embeddings can stay inside the deployment.
+                  - generic [ref=e581]: Available
+                - cell "Azure service with network isolation and managed identity (GA). The Work IQ source may send data outside the Azure compliance boundary. Native GA Preview" [ref=e583]:
+                  - text: Azure service with network isolation and managed identity (GA). The Work IQ source may send data outside the Azure compliance boundary.
+                  - generic [ref=e584]:
+                    - generic [ref=e585]: Native GA
+                    - generic [ref=e586]: Preview
+                - cell "Azure service in your subscription. Native GA" [ref=e587]:
+                  - text: Azure service in your subscription.
+                  - generic [ref=e588]: Native GA
+              - row [ref=e590]:
+                - columnheader "Observability, tooling and channels" [ref=e591]
+              - row [ref=e593]:
+                - cell "Observability and token cost" [ref=e594]
+                - cell "Token use (input, output, cached, embedding) is recorded on every answer. One correlation ID runs end to end. Admins see stage-by-stage traces with replay. OpenTelemetry to Application Insights. Available" [ref=e595]:
+                  - text: Token use (input, output, cached, embedding) is recorded on every answer. One correlation ID runs end to end. Admins see stage-by-stage traces with replay. OpenTelemetry to Application Insights.
+                  - generic [ref=e596]: Available
+                - cell "The per-response activity log has token counts. MCP responses omit activity and references. No agentic-specific Azure Monitor category was found. Native GA Preview" [ref=e598]:
+                  - text: The per-response activity log has token counts. MCP responses omit activity and references. No agentic-specific Azure Monitor category was found.
+                  - generic [ref=e599]:
+                    - generic [ref=e600]: Native GA
+                    - generic [ref=e601]: Preview
+                - cell "Azure Monitor operation logs and metrics. Native GA" [ref=e602]:
+                  - text: Azure Monitor operation logs and metrics.
+                  - generic [ref=e603]: Native GA
+              - row [ref=e605]:
+                - cell "Admin and SME tooling" [ref=e606]
+                - 'cell "Admin console: review queue, user attributes written to Entra, deletes, ingestion pause and throttle, query traces. UI editors for taxonomy and policy are planned. Available Roadmap" [ref=e607]':
+                  - text: "Admin console: review queue, user attributes written to Entra, deletes, ingestion pause and throttle, query traces. UI editors for taxonomy and policy are planned."
+                  - generic [ref=e608]:
+                    - generic [ref=e609]: Available
+                    - generic [ref=e610]: Roadmap
+                - cell "The Foundry and Azure portals expose agentic features with preview schemas. Preview" [ref=e611]:
+                  - text: The Foundry and Azure portals expose agentic features with preview schemas.
+                  - generic [ref=e612]: Preview
+                - cell "Native ACL features aren't supported in the Azure portal. Use REST or the preview SDKs. Preview Build-it-yourself" [ref=e614]:
+                  - text: Native ACL features aren't supported in the Azure portal. Use REST or the preview SDKs.
+                  - generic [ref=e615]:
+                    - generic [ref=e616]: Preview
+                    - generic [ref=e617]: Build-it-yourself
+              - row [ref=e618]:
+                - cell "Portal embed" [ref=e619]
+                - cell "One script tag. The host passes an Entra token by postMessage. Origin allow-list and CSP frame-ancestors. Works for users in your Entra tenant today; customer-portal sign-in (External ID) is planned. Available Roadmap" [ref=e620]:
+                  - text: One script tag. The host passes an Entra token by
+                  - code [ref=e621]: postMessage
+                  - text: . Origin allow-list and CSP
+                  - code [ref=e622]: frame-ancestors
+                  - text: . Works for users in your Entra tenant today; customer-portal sign-in (External ID) is planned.
+                  - generic [ref=e623]:
+                    - generic [ref=e624]: Available
+                    - generic [ref=e625]: Roadmap
+                - cell "Knowledge-base CORS allows direct browser calls. You build the UI. Preview Build-it-yourself" [ref=e626]:
+                  - text: Knowledge-base CORS allows direct browser calls. You build the UI.
+                  - generic [ref=e627]:
+                    - generic [ref=e628]: Preview
+                    - generic [ref=e629]: Build-it-yourself
+                - cell "Up to your app. Build-it-yourself" [ref=e630]:
+                  - text: Up to your app.
+                  - generic [ref=e631]: Build-it-yourself
+              - row [ref=e633]:
+                - cell "MCP" [ref=e634]
+                - cell "Governed retrieval as an MCP server that applies the RAG-OS policy for the calling user. Roadmap" [ref=e635]:
+                  - text: Governed retrieval as an MCP server that applies the RAG-OS policy for the calling user.
+                  - generic [ref=e636]: Roadmap
+                - cell "Every knowledge base is an MCP server with the knowledge_base_retrieve tool. Native GA" [ref=e638]:
+                  - text: Every knowledge base is an MCP server with the
+                  - code [ref=e639]: knowledge_base_retrieve
+                  - text: tool.
+                  - generic [ref=e640]: Native GA
+                - cell "Comes through Foundry IQ. Native GA" [ref=e642]:
+                  - text: Comes through Foundry IQ.
+                  - generic [ref=e643]: Native GA
+              - row [ref=e645]:
+                - cell "Teams and Copilot Studio" [ref=e646]
+                - cell "Publish as a Foundry agent for Teams and Copilot Studio. Roadmap" [ref=e647]:
+                  - text: Publish as a Foundry agent for Teams and Copilot Studio.
+                  - generic [ref=e648]: Roadmap
+                - cell "Knowledge base, then Foundry agent, then \"Connect to a Microsoft Foundry agent\" in Copilot Studio. Preview" [ref=e650]:
+                  - text: Knowledge base, then Foundry agent, then "Connect to a Microsoft Foundry agent" in Copilot Studio.
+                  - generic [ref=e651]: Preview
+                - cell "Up to your app. Build-it-yourself" [ref=e653]:
+                  - text: Up to your app.
+                  - generic [ref=e654]: Build-it-yourself
+              - row [ref=e656]:
+                - columnheader "Deployment, compliance and pricing" [ref=e657]
+              - row [ref=e659]:
+                - cell "Deployment and operations" [ref=e660]
+                - cell "Azure Container Apps in your subscription. Query and ingestion scale independently (workers scale from 0 to 10). Keyless managed identity. Idempotent scripted provisioning. Private endpoints and VNet are planned. Available Roadmap" [ref=e661]:
+                  - text: Azure Container Apps in your subscription. Query and ingestion scale independently (workers scale from 0 to 10). Keyless managed identity. Idempotent scripted provisioning. Private endpoints and VNet are planned.
+                  - generic [ref=e662]:
+                    - generic [ref=e663]: Available
+                    - generic [ref=e664]: Roadmap
+                - cell "Run by Microsoft, with no app to operate. The Serverless Developer tier is Preview. Native GA Preview" [ref=e665]:
+                  - text: Run by Microsoft, with no app to operate. The Serverless Developer tier is Preview.
+                  - generic [ref=e666]:
+                    - generic [ref=e667]: Native GA
+                    - generic [ref=e668]: Preview
+                - cell "Managed search service. You build and run the app around it. Native GA Build-it-yourself" [ref=e669]:
+                  - text: Managed search service. You build and run the app around it.
+                  - generic [ref=e670]:
+                    - generic [ref=e671]: Native GA
+                    - generic [ref=e672]: Build-it-yourself
+              - row [ref=e673]:
+                - cell "Compliance" [ref=e674]
+                - cell "Pre-filtered retrieval and audited admin bypass. Purview label mapping and evaluation release gates are planned. Available Roadmap" [ref=e675]:
+                  - text: Pre-filtered retrieval and audited admin bypass. Purview label mapping and evaluation release gates are planned.
+                  - generic [ref=e676]:
+                    - generic [ref=e677]: Available
+                    - generic [ref=e678]: Roadmap
+                - cell "Purview label governance and permission sync. Preview" [ref=e679]:
+                  - text: Purview label governance and permission sync.
+                  - generic [ref=e680]: Preview
+                - cell "Purview labels (Preview). Audit entries only for elevated reads on Purview indexes. Preview" [ref=e682]:
+                  - text: Purview labels (Preview). Audit entries only for elevated reads on Purview indexes.
+                  - generic [ref=e683]: Preview
+              - row [ref=e685]:
+                - cell "Pricing model" [ref=e686]
+                - cell "Azure consumption in your subscription. Self-hosted embeddings have no per-token fee. Per-answer token figures support chargeback. SaaS tiers are planned. Available Roadmap" [ref=e687]:
+                  - text: Azure consumption in your subscription. Self-hosted embeddings have no per-token fee. Per-answer token figures support chargeback. SaaS tiers are planned.
+                  - generic [ref=e688]:
+                    - generic [ref=e689]: Available
+                    - generic [ref=e690]: Roadmap
+                - cell "First 50M agentic tokens free each month, then priced per 1M tokens by effort tier. Azure OpenAI tokens are billed separately. Remote SharePoint needs a per-user Microsoft 365 Copilot licence or pay-as-you-go. Native GA" [ref=e691]:
+                  - text: First 50M agentic tokens free each month, then priced per 1M tokens by effort tier. Azure OpenAI tokens are billed separately. Remote SharePoint needs a per-user Microsoft 365 Copilot licence or pay-as-you-go.
+                  - generic [ref=e692]: Native GA
+                - cell "Billed by search service tier. First 1,000 semantic ranker requests free each month. Native GA" [ref=e694]:
+                  - text: Billed by search service tier. First 1,000 semantic ranker requests free each month.
+                  - generic [ref=e695]: Native GA
+        - paragraph [ref=e698]:
+          - strong [ref=e699]: Where Azure is stronger.
+          - text: Foundry IQ leads on agentic query planning and multi-source fan-out. It reaches Microsoft 365, SharePoint, OneLake and Work IQ first-hand. It gives every knowledge base a native MCP endpoint. It is a Microsoft-run service with nothing to operate, and it has a route to Purview labels and native ACLs. The first 50M agentic tokens each month are free, and Copilot Studio and Teams provide distribution. For a Microsoft 365 estate whose source permissions are already accurate, these are real advantages. RAG-OS plans to adopt them rather than rebuild them.
+      - generic [ref=e700]:
+        - heading "5Feature catalogue" [level=2] [ref=e701]
+        - paragraph [ref=e702]:
+          - text: "Each card explains one feature:"
+          - strong [ref=e703]: what it is
+          - text: ","
+          - strong [ref=e704]: why it matters
+          - text: and a
+          - strong [ref=e705]: concrete example
+          - text: . It then gives the status on each side and links to the primary documentation. The catalogue covers RAG-OS features and the key Azure features they compare with.
+        - heading "5.1 Access control" [level=3] [ref=e706]
+        - generic [ref=e707]:
+          - article [ref=e708]:
+            - paragraph [ref=e709]: RAG-OS
+            - heading "Attribute-based access policy" [level=4] [ref=e710]
+            - generic [ref=e711]:
+              - term [ref=e712]: What it is
+              - definition [ref=e713]:
+                - text: A declarative policy that matches user attributes from Microsoft Entra ID (department, region, clearance, employee ID) against access fields on each document. The rule is
+                - emphasis [ref=e714]: (department AND region AND clearance) OR personal share
+                - text: . A personal share is an exact employee ID, and wildcards never grant one. A role-gated "Only me" upload grants access to the uploader alone. New attributes, such as cost centre, are added in configuration, not code.
+              - term [ref=e715]: Purpose
+              - definition [ref=e716]: Many document estates (file shares, uploads, exported archives) have no trustworthy source ACLs. A policy states the organisation's rules directly and applies them the same way across every source.
+              - term [ref=e717]: Example
+              - definition [ref=e718]: A UK HR analyst with clearance 2 asks, "What is the parental-leave policy for contractors?" The search considers only HR or all-department documents tagged UK, EMEA or Global at level 2 or below. Documents in the Legal folder, and Restricted (level 3) HR files, are never retrieved.
+            - generic [ref=e719]:
+              - generic [ref=e720]: RAG-OS
+              - generic [ref=e721]: Available
+              - generic [ref=e723]: Azure equivalent
+              - generic [ref=e724]:
+                - generic [ref=e725]: Build-it-yourself
+                - text: Native trimming is identity-based. Attribute rules are an OData filter you write and maintain.
+            - paragraph [ref=e726]:
+              - text: "References:"
+              - link "Security filters for trimming results" [ref=e727] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-security-trimming-for-azure-search
+              - text: ·
+              - link "Document-level access overview" [ref=e728] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-document-level-access-overview
+              - text: ·
+              - link "RAG-OS Overview §5" [ref=e729] [cursor=pointer]:
+                - /url: RAG-OS-Overview.html#s-security
+          - article [ref=e730]:
+            - paragraph [ref=e731]: RAG-OS
+            - heading "Region hierarchy and clearance levels" [level=4] [ref=e732]
+            - generic [ref=e733]:
+              - term [ref=e734]: What it is
+              - definition [ref=e735]: Region values form a hierarchy (UK, then EMEA, then Global), so a UK user also sees EMEA-wide and global documents. Clearance is ordinal. A document's level must be at or below the user's clearance, and a document with no level is denied.
+              - term [ref=e736]: Purpose
+              - definition [ref=e737]: This matches how organisations publish policy (global, regional, local) without tagging every document with every country. It also models confidentiality tiers that identity groups express poorly.
+              - term [ref=e738]: Example
+              - definition [ref=e739]: A Paris-based finance manager (region FR, clearance 1) sees the global expense policy and the EMEA travel addendum. They don't see a UK-only bonus memo or a level 2 audit report.
+            - generic [ref=e740]:
+              - generic [ref=e741]: RAG-OS
+              - generic [ref=e742]: Available
+              - generic [ref=e744]: Azure equivalent
+              - generic [ref=e745]:
+                - generic [ref=e746]: Build-it-yourself
+                - text: The native permission types are userIds, groupIds and rbacScope (plus Purview labels), and any match grants access. There is no hierarchy or level logic.
+            - paragraph [ref=e747]:
+              - text: "References:"
+              - link "Permission fields (push API)" [ref=e748] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-index-access-control-lists-and-rbac-push-api
+              - text: ·
+              - link "Query-time ACL / RBAC enforcement" [ref=e749] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement
+          - article [ref=e750]:
+            - paragraph [ref=e751]: RAG-OS
+            - heading "Default deny and injection-safe filters" [level=4] [ref=e752]
+            - generic [ref=e753]:
+              - term [ref=e754]: What it is
+              - definition [ref=e755]:
+                - text: The policy compiles to an OData filter (
+                - code [ref=e756]: search.in
+                - text: ","
+                - code [ref=e757]: le
+                - text: ) that Azure AI Search applies on every search, facet and listing call. If a required attribute is missing, the result is deny-all and the search never runs. Each claim value is checked against an allow-list pattern first. A bad value is rejected (HTTP 401), never "sanitised". A property test checks that the compiled filter and the policy's reference logic always agree.
+              - term [ref=e758]: Purpose
+              - definition [ref=e759]: Pre-filtering means restricted text never reaches the model, the logs or the answer. Default deny means a misconfiguration fails closed.
+              - term [ref=e760]: Example
+              - definition [ref=e761]:
+                - text: A new joiner's Entra profile has no department yet, and they have no personal shares. Instead of seeing "whatever looks public", they get a
+                - code [ref=e762]: no_access
+                - text: response until an admin sets the attribute.
+            - generic [ref=e763]:
+              - generic [ref=e764]: RAG-OS
+              - generic [ref=e765]: Available
+              - generic [ref=e767]: Azure equivalent
+              - generic [ref=e768]:
+                - generic [ref=e769]: Preview
+                - text: Direct search without a user token returns only public documents, and ACL evaluation failures return a 5xx error. Knowledge-base retrieval returns unfiltered results if the token is omitted or permission ingestion wasn't configured.
+            - paragraph [ref=e770]:
+              - text: "References:"
+              - link "Query-time enforcement" [ref=e771] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement
+              - text: ·
+              - link "Knowledge base retrieve (permissions)" [ref=e772] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve
+              - text: ·
+              - link "Connect Foundry IQ to an agent" [ref=e773] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/foundry-iq-connect
+          - article [ref=e774]:
+            - paragraph [ref=e775]: RAG-OS
+            - heading "Explain access and audited admin bypass" [level=4] [ref=e776]
+            - generic [ref=e777]:
+              - term [ref=e778]: What it is
+              - definition [ref=e779]:
+                - text: An explain command prints the exact filter a given user's searches carry. Admins (Entra app role
+                - code [ref=e780]: rag.admin
+                - text: ) can bypass the filter to investigate, and every bypass is audit-logged. An admin-only "near-miss" probe explains a refusal by re-running the query without the access filter. Admins can also edit user attributes, which are written back to Entra through Microsoft Graph.
+              - term [ref=e781]: Purpose
+              - definition [ref=e782]: Questions like "why can't she see the travel policy?" get an answer backed by evidence, without giving anyone standing broad access.
+              - term [ref=e783]: Example
+              - definition [ref=e784]: A user reports "it says it has nothing on bonuses". The near-miss probe finds two documents at clearance 2, and the user is clearance 1. The system is working as designed, and support has a clear answer to give.
+            - generic [ref=e785]:
+              - generic [ref=e786]: RAG-OS
+              - generic [ref=e787]: Available
+              - generic [ref=e789]: Azure equivalent
+              - generic [ref=e790]:
+                - generic [ref=e791]: Preview
+                - text: The elevated-read header shows all documents on Search POST for manual comparison. It isn't available on knowledge-base retrieval, and there is no explain-why-denied API.
+            - paragraph [ref=e792]:
+              - text: "References:"
+              - link "Elevated read" [ref=e793] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement
+              - text: ·
+              - link "Purview query-time audit" [ref=e794] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels
+          - article [ref=e795]:
+            - paragraph [ref=e796]: Azure AI Search
+            - heading "Security filters" [level=4] [ref=e797]
+            - generic [ref=e798]:
+              - term [ref=e799]: What it is
+              - definition [ref=e800]:
+                - text: A string-collection field on each document (for example, group IDs) and a
+                - code [ref=e801]: search.in
+                - text: filter that the application adds to every query. The pattern isn't tied to an API version.
+              - term [ref=e802]: Purpose
+              - definition [ref=e803]: "Microsoft recommends it for custom identity systems, non-Microsoft security frameworks and push-model indexes. \"The principal is just a string\": the app resolves identity and must apply the filter on every query."
+              - term [ref=e804]: Example
+              - definition [ref=e805]:
+                - text: An app stores
+                - code [ref=e806]: group_ids
+                - text: per document and filters each request with
+                - code [ref=e807]: "group_ids/any(g: search.in(g, '…'))"
+                - text: using the caller's group IDs.
+            - generic [ref=e808]:
+              - generic [ref=e809]: RAG-OS
+              - generic [ref=e810]:
+                - generic [ref=e811]: Available
+                - text: RAG-OS builds on this GA pattern and extends it with policy semantics.
+              - generic [ref=e812]: Azure status
+              - generic [ref=e813]: Native GA
+            - paragraph [ref=e815]:
+              - text: "References:"
+              - link "Security trimming with filters" [ref=e816] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-security-trimming-for-azure-search
+              - text: ·
+              - link "search.in function" [ref=e817] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-odata-search-in-function
+              - text: ·
+              - link "Choosing an approach" [ref=e818] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-document-level-access-overview
+          - article [ref=e819]:
+            - paragraph [ref=e820]: Azure AI Search
+            - heading "ADLS Gen2 POSIX-like ACL ingestion" [level=4] [ref=e821]
+            - generic [ref=e822]:
+              - term [ref=e823]: What it is
+              - definition [ref=e824]:
+                - text: The ADLS Gen2 indexer, or a Blob knowledge source on ADLS Gen2, reads the ACLs on the container root, each folder and the file. It computes the
+                - emphasis [ref=e825]: effective
+                - text: access list for each file and writes it into the
+                - code [ref=e826]: userIds
+                - text: /
+                - code [ref=e827]: groupIds
+                - text: permission fields. RBAC scope gives coarser, container-level access. See the walkthrough below the cards.
+              - term [ref=e828]: Purpose
+              - definition [ref=e829]: It reuses permissions the data lake already holds, so you don't have to tag documents again.
+              - term [ref=e830]: Example
+              - definition [ref=e831]:
+                - text: Files under
+                - code [ref=e832]: /HR/Payroll/
+                - text: are readable only by the Payroll-Admins group. After indexing, a query with an HR-Team member's token returns no payroll chunks. A Payroll-Admins member sees them.
+            - generic [ref=e833]:
+              - generic [ref=e834]: RAG-OS
+              - generic [ref=e835]:
+                - generic [ref=e836]: Not offered
+                - text: RAG-OS doesn't read ADLS ACLs. Because Azure ANDs a caller's filter with the native permission filter, the two can be combined.
+              - generic [ref=e837]: Azure status
+              - generic [ref=e838]: Preview
+            - paragraph [ref=e840]:
+              - text: "References:"
+              - link "ADLS Gen2 ACL / RBAC indexing" [ref=e841] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-access-control-lists-and-role-based-access
+              - text: ·
+              - link "Tutorial" [ref=e842] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/tutorial-adls-gen2-indexer-acls
+              - text: ·
+              - link "ADLS access model" [ref=e843] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-access-control-model
+              - text: ·
+              - link "Pull-API quickstart" [ref=e844] [cursor=pointer]:
+                - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Pull-API
+          - article [ref=e845]:
+            - paragraph [ref=e846]: Azure AI Search
+            - heading "SharePoint ACL ingestion" [level=4] [ref=e847]
+            - generic [ref=e848]:
+              - term [ref=e849]: What it is
+              - definition [ref=e850]: The SharePoint indexer ingests each item's effective ACL and enforces it at query time. It covers inheritance from site to library or list to folder to item, unique permissions, Entra security and Microsoft 365 groups, and SharePoint site groups (from 2026-05-01-preview).
+              - term [ref=e851]: Purpose
+              - definition [ref=e852]: Assistant answers stay in line with the SharePoint permissions people already manage.
+              - term [ref=e853]: Example
+              - definition [ref=e854]: A project site shared with "Specific people" is visible only to those people. Items shared through "Anyone" or organisation-wide links aren't supported, and guests aren't covered.
+              - term [ref=e855]: Limits
+              - definition [ref=e856]:
+                - text: Up to 1,000 entries per file. Item-level changes are picked up on each run, but inherited changes need
+                - code [ref=e857]: /resync
+                - text: . An Entra group nested inside a SharePoint group isn't expanded. The indexer needs application permissions (
+                - code [ref=e858]: Files.Read.All
+                - text: plus
+                - code [ref=e859]: Sites.FullControl.All
+                - text: or
+                - code [ref=e860]: Sites.Selected
+                - text: ).
+            - generic [ref=e861]:
+              - generic [ref=e862]: RAG-OS
+              - generic [ref=e863]:
+                - generic [ref=e864]: Roadmap
+                - text: A SharePoint connector with permission sync, using Azure's native ACL ingestion.
+              - generic [ref=e865]: Azure status
+              - generic [ref=e866]: Preview
+            - paragraph [ref=e868]:
+              - text: "References:"
+              - link "SharePoint ACL indexing" [ref=e869] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sharepoint-access-control-lists
+              - text: ·
+              - link "Remote SharePoint knowledge source" [ref=e870] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-sharepoint-remote
+          - article [ref=e871]:
+            - paragraph [ref=e872]: Azure AI Search
+            - heading "Purview sensitivity labels" [level=4] [ref=e873]
+            - generic [ref=e874]:
+              - term [ref=e875]: What it is
+              - definition [ref=e876]: Built-in indexers extract Purview labels from Blob, ADLS Gen2, SharePoint and OneLake. At query time the service evaluates the label, the user's token and the Purview policy (usage rights; the query-time documentation names EXTRACT). Results carry the label ID, and knowledge-base retrieval and MCP return label information for each reference.
+              - term [ref=e877]: Purpose
+              - definition [ref=e878]: Microsoft customers already classify confidentiality in Purview, and honouring those labels avoids running a parallel scheme.
+              - term [ref=e879]: Example
+              - definition [ref=e880]: A document labelled "Highly Confidential" is returned only to users whose Purview usage rights for that label allow it.
+              - term [ref=e881]: Constraints
+              - definition [ref=e882]:
+                - text: Requires the search service's system-assigned identity. A Global Administrator or Privileged Role Administrator must grant
+                - code [ref=e883]: Content.SuperUser
+                - text: and
+                - code [ref=e884]: UnifiedPolicy.Tenant.Read
+                - text: . Single tenant only, with no guests.
+                - code [ref=e885]: purviewEnabled
+                - text: can't be reversed, and the index then accepts RBAC only. No autocomplete or suggest. Content an app parses and pushes itself isn't covered, and labelled documents are skipped if the indexer uses the custom Web API skill, knowledge store, enrichment cache or debug sessions. Fails closed (5xx) if Purview can't be reached. GA is targeted for October 2026 on the Microsoft 365 roadmap.
+            - generic [ref=e886]:
+              - generic [ref=e887]: RAG-OS
+              - generic [ref=e888]:
+                - generic [ref=e889]: Roadmap
+                - text: "Next phase: labels read at ingestion become a classification input, mapped to clearance and confidentiality under the same access policy. See"
+                - link "section 6" [ref=e890] [cursor=pointer]:
+                  - /url: "#s-purview"
+                - text: .
+              - generic [ref=e891]: Azure status
+              - generic [ref=e892]: Preview
+            - paragraph [ref=e894]:
+              - text: "References:"
+              - link "Label indexing" [ref=e895] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels
+              - text: ·
+              - link "Label enforcement at query time" [ref=e896] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels
+              - text: ·
+              - link "Purview demo (GitHub)" [ref=e897] [cursor=pointer]:
+                - /url: https://github.com/Azure-Samples/azure-search-openai-demo-purviewdatasecurity
+          - article [ref=e898]:
+            - paragraph [ref=e899]: Azure AI Search
+            - heading "Query-time token enforcement" [level=4] [ref=e900]
+            - generic [ref=e901]:
+              - term [ref=e902]: What it is
+              - definition [ref=e903]:
+                - text: The app sends the end user's Entra token (scope
+                - code [ref=e904]: https://search.azure.com/.default
+                - text: ", no"
+                - code [ref=e905]: Bearer
+                - text: prefix) in
+                - code [ref=e906]: x-ms-query-source-authorization
+                - text: ", alongside its own service credential. The service matches"
+                - code [ref=e907]: oid
+                - text: to
+                - code [ref=e908]: userIds
+                - text: ", resolves group membership through Microsoft Graph (nested groups included) and checks RBAC scope. It then appends this internal filter to any"
+                - code [ref=e909]: $filter
+                - text: the caller sends.
+              - term [ref=e910]: Purpose
+              - definition [ref=e911]: Enforcement moves into the service, so the app can't forget the filter, and caller filters such as attribute rules can still be layered on top.
+              - term [ref=e912]: Example
+              - definition [ref=e913]:
+                - text: A web app uses the on-behalf-of flow to forward a user's token. Documents whose
+                - code [ref=e914]: groupIds
+                - text: include one of the user's (possibly nested) groups come back, and the app's own department filter narrows them further.
+              - term [ref=e915]: Watch-outs
+              - definition [ref=e916]: The Foundry Agent Service's built-in Azure AI Search tool can't pass this header (open GitHub issue). The supported route is the knowledge-base MCP tool with a per-request header.
+            - generic [ref=e917]:
+              - generic [ref=e918]: RAG-OS
+              - generic [ref=e919]:
+                - generic [ref=e920]: Available
+                - text: "RAG-OS has its own equivalent: it compiles and applies the policy filter on every call."
+              - generic [ref=e921]: Azure status
+              - generic [ref=e922]: Preview
+            - paragraph [ref=e924]:
+              - text: "References:"
+              - link "Query-time enforcement" [ref=e925] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement
+              - text: ·
+              - link "REST sample (acl/acl.http)" [ref=e926] [cursor=pointer]:
+                - /url: https://github.com/Azure-Samples/azure-search-rest-samples/tree/main/acl
+              - text: ·
+              - 'link "SDK issue #44454" [ref=e927] [cursor=pointer]':
+                - /url: https://github.com/azure/azure-sdk-for-python/issues/44454
+              - text: ·
+              - 'link "Agent Framework #6864" [ref=e928] [cursor=pointer]':
+                - /url: https://github.com/microsoft/agent-framework/issues/6864
+        - heading "How ADLS Gen2 POSIX-like ACLs become search permissions" [level=4] [ref=e929]
+        - paragraph [ref=e930]:
+          - text: ADLS Gen2 uses POSIX-style access control lists on folders and files. To read a file, a principal must be able to traverse every folder on its path and read the file itself. The Azure AI Search indexer follows this hierarchical evaluation from the container root down to each file. It writes the
+          - strong [ref=e931]: final effective list of named users and groups
+          - text: "into the index's permission fields. A simplified walk:"
+        - list "Simplified effective access walk from container root to file" [ref=e932]:
+          - listitem [ref=e933]:
+            - generic [ref=e934]: / (container root)
+            - text: HR-Team, Finance-Team, Payroll-Admins can traverse
+          - generic [aria-hidden] [ref=e935]: →
+          - listitem [ref=e936]:
+            - generic [ref=e937]: /HR
+            - text: HR-Team, Payroll-Admins
+          - generic [aria-hidden] [ref=e938]: →
+          - listitem [ref=e939]:
+            - generic [ref=e940]: /HR/Payroll
+            - text: Payroll-Admins
+          - generic [aria-hidden] [ref=e941]: →
+          - listitem [ref=e942]:
+            - generic [ref=e943]: salary-bands.pdf
+            - text: "read: Payroll-Admins"
+          - generic [aria-hidden] [ref=e944]: →
+          - listitem [ref=e945]:
+            - generic [ref=e946]: groupIds = [Payroll-Admins]
+            - text: effective access written to the index
+        - list [ref=e947]:
+          - listitem [ref=e948]:
+            - strong [ref=e949]: Named users and groups only.
+            - text: The owning user, owning group and "Other" entries aren't supported during the preview. Azure ABAC conditions aren't evaluated. Container RBAC is checked first, and a match on any mechanism grants access.
+          - listitem [ref=e950]:
+            - strong [ref=e951]: Entry limits.
+            - text: ADLS Gen2 allows 32 ACL entries per file or folder (effectively 28). Entries beyond the limit might not be enforced at query time.
+          - listitem [ref=e952]:
+            - strong [ref=e953]: Permissions are a snapshot.
+            - text: ACLs are captured on the first crawl and for new files. Later changes need a file touch,
+            - code [ref=e954]: /resetdocs
+            - text: or
+            - code [ref=e955]: /resync
+            - text: (Preview). Without one, the index keeps serving the old ACLs. Group membership, by contrast, is resolved live through Microsoft Graph, nested groups included.
+          - listitem [ref=e956]:
+            - strong [ref=e957]: Pipeline restrictions.
+            - text: ACL ingestion doesn't work with the custom Web API skill, the enrichment cache, the knowledge store (so no image serving) or debug sessions. The Azure portal doesn't support it. If permission evaluation fails, the query returns a 5xx error (fails closed).
+          - listitem [ref=e958]:
+            - strong [ref=e959]: Samples.
+            - link "adlsgen2setup.py" [ref=e960] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/adlsgen2setup.py
+            - text: uploads sample data with ACLs.
+            - link "manageacl.py" [ref=e961] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/manageacl.py
+            - text: enables ACL fields and manages per-document entries.
+            - link "verify_search_index_acls.py" [ref=e962] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/verify_search_index_acls.py
+            - text: checks filtering with no token, with a user token and with elevated read.
+            - link "docs/login_and_acl.md" [ref=e963] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/docs/login_and_acl.md
+            - text: "describes the end-to-end flow. Its recommended cloud-ingestion extractor reads per-file ACLs and doesn't consider folder inheritance. Python quickstarts:"
+            - link "Pull API" [ref=e964] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Pull-API
+            - text: and
+            - link "Push API" [ref=e965] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Push-API
+            - text: ". REST:"
+            - link "acl/acl.http" [ref=e966] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-rest-samples/tree/main/acl
+            - text: .
+        - heading "5.2 Classification" [level=3] [ref=e967]
+        - generic [ref=e968]:
+          - article [ref=e969]:
+            - paragraph [ref=e970]: RAG-OS
+            - heading "SME-owned taxonomy" [level=4] [ref=e971]
+            - generic [ref=e972]:
+              - term [ref=e973]: What it is
+              - definition [ref=e974]: "Subject-matter experts define facets: department, region (hierarchical), document type, topic (hierarchical), confidentiality and language. Each value has synonyms, a description and parents. The taxonomy is validated for cycles and depth, and its synonyms also expand queries."
+              - term [ref=e975]: Purpose
+              - definition [ref=e976]: Consistent filters, better recall and a shared vocabulary that the business owns, not the engineers.
+              - term [ref=e977]: Example
+              - definition [ref=e978]: The HR SME adds "parental leave" under the topic Leave, with the synonyms "maternity leave" and "paternity leave". A question about paternity then finds documents tagged parental leave.
+            - generic [ref=e979]:
+              - generic [ref=e980]: RAG-OS
+              - generic [ref=e981]: Available
+              - generic [ref=e983]: Azure equivalent
+              - generic [ref=e984]:
+                - generic [ref=e985]: Not offered
+                - text: We found no taxonomy authoring in the Foundry IQ docs. With AI Search alone you design the fields yourself.
+            - paragraph [ref=e986]:
+              - text: "References:"
+              - link "What is Foundry IQ" [ref=e987] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq
+              - text: ·
+              - link "RAG-OS Overview §3" [ref=e988] [cursor=pointer]:
+                - /url: RAG-OS-Overview.html#s-overview
+          - article [ref=e989]:
+            - paragraph [ref=e990]: RAG-OS
+            - heading "Layered tagging with precedence" [level=4] [ref=e991]
+            - generic [ref=e992]:
+              - term [ref=e993]: What it is
+              - definition [ref=e994]: "Seven layers run cheapest first, and later layers override earlier ones: source defaults, path-rule globs, a per-file sidecar, an Excel-editable manifest, the upload form, an embedding classifier, and an optional LLM classifier for close calls."
+              - term [ref=e995]: Purpose
+              - definition [ref=e996]: Most documents are classified for free from structure that already exists, such as folders and manifests. Inference is reserved for what's left.
+              - term [ref=e997]: Example
+              - definition [ref=e998]:
+                - text: Everything under
+                - code [ref=e999]: policies/hr/
+                - text: gets department HR from a path rule. A manifest row overrides one file's region to EMEA. An upload with no hints is tagged by the classifier.
+            - generic [ref=e1000]:
+              - generic [ref=e1001]: RAG-OS
+              - generic [ref=e1002]: Available
+              - generic [ref=e1004]: Azure equivalent
+              - generic [ref=e1005]:
+                - generic [ref=e1006]: Build-it-yourself
+                - text: Foundry IQ generates pipelines from a fixed template ("avoid editing these objects"). Custom enrichment needs your own index and pipeline.
+            - paragraph [ref=e1007]:
+              - text: "References:"
+              - link "Blob knowledge source (generated objects)" [ref=e1008] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-blob
+          - article [ref=e1009]:
+            - paragraph [ref=e1010]: RAG-OS
+            - heading "Cost-capped auto-classification" [level=4] [ref=e1011]
+            - generic [ref=e1012]:
+              - term [ref=e1013]: What it is
+              - definition [ref=e1014]: An embedding classifier assigns facet values by reusing the chunk vectors already computed for search, so it costs zero LLM tokens. An optional LLM classifier handles only close calls, under a token-budget cap.
+              - term [ref=e1015]: Purpose
+              - definition [ref=e1016]: Classification at million-document scale without paying for an LLM call on every document.
+              - term [ref=e1017]: Example
+              - definition [ref=e1018]: A batch of 20,000 exported procedures is tagged by document type using existing vectors. Only the ambiguous ones (guideline or procedure?) go to the optional LLM pass, within the budget.
+            - generic [ref=e1019]:
+              - generic [ref=e1020]: RAG-OS
+              - generic [ref=e1021]: Available
+              - generic [ref=e1023]: Azure equivalent
+              - generic [ref=e1024]:
+                - generic [ref=e1025]: Build-it-yourself
+                - text: A custom skill is possible, but a custom Web API skill drops SharePoint ACL inheritance and skips Purview-labelled documents.
+            - paragraph [ref=e1026]:
+              - text: "References:"
+              - link "SharePoint ACL limitations" [ref=e1027] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sharepoint-access-control-lists
+              - text: ·
+              - link "Purview label limitations" [ref=e1028] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels
+          - article [ref=e1029]:
+            - paragraph [ref=e1030]: RAG-OS
+            - heading "SME review queue and per-facet provenance" [level=4] [ref=e1031]
+            - generic [ref=e1032]:
+              - term [ref=e1033]: What it is
+              - definition [ref=e1034]: "Low-confidence classifications go to a review queue in the admin console. Approved labels are frozen and never overwritten by rules. Every facet records its source: manifest, path rule, sidecar, classifier (with method and confidence) or reviewer. Descriptive facets are kept separate from access fields, so a topic tag can never grant access."
+              - term [ref=e1035]: Purpose
+              - definition [ref=e1036]: "An auditable taxonomy: you can show who or what tagged a document, and why."
+              - term [ref=e1037]: Example
+              - definition [ref=e1038]: An auditor asks why a contract is tagged EMEA. Its provenance shows a reviewer approved the tag after the classifier flagged it as low confidence.
+            - generic [ref=e1039]:
+              - generic [ref=e1040]: RAG-OS
+              - generic [ref=e1041]: Available
+              - generic [ref=e1043]: Azure equivalent
+              - generic [ref=e1044]:
+                - generic [ref=e1045]: Not offered
+                - text: We found no human review queue in the documentation we reviewed.
+            - paragraph [ref=e1046]:
+              - text: "References:"
+              - link "What is Foundry IQ" [ref=e1047] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq
+              - text: ·
+              - link "Knowledge source REST reference" [ref=e1048] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/rest/api/searchservice/knowledge-sources/create-or-update?view=rest-searchservice-2026-08-01-preview
+        - heading "5.3 Retrieval and answers" [level=3] [ref=e1049]
+        - generic [ref=e1050]:
+          - article [ref=e1051]:
+            - paragraph [ref=e1052]: RAG-OS on Azure AI Search
+            - heading "Hybrid search with a relevance bar" [level=4] [ref=e1053]
+            - generic [ref=e1054]:
+              - term [ref=e1055]: What it is
+              - definition [ref=e1056]: Keyword and vector search (50 candidates), reranked by the Azure AI Search semantic ranker. A minimum reranker score acts as a relevance bar, and the top 8 passages go to the model. Follow-up questions are rewritten as standalone questions, and taxonomy synonyms expand the query. Heading-aware chunking keeps tables and records intact.
+              - term [ref=e1057]: Purpose
+              - definition [ref=e1058]: Exact terms and paraphrases are both found, and fewer weak passages reach the model.
+              - term [ref=e1059]: Example
+              - definition [ref=e1060]: For "Can I carry over leave?", keyword matches on "carry over" and semantic matches on "unused annual leave rollover" are reranked together. A loosely related onboarding FAQ falls below the bar and is dropped.
+            - generic [ref=e1061]:
+              - generic [ref=e1062]: RAG-OS
+              - generic [ref=e1063]: Available
+              - generic [ref=e1065]: Azure equivalent
+              - generic [ref=e1066]:
+                - generic [ref=e1067]: Native GA
+                - text: Hybrid search and the semantic ranker are the shared foundation.
+            - paragraph [ref=e1068]:
+              - text: "References:"
+              - link "Agentic retrieval overview (hybrid + rerank)" [ref=e1069] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-overview
+              - text: ·
+              - link "Semantic ranker limits" [ref=e1070] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-limits-quotas-capacity
+          - article [ref=e1071]:
+            - paragraph [ref=e1072]: RAG-OS
+            - heading "Grounded citations and abstention" [level=4] [ref=e1073]
+            - generic [ref=e1074]:
+              - term [ref=e1075]: What it is
+              - definition [ref=e1076]:
+                - text: Every claim cites a page-level source
+                - code [ref=e1077]: "[n]"
+                - text: "with heading and snippet, and duplicates are merged. If nothing passes the access filter and relevance bar, RAG-OS abstains without calling the model. An answer without citations is refused as ungrounded. Each refusal carries a reason code:"
+                - code [ref=e1078]: no_access
+                - text: ","
+                - code [ref=e1079]: no_relevant_context
+                - text: or
+                - code [ref=e1080]: model_refusal
+                - text: . Effective dates are shown to the model, and conflicting versions are reported in prose (Partial).
+              - term [ref=e1081]: Purpose
+              - definition [ref=e1082]: In HR, legal and compliance, "I don't know" is better than a confident wrong answer.
+              - term [ref=e1083]: Example
+              - definition [ref=e1084]:
+                - text: Asked about a policy no document covers, the assistant says it has no relevant permitted documents (
+                - code [ref=e1085]: no_relevant_context
+                - text: ), and spends no model tokens.
+            - generic [ref=e1086]:
+              - generic [ref=e1087]: RAG-OS
+              - generic [ref=e1088]:
+                - generic [ref=e1089]: Available
+                - generic [ref=e1090]: Partial
+                - text: for version conflicts
+              - generic [ref=e1091]: Azure equivalent
+              - generic [ref=e1092]:
+                - generic [ref=e1093]: Native GA
+                - text: References array.
+                - generic [ref=e1094]: Preview
+                - text: Answer synthesis with inline
+                - code [ref=e1095]: "[ref_id:N]"
+                - text: citations.
+            - paragraph [ref=e1096]:
+              - text: "References:"
+              - link "Answer synthesis" [ref=e1097] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-answer-synthesis
+              - text: ·
+              - 'link "Retrieve: references" [ref=e1098] [cursor=pointer]':
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve
+          - article [ref=e1099]:
+            - paragraph [ref=e1100]: Foundry IQ
+            - heading "Knowledge bases and knowledge sources" [level=4] [ref=e1101]
+            - generic [ref=e1102]:
+              - term [ref=e1103]: What it is
+              - definition [ref=e1104]: "A knowledge base orchestrates retrieval over up to 10 knowledge sources (3 on Free). Sources are reusable connections to indexed content (search index, Blob, OneLake: GA) or remote content (Web: GA; SharePoint, Work IQ, Fabric, SQL, File, MCP: Preview). Several agents can share one knowledge base."
+              - term [ref=e1105]: Purpose
+              - definition [ref=e1106]: One reusable grounding layer for many agents, run by Microsoft.
+              - term [ref=e1107]: Example
+              - definition [ref=e1108]: A knowledge base combines an HR search index and a OneLake lakehouse, and both an HR agent and an IT agent call it.
+              - term [ref=e1109]: Notes
+              - definition [ref=e1110]: Generated pipelines accept Azure OpenAI embeddings only. A bring-your-own search index works with custom vectorizers and needs a semantic configuration. Objects created in the portal may use preview schemas that need migrating.
+            - generic [ref=e1111]:
+              - generic [ref=e1112]: RAG-OS
+              - generic [ref=e1113]:
+                - generic [ref=e1114]: Roadmap
+                - text: Foundry IQ as an alternative retrieval engine, with a RAG-OS index wrapped as a search-index knowledge source.
+              - generic [ref=e1115]: Azure status
+              - generic [ref=e1116]:
+                - generic [ref=e1117]: Native GA
+                - generic [ref=e1118]: Preview
+                - text: for several source types
+            - paragraph [ref=e1119]:
+              - text: "References:"
+              - link "What is Foundry IQ" [ref=e1120] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq
+              - text: ·
+              - link "Knowledge sources" [ref=e1121] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-overview
+              - text: ·
+              - link "Create a knowledge base" [ref=e1122] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-knowledge-base
+              - text: ·
+              - link "Python quickstart" [ref=e1123] [cursor=pointer]:
+                - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Agentic-Retrieval
+          - article [ref=e1124]:
+            - paragraph [ref=e1125]: Foundry IQ
+            - heading "Agentic retrieval" [level=4] [ref=e1126]
+            - generic [ref=e1127]:
+              - term [ref=e1128]: What it is
+              - definition [ref=e1129]: An LLM plans subqueries and selects sources, at low, medium or auto reasoning effort. The subqueries run in parallel as keyword, vector or hybrid searches with semantic reranking, and the results are merged. Answer synthesis is optional. The GA scope is extractive results at minimal effort, with no LLM planning.
+              - term [ref=e1130]: Purpose
+              - definition [ref=e1131]: Better coverage of complex, multi-part questions across several sources.
+              - term [ref=e1132]: Example
+              - definition [ref=e1133]: "\"Compare our EU and US travel per-diems and flag the differences.\" The planner issues a subquery per regional policy and merges the results."
+              - term [ref=e1134]: Notes
+              - definition [ref=e1135]: Planning and synthesis models must be Azure OpenAI GPT models. Agentic retrieval adds latency (the default maximum runtime is 90 s). Medium effort is offered in about 15 regions. The first 50M agentic tokens each month are free.
+            - generic [ref=e1136]:
+              - generic [ref=e1137]: RAG-OS
+              - generic [ref=e1138]:
+                - generic [ref=e1139]: Roadmap
+                - text: Through Foundry IQ.
+              - generic [ref=e1140]: Azure status
+              - generic [ref=e1141]:
+                - generic [ref=e1142]: Preview
+                - text: planning ·
+                - generic [ref=e1143]: Native GA
+                - text: minimal effort
+            - paragraph [ref=e1144]:
+              - text: "References:"
+              - link "Overview" [ref=e1145] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-overview
+              - text: ·
+              - link "Reasoning effort" [ref=e1146] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-set-retrieval-reasoning-effort
+              - text: ·
+              - link "API versions and migration" [ref=e1147] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-migrate
+              - text: ·
+              - link "Pricing" [ref=e1148] [cursor=pointer]:
+                - /url: https://azure.microsoft.com/en-us/pricing/details/search/
+          - article [ref=e1149]:
+            - paragraph [ref=e1150]: RAG-OS
+            - heading "One embedding profile for ingestion and query" [level=4] [ref=e1151]
+            - generic [ref=e1152]:
+              - term [ref=e1153]: What it is
+              - definition [ref=e1154]: Exactly one active profile pins the model, revision, dimensions and query / document prefixes, and both ingestion and query read it. The profile's fingerprint names the index. Changing the profile builds a new index alongside the old one, which keeps serving until the new one is ready. The options are self-hosted Qwen3-Embedding-0.6B on Hugging Face Text Embeddings Inference, or Azure OpenAI text-embedding-3-small (1536 dimensions). The self-hosted model is Apache-2.0, has 1024 or 512 dimensions, has no per-token cost, keeps text inside your deployment, and is designed for a GPU ingest pool that scales to zero.
+              - term [ref=e1155]: Purpose
+              - definition [ref=e1156]: "It prevents a common, silent cause of poor RAG quality: documents and questions embedded differently. It also supports data-residency needs."
+              - term [ref=e1157]: Example
+              - definition [ref=e1158]: When you move from Azure OpenAI to the self-hosted model, index B is built next to index A. Users query A until B is complete.
+            - generic [ref=e1159]:
+              - generic [ref=e1160]: RAG-OS
+              - generic [ref=e1161]: Available
+              - generic [ref=e1163]: Azure equivalent
+              - generic [ref=e1164]:
+                - generic [ref=e1165]: Native GA
+                - text: Vectorizers, including a custom Web API. Matching ingestion and query is up to you. Foundry IQ generated pipelines use Azure OpenAI only.
+            - paragraph [ref=e1166]:
+              - text: "References:"
+              - link "Index for agentic retrieval (vectorizers)" [ref=e1167] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-index
+              - text: ·
+              - link "Knowledge source embeddingModel" [ref=e1168] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/rest/api/searchservice/knowledge-sources/create-or-update?view=rest-searchservice-2026-08-01-preview
+        - heading "5.4 Operations" [level=3] [ref=e1169]
+        - generic [ref=e1170]:
+          - article [ref=e1171]:
+            - paragraph [ref=e1172]: RAG-OS
+            - heading "Per-query token and stage tracing" [level=4] [ref=e1173]
+            - generic [ref=e1174]:
+              - term [ref=e1175]: What it is
+              - definition [ref=e1176]: OpenTelemetry sends data from every component to Application Insights, with one correlation ID from browser to API to queue to worker. Token usage (input, output, cached, embedding) is returned with every answer and shown in the UI. Metrics are broken down by kind, provider, model and purpose. Admins see each chat traced stage by stage (identity, access, query, embed, search, relevance, prompt, LLM, grounding), with saved expectations and replay. A KQL query pack is included.
+              - term [ref=e1177]: Purpose
+              - definition [ref=e1178]: Cost attribution, troubleshooting and regression checks, without having to reconstruct what happened.
+              - term [ref=e1179]: Example
+              - definition [ref=e1180]: A user reports a weak answer. The admin opens the trace by correlation ID and sees the right policy page scored just under the relevance bar. They save it as an expectation and replay it after tuning.
+            - generic [ref=e1181]:
+              - generic [ref=e1182]: RAG-OS
+              - generic [ref=e1183]: Available
+              - generic [ref=e1185]: Azure equivalent
+              - generic [ref=e1186]:
+                - generic [ref=e1187]: Native GA
+                - text: A per-response activity log with token counts. MCP responses omit activity and references. No agentic-specific Azure Monitor category was found. Microsoft suggests a public tokenizer for cost estimates.
+            - paragraph [ref=e1188]:
+              - text: "References:"
+              - link "Activity log" [ref=e1189] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve
+              - text: ·
+              - link "Azure Monitor data reference" [ref=e1190] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/monitor-azure-cognitive-search-data-reference
+              - text: ·
+              - link "Cost guidance" [ref=e1191] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-overview
+          - article [ref=e1192]:
+            - paragraph [ref=e1193]: RAG-OS
+            - heading "Change-aware, queue-based ingestion" [level=4] [ref=e1194]
+            - generic [ref=e1195]:
+              - term [ref=e1196]: What it is
+              - definition [ref=e1197]: A scheduler runs every 5 minutes and detects changes by size and modified time, etag or MD5, plus a content hash. Unchanged content isn't embedded again, and tag-only changes merge in place. Deletions propagate. Priority and bulk queues dead-letter a message after 5 attempts, and workers scale from 0 to 10. Admins can pause or throttle ingestion, and soft- or hard-delete documents.
+              - term [ref=e1198]: Purpose
+              - definition [ref=e1199]: The index stays current at low cost, and large backfills are safe to run.
+              - term [ref=e1200]: Example
+              - definition [ref=e1201]: An SME re-tags 3,000 documents in the manifest. They are updated in place with no embedding cost, while urgent uploads keep moving through the priority queue.
+            - generic [ref=e1202]:
+              - generic [ref=e1203]: RAG-OS
+              - generic [ref=e1204]: Available
+              - generic [ref=e1206]: Azure equivalent
+              - generic [ref=e1207]:
+                - generic [ref=e1208]: Native GA
+                - text: Indexer schedules (minimum 5 minutes) and a knowledge-source status API.
+                - generic [ref=e1209]: Preview
+                - text: ACL refresh through
+                - code [ref=e1210]: /resetdocs
+                - text: or
+                - code [ref=e1211]: /resync
+                - text: .
+            - paragraph [ref=e1212]:
+              - text: "References:"
+              - link "Knowledge source status" [ref=e1213] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-blob
+              - text: ·
+              - link "ACL resync" [ref=e1214] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-access-control-lists-and-role-based-access
+              - text: ·
+              - link "Indexer limits" [ref=e1215] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/search-limits-quotas-capacity
+          - article [ref=e1216]:
+            - paragraph [ref=e1217]: RAG-OS
+            - heading "In-tenant, keyless deployment" [level=4] [ref=e1218]
+            - generic [ref=e1219]:
+              - term [ref=e1220]: What it is
+              - definition [ref=e1221]: Every component runs on Azure Container Apps in your subscription. A user-assigned managed identity gives Entra-only (keyless) access to every service. Models come from Microsoft Foundry. Provisioning is idempotent and scripted (PowerShell 7 and the Azure CLI).
+              - term [ref=e1222]: Purpose
+              - definition [ref=e1223]: Data stays inside your Azure boundary, there are no shared keys to rotate or leak, and environments can be rebuilt the same way every time.
+              - term [ref=e1224]: Example
+              - definition [ref=e1225]: A regulated insurer deploys into its own subscription. Only the passages a user is entitled to see are sent to the model.
+            - generic [ref=e1226]:
+              - generic [ref=e1227]: RAG-OS
+              - generic [ref=e1228]:
+                - generic [ref=e1229]: Available
+                - generic [ref=e1230]: Roadmap
+                - text: private endpoints and VNet
+              - generic [ref=e1231]: Azure equivalent
+              - generic [ref=e1232]:
+                - generic [ref=e1233]: Native GA
+                - text: Foundry IQ is run by Microsoft. Network isolation and managed identity have been GA since 2 June 2026.
+            - paragraph [ref=e1234]:
+              - text: "References:"
+              - link "Foundry IQ GA announcement" [ref=e1235] [cursor=pointer]:
+                - /url: https://devblogs.microsoft.com/foundry/build-smarter-agents-faster-with-foundry-iq/
+              - text: ·
+              - link "RAG-OS Overview §6" [ref=e1236] [cursor=pointer]:
+                - /url: RAG-OS-Overview.html#s-compliance
+        - heading "5.5 Channels" [level=3] [ref=e1237]
+        - generic [ref=e1238]:
+          - article [ref=e1239]:
+            - paragraph [ref=e1240]: RAG-OS
+            - heading "Governed chat embed for portals" [level=4] [ref=e1241]
+            - generic [ref=e1242]:
+              - term [ref=e1243]: What it is
+              - definition [ref=e1244]:
+                - text: One script tag embeds the governed chat (an iframe) in an intranet or portal whose users sign in with your Microsoft Entra tenant. Customer-portal identities (Entra External ID) and signed host context are on the roadmap. The host page passes the user's Entra token by
+                - code [ref=e1245]: postMessage
+                - text: to an exact target origin. An origin allow-list and CSP
+                - code [ref=e1246]: frame-ancestors
+                - text: control where the chat can be embedded.
+              - term [ref=e1247]: Purpose
+              - definition [ref=e1248]: The assistant appears where people already work, with the same access policy.
+              - term [ref=e1249]: Example
+              - definition [ref=e1250]: An HR intranet page adds the script. Employees ask questions on that page and see only what their attributes allow.
+            - generic [ref=e1251]:
+              - generic [ref=e1252]: RAG-OS
+              - generic [ref=e1253]:
+                - generic [ref=e1254]: Available
+                - text: for Entra workforce users
+                - generic [ref=e1255]: Roadmap
+                - text: customer-portal sign-in (External ID) and signed host context
+              - generic [ref=e1256]: Azure equivalent
+              - generic [ref=e1257]:
+                - generic [ref=e1258]: Preview
+                - text: Knowledge-base CORS allows browser calls.
+                - generic [ref=e1259]: Build-it-yourself
+                - text: UI
+            - paragraph [ref=e1260]:
+              - text: "References:"
+              - link "Knowledge base CORS options" [ref=e1261] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-knowledge-base
+          - article [ref=e1262]:
+            - paragraph [ref=e1263]: Foundry IQ
+            - heading "knowledge_base_retrieve MCP tool" [level=4] [ref=e1264]
+            - generic [ref=e1265]:
+              - term [ref=e1266]: What it is
+              - definition [ref=e1267]:
+                - text: Every knowledge base is also an MCP server that exposes one tool,
+                - code [ref=e1268]: knowledge_base_retrieve
+                - text: . Microsoft names Foundry Agent Service, GitHub Copilot, Claude and Cursor as clients. It returns extractive grounding on 2026-04-01, and synthesized answers on the preview API.
+              - term [ref=e1269]: Purpose
+              - definition [ref=e1270]: Any MCP-capable agent can ground on the same knowledge base without custom code.
+              - term [ref=e1271]: Example
+              - definition [ref=e1272]:
+                - text: A developer adds the knowledge base's MCP endpoint to an agent, which calls
+                - code [ref=e1273]: knowledge_base_retrieve
+                - text: with the user's token in a per-request header.
+              - term [ref=e1274]: Watch-outs
+              - definition [ref=e1275]: MCP responses carry no separate activity or references arrays. Per-user filtering depends on forwarding the user's token. Without it, permission-enabled sources return unfiltered results.
+            - generic [ref=e1276]:
+              - generic [ref=e1277]: RAG-OS
+              - generic [ref=e1278]:
+                - generic [ref=e1279]: Roadmap
+                - text: Governed retrieval as an MCP server that applies the RAG-OS policy for the calling user.
+              - generic [ref=e1280]: Azure status
+              - generic [ref=e1281]:
+                - generic [ref=e1282]: Native GA
+                - text: (MCP server GA 2 June 2026)
+            - paragraph [ref=e1283]:
+              - text: "References:"
+              - link "Retrieve and MCP endpoint" [ref=e1284] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve
+              - text: ·
+              - link "Connect to Foundry Agent Service" [ref=e1285] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/foundry-iq-connect
+              - text: ·
+              - link "Pipeline sample" [ref=e1286] [cursor=pointer]:
+                - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/agentic-retrieval-pipeline-example
+          - article [ref=e1287]:
+            - paragraph [ref=e1288]: Foundry IQ
+            - heading "Teams and Copilot Studio through a Foundry agent" [level=4] [ref=e1289]
+            - generic [ref=e1290]:
+              - term [ref=e1291]: What it is
+              - definition [ref=e1292]:
+                - text: You connect a knowledge base to a Foundry agent (through a
+                - code [ref=e1293]: RemoteTool
+                - text: connection, Preview). You then add that agent to Copilot Studio with "Connect to a Microsoft Foundry agent" (Preview), which puts it in front of Teams and Microsoft 365 users.
+              - term [ref=e1294]: Purpose
+              - definition [ref=e1295]: Reach users in Teams and Copilot without building another front end.
+              - term [ref=e1296]: Example
+              - definition [ref=e1297]: An HR Foundry agent grounded on the HR knowledge base is published to Copilot Studio, and employees use it from Teams.
+            - generic [ref=e1298]:
+              - generic [ref=e1299]: RAG-OS
+              - generic [ref=e1300]:
+                - generic [ref=e1301]: Roadmap
+                - text: Publish as a Foundry agent for Teams and Copilot Studio.
+              - generic [ref=e1302]: Azure status
+              - generic [ref=e1303]: Preview
+            - paragraph [ref=e1305]:
+              - text: "References:"
+              - link "What is Foundry IQ (Copilot Studio)" [ref=e1306] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq
+              - text: ·
+              - link "foundry-iq-connect" [ref=e1307] [cursor=pointer]:
+                - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/foundry-iq-connect
+      - generic [ref=e1308]:
+        - heading "6Purview sensitivity labels with RAG-OS access policy" [level=2] [ref=e1309]
+        - paragraph [ref=e1310]:
+          - text: Purview sensitivity labels say
+          - strong [ref=e1311]: how sensitive
+          - text: a document is. The RAG-OS access policy says
+          - strong [ref=e1312]: who may see it
+          - text: . The two answer different questions, so they work best together.
+        - generic [ref=e1313]:
+          - generic [ref=e1314]:
+            - heading "Microsoft Purview sensitivity labels" [level=4] [ref=e1315]
+            - paragraph [ref=e1316]:
+              - text: A label such as
+              - emphasis [ref=e1317]: General
+              - text: ","
+              - emphasis [ref=e1318]: Confidential
+              - text: or
+              - emphasis [ref=e1319]: Highly Confidential
+              - text: is applied to a file by a person or an auto-labelling policy. It is stored in clear text in the file's metadata, so other applications can read it. A label can also
+              - strong [ref=e1320]: encrypt
+              - text: the file and grant
+              - strong [ref=e1321]: usage rights
+              - text: (for example view or extract) to named users and groups. Purview data loss prevention (DLP) policies use labels too, for example to stop Microsoft 365 Copilot processing labelled items.
+          - generic [ref=e1322]:
+            - heading "RAG-OS access policy" [level=4] [ref=e1323]
+            - paragraph [ref=e1324]:
+              - text: "A declarative policy that matches each user's attributes against each document's access fields:"
+              - strong [ref=e1325]: department
+              - text: ","
+              - strong [ref=e1326]: region hierarchy
+              - text: (UK, then EMEA, then Global),
+              - strong [ref=e1327]: clearance level
+              - text: and
+              - strong [ref=e1328]: personal share
+              - text: . It is compiled into a filter applied inside every Azure AI Search call, and access is denied by default. It describes where in the organisation a document belongs, which a label doesn't.
+        - paragraph [ref=e1329]:
+          - text: For example, an HR document labelled
+          - emphasis [ref=e1330]: Confidential
+          - text: for the UK should reach UK HR staff with sufficient clearance. The label supplies the clearance level. The policy adds the department and region rules. Neither one expresses the whole rule on its own.
+        - paragraph [ref=e1332]:
+          - strong [ref=e1333]: Status.
+          - text: Purview label support in RAG-OS is
+          - generic [ref=e1334]: Roadmap
+          - text: ", planned for the"
+          - strong [ref=e1335]: Next
+          - text: phase (section 9). None of the label steps described below is available today. The access policy, classification layers, SME review and default deny that the labels will feed are
+          - generic [ref=e1336]: Available
+          - text: .
+        - heading "6.1 How RAG-OS will use labels Roadmap" [level=3] [ref=e1337]:
+          - text: 6.1 How RAG-OS will use labels
+          - generic [ref=e1338]: Roadmap
+        - paragraph [ref=e1339]:
+          - text: Labels become an
+          - strong [ref=e1340]: input to classification
+          - text: ", not a second access engine. One access policy stays the single place where access is decided."
+        - list [ref=e1341]:
+          - listitem [ref=e1342]:
+            - strong [ref=e1343]: Read the label at ingestion.
+            - text: Word, Excel and PowerPoint files keep label metadata either in custom document properties (
+            - code [ref=e1344]: MSIP_Label_…
+            - text: ) or, in tenants that turn on co-authoring for labelled files, in the newer
+            - code [ref=e1345]: LabelInfo.xml
+            - text: format. Microsoft notes that once co-authoring is on, new label information is no longer written to the custom properties, so RAG-OS will read both. For SharePoint and OneDrive content, the Microsoft Graph
+            - code [ref=e1346]: extractSensitivityLabels
+            - text: action (v1.0,
+            - code [ref=e1347]: Files.Read.All
+            - text: ) returns the label. Label IDs are resolved to a name and priority through the Graph sensitivity label API (v1.0,
+            - code [ref=e1348]: SensitivityLabel.Read
+            - text: ).
+          - listitem [ref=e1349]:
+            - strong [ref=e1350]: Map it through a customer-reviewed table.
+            - text: Each label maps to a RAG-OS
+            - strong [ref=e1351]: clearance level
+            - text: and a
+            - strong [ref=e1352]: confidentiality
+            - text: "facet value. The mapping is an explicit table that the customer approves, not an automatic ranking: Microsoft says a higher label priority"
+            - emphasis [ref=e1353]: usually
+            - text: means higher sensitivity, which is not a guarantee.
+          - listitem [ref=e1354]:
+            - strong [ref=e1355]: Record provenance, allow SME override.
+            - text: The tag records that it came from a Purview label, as every RAG-OS facet records its source. An SME can review and override it, and an approved review is never overwritten by a later rule.
+          - listitem [ref=e1356]:
+            - strong [ref=e1357]: Enforce through the single access policy.
+            - text: The clearance level joins department, region and personal-share rules in the same filter inside Azure AI Search. A document without a clearance level is denied, so an unmapped label withholds the document rather than exposing it.
+          - listitem [ref=e1358]:
+            - strong [ref=e1359]: Show labels in answers.
+            - text: Each citation shows its source's label badge, and the answer carries the highest-priority label among its sources. Microsoft 365 Copilot behaves the same way, so users see what they already expect.
+          - listitem [ref=e1360]:
+            - strong [ref=e1361]: "Optional: keep selected labels away from the model."
+            - text: A configurable rule can mark labels whose content is never sent to the LLM. Such documents can be cited or excluded, but not summarised.
+          - listitem [ref=e1362]:
+            - strong [ref=e1363]: Encrypted (rights-protected) files.
+            - text: General-purpose parsers can't read encrypted content, but the label metadata can still be read. RAG-OS will record these files with their label and report them in the admin console. Content is decrypted only if the customer approves a Microsoft Information Protection (MIP) SDK setup. Decryption needs an identity with super-user rights over the tenant's encrypted content, so it is a governance decision for the customer.
+        - figure [ref=e1364]:
+          - generic [ref=e1365]:
+            - 'img "How a Purview sensitivity label becomes part of the RAG-OS access decision Ingestion row: a document from any RAG-OS source, then reading its Purview label (roadmap), then a customer-reviewed mapping table from label to clearance level and confidentiality (roadmap). Index and query row: clearance and confidentiality tags with provenance, which an SME can override; the access-policy filter applied inside Azure AI Search; and a cited answer with label badges and the highest source label (roadmap). Roadmap steps are dashed." [ref=e1367]':
+              - generic [ref=e1368]: From Purview label to access decision
+              - generic [ref=e1370]: INGESTION
+              - generic [ref=e1371]: read and map
+              - generic [ref=e1373]: Document
+              - generic [ref=e1374]: any RAG-OS source
+              - generic [ref=e1375]: folders · Blob · uploads
+              - generic [ref=e1377]: Read the label
+              - generic [ref=e1378]: Office label metadata
+              - generic [ref=e1379]: custom properties or LabelInfo.xml
+              - generic [ref=e1380]: Graph extractSensitivityLabels
+              - generic [ref=e1382]: Reviewed mapping
+              - generic [ref=e1383]: label → clearance level
+              - generic [ref=e1384]: + confidentiality facet
+              - generic [ref=e1385]: customer-approved table
+              - generic [ref=e1387]: INDEX AND
+              - generic [ref=e1388]: QUERY
+              - generic [ref=e1389]: enforce and answer
+              - generic [ref=e1391]: Access + facet tags
+              - generic [ref=e1392]: clearance · confidentiality
+              - generic [ref=e1393]: "provenance: Purview label"
+              - generic [ref=e1394]: SME review can override
+              - generic [ref=e1396]: Access-policy filter
+              - generic [ref=e1397]: inside Azure AI Search
+              - generic [ref=e1398]: department · region · clearance
+              - generic [ref=e1399]: personal share · default deny
+              - generic [ref=e1401]: Cited answer
+              - generic [ref=e1402]: permitted passages only
+              - generic [ref=e1404]: label badges · highest label
+              - generic [ref=e1406]: mapped values written to the index
+              - generic [ref=e1407]: available today
+              - generic [ref=e1408]: roadmap
+            - generic [ref=e1409]: Figure 2. A Purview label becomes one more classification input. The single access policy still makes every access decision inside Azure AI Search. Dashed steps are the Purview label steps planned for the Next roadmap phase.
+        - heading "6.2 Two ways to honour Purview labels" [level=3] [ref=e1410]
+        - paragraph [ref=e1411]: Azure AI Search can enforce Purview labels natively, and RAG-OS plans to map labels into its access policy. They differ in what they cover and what they enforce. On narrow screens, the table scrolls sideways.
+        - region "Comparison of Azure AI Search native Purview enforcement and RAG-OS label-to-policy mapping" [ref=e1412]:
+          - table [ref=e1413]:
+            - rowgroup [ref=e1414]:
+              - row [ref=e1415]:
+                - columnheader "Aspect" [ref=e1416]
+                - columnheader "Azure AI Search native Purview enforcement" [ref=e1417]
+                - columnheader "RAG-OS label-to-policy mapping" [ref=e1418]
+            - rowgroup [ref=e1419]:
+              - row [ref=e1420]:
+                - cell "Status" [ref=e1421]
+                - cell "Preview, on REST API 2026-08-01-preview. The Microsoft 365 roadmap lists it as in development, with GA targeted for October 2026. A target date is not a commitment. Preview" [ref=e1422]:
+                  - text: Preview, on REST API
+                  - code [ref=e1423]: 2026-08-01-preview
+                  - text: . The Microsoft 365 roadmap lists it as in development, with GA targeted for October 2026. A target date is not a commitment.
+                  - generic [ref=e1424]: Preview
+                - cell "Planned for the Next phase. Not available today. Roadmap" [ref=e1426]:
+                  - text: Planned for the Next phase. Not available today.
+                  - generic [ref=e1427]: Roadmap
+              - row [ref=e1429]:
+                - cell "Sources covered" [ref=e1430]
+                - cell "Content cracked by the built-in indexers for Azure Blob, ADLS Gen2, SharePoint in Microsoft 365 (the SharePoint indexer is itself Preview) and OneLake. Content an application parses and pushes itself isn't covered. Preview" [ref=e1431]:
+                  - text: Content cracked by the built-in indexers for Azure Blob, ADLS Gen2, SharePoint in Microsoft 365 (the SharePoint indexer is itself Preview) and OneLake. Content an application parses and pushes itself isn't covered.
+                  - generic [ref=e1432]: Preview
+                - cell "Any RAG-OS source, including local folders, Azure Blob and uploads, and SharePoint once its connector ships. Roadmap" [ref=e1434]:
+                  - text: Any RAG-OS source, including local folders, Azure Blob and uploads, and SharePoint once its connector ships.
+                  - generic [ref=e1435]: Roadmap
+              - row [ref=e1437]:
+                - cell "Identity scope" [ref=e1438]
+                - cell "The user and the search service must be in the same Microsoft Entra tenant. Guest accounts and cross-tenant queries aren't supported." [ref=e1439]
+                - cell "Every user the access policy evaluates. The label's clearance level is compared with the user's clearance attribute, alongside the department, region and personal-share rules." [ref=e1440]
+              - row [ref=e1441]:
+                - cell "Setup" [ref=e1442]
+                - cell [ref=e1443]:
+                  - text: A Global Administrator or Privileged Role Administrator grants
+                  - code [ref=e1444]: Content.SuperUser
+                  - text: and
+                  - code [ref=e1445]: UnifiedPolicy.Tenant.Read
+                  - text: to the search service's system-assigned identity.
+                  - code [ref=e1446]: purviewEnabled
+                  - text: is set when the index is created and can't be reversed. The index then accepts RBAC only, and autocomplete and suggest aren't available.
+                - cell [ref=e1447]:
+                  - text: A label mapping table in configuration, reviewed by the customer. Reading SharePoint and OneDrive labels uses Graph
+                  - code [ref=e1448]: Files.Read.All
+                  - text: ", and resolving label names uses"
+                  - code [ref=e1449]: SensitivityLabel.Read
+                  - text: . No tenant-wide decryption rights are needed unless the customer opts in to decrypting encrypted files.
+              - row [ref=e1450]:
+                - cell "What is enforced" [ref=e1451]
+                - cell "Each user's Purview usage rights for each labelled document (the query-time documentation names EXTRACT). This honours per-user encryption grants exactly as Purview defines them, which a mapping can't reproduce. Preview" [ref=e1452]:
+                  - text: Each user's Purview usage rights for each labelled document (the query-time documentation names EXTRACT). This honours per-user encryption grants exactly as Purview defines them, which a mapping can't reproduce.
+                  - generic [ref=e1453]: Preview
+                - cell "The mapped clearance level, combined with department, region hierarchy and personal-share rules in one filter. It expresses organisational rules a label can't, but it doesn't evaluate per-user encryption grants. Roadmap" [ref=e1455]:
+                  - text: The mapped clearance level, combined with department, region hierarchy and personal-share rules in one filter. It expresses organisational rules a label can't, but it doesn't evaluate per-user encryption grants.
+                  - generic [ref=e1456]: Roadmap
+              - row [ref=e1458]:
+                - cell "Custom enrichment" [ref=e1459]
+                - cell "Labelled documents are skipped if the indexer uses the custom Web API skill, the knowledge store, the enrichment cache or debug sessions. Not offered" [ref=e1460]:
+                  - text: Labelled documents are skipped if the indexer uses the custom Web API skill, the knowledge store, the enrichment cache or debug sessions.
+                  - generic [ref=e1461]: Not offered
+                - 'cell "The label is one input to the full classification pipeline: rules, sidecars, manifest, classifiers and SME review all still apply. Roadmap" [ref=e1463]':
+                  - text: "The label is one input to the full classification pipeline: rules, sidecars, manifest, classifiers and SME review all still apply."
+                  - generic [ref=e1464]: Roadmap
+              - row [ref=e1466]:
+                - cell "Encrypted files" [ref=e1467]
+                - cell "The indexer decrypts and indexes labelled, encrypted content using the granted Content.SuperUser role. Preview" [ref=e1468]:
+                  - text: The indexer decrypts and indexes labelled, encrypted content using the granted
+                  - code [ref=e1469]: Content.SuperUser
+                  - text: role.
+                  - generic [ref=e1470]: Preview
+                - cell "Recorded with their label and reported in the admin console. Content is decrypted only with a customer-approved MIP SDK setup. Roadmap" [ref=e1472]:
+                  - text: Recorded with their label and reported in the admin console. Content is decrypted only with a customer-approved MIP SDK setup.
+                  - generic [ref=e1473]: Roadmap
+              - row [ref=e1475]:
+                - cell "What the answer shows" [ref=e1476]
+                - cell "Each result carries the label ID. The application resolves the label name through Microsoft Graph and builds its own display. Build-it-yourself" [ref=e1477]:
+                  - text: Each result carries the label ID. The application resolves the label name through Microsoft Graph and builds its own display.
+                  - generic [ref=e1478]: Build-it-yourself
+                - cell "A label badge on each citation, and the highest source label on the answer. Roadmap" [ref=e1480]:
+                  - text: A label badge on each citation, and the highest source label on the answer.
+                  - generic [ref=e1481]: Roadmap
+              - row [ref=e1483]:
+                - cell "Failure behaviour" [ref=e1484]
+                - 'cell "Fails closed: queries return a 5xx error if Purview can''t be reached. Calls without a user token return only unlabelled documents. Preview" [ref=e1485]':
+                  - text: "Fails closed: queries return a 5xx error if Purview can't be reached. Calls without a user token return only unlabelled documents."
+                  - generic [ref=e1486]: Preview
+                - 'cell "Default deny: a document without a clearance level is never returned, so an unmapped label withholds the document. Missing user attributes mean deny-all (available today). Available Roadmap" [ref=e1488]':
+                  - text: "Default deny: a document without a clearance level is never returned, so an unmapped label withholds the document. Missing user attributes mean deny-all (available today)."
+                  - generic [ref=e1489]:
+                    - generic [ref=e1490]: Available
+                    - generic [ref=e1491]: Roadmap
+        - paragraph [ref=e1493]:
+          - strong [ref=e1494]: Can both be used together?
+          - text: Yes, for content indexed by Azure AI Search's built-in indexers (Blob, ADLS Gen2, SharePoint, OneLake), once native enforcement is GA. Azure AI Search ANDs the caller's own filter with its internal permission filter. A document then has to pass both the user's Purview usage rights and the RAG-OS access policy, so neither replaces the other. For content RAG-OS ingests itself, such as uploads and local folders, the label-to-policy mapping is the route.
+        - heading "6.3 Purview references" [level=3] [ref=e1495]
+        - list [ref=e1496]:
+          - listitem [ref=e1497]:
+            - 'link "Azure AI Search: index Purview sensitivity labels" [ref=e1498] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels
+            - text: (Preview) ·
+            - link "Enforce labels at query time" [ref=e1499] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels
+          - listitem [ref=e1500]:
+            - link "Learn about sensitivity labels" [ref=e1501] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/sensitivity-labels
+            - text: (label priority, scopes, metadata in clear text)
+          - listitem [ref=e1502]:
+            - link "Enable co-authoring for encrypted documents" [ref=e1503] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/sensitivity-labels-coauthoring
+            - text: (label metadata moves to the new format)
+          - listitem [ref=e1504]:
+            - 'link "Graph: driveItem extractSensitivityLabels" [ref=e1505] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/graph/api/driveitem-extractsensitivitylabels?view=graph-rest-1.0
+            - text: ·
+            - 'link "Graph: get sensitivityLabel" [ref=e1506] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/graph/api/sensitivitylabel-get?view=graph-rest-1.0
+          - listitem [ref=e1507]:
+            - link "Purview for Microsoft 365 Copilot" [ref=e1508] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/ai-m365-copilot
+            - text: (label badges and highest-priority label in responses)
+          - listitem [ref=e1509]:
+            - link "Microsoft Information Protection SDK overview" [ref=e1510] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/information-protection/develop/overview
+          - listitem [ref=e1511]:
+            - link "Azure-Samples/azure-search-openai-demo-purviewdatasecurity" [ref=e1512] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo-purviewdatasecurity
+            - text: ": Microsoft sample that uses the native Purview label feature (Preview) on the Blob indexer path, passes the user's token on every search, and shows label badges with a highest-priority label banner."
+        - paragraph [ref=e1513]: The full list of Purview sources is in section 11.
+      - generic [ref=e1514]:
+        - heading "7Where RAG-OS stands out" [level=2] [ref=e1515]
+        - paragraph [ref=e1516]: These are the areas where RAG-OS adds something the Azure building blocks don't provide out of the box. "Not found" means we found no comparable feature in the Microsoft documentation and public competitor material we reviewed on 9 October 2026. It doesn't prove that none exists.
+        - generic [ref=e1517]:
+          - generic [ref=e1518]:
+            - heading "Configurable ABAC, denied by default" [level=4] [ref=e1519]
+            - paragraph [ref=e1520]: Department, region hierarchy, clearance level and personal share, combined in one declarative policy and compiled into a filter applied inside every search. Missing attributes mean deny-all, and claim values are allow-list validated, which makes filters injection-safe. Azure's native trimming is identity-based, with OR semantics. Among the competitors we profiled, we found none that advertises an equivalent policy model.
+          - generic [ref=e1521]:
+            - heading "Works alongside native ACLs" [level=4] [ref=e1522]
+            - paragraph [ref=e1523]: "Azure AI Search appends its internal permission filter to any caller filter. That means source ACLs (for example SharePoint, through native ingestion) and the RAG-OS attribute policy can apply together: a document must pass both. RAG-OS covers corpora that have no trustworthy ACLs, and native ingestion covers those that do."
+          - generic [ref=e1524]:
+            - heading "Governed classification" [level=4] [ref=e1525]
+            - paragraph [ref=e1526]: Layered tagging (rules, sidecars, Excel manifest, upload form, then classifiers), an SME review queue that freezes approved labels, and a recorded source for every facet. We found no comparable taxonomy, classification or review workflow in the Foundry IQ documentation. On Azure, custom enrichment also conflicts with native ACL and label ingestion within a single indexer pipeline.
+          - generic [ref=e1527]:
+            - heading "Abstain, don't guess" [level=4] [ref=e1528]
+            - paragraph [ref=e1529]: RAG-OS refuses uncited answers. It abstains without calling the model when nothing permitted and relevant is found, and every refusal has a reason code. Admins can see why an answer was refused through the near-miss probe.
+          - generic [ref=e1530]:
+            - heading "Per-query token cost and stage tracing" [level=4] [ref=e1531]
+            - paragraph [ref=e1532]: Token use is recorded on every answer, with one correlation ID across browser, API, queue and worker, and admins get stage-by-stage traces with replay. In Foundry IQ, token counts appear only in each response's activity log, and the MCP path drops activity and references entirely.
+          - generic [ref=e1533]:
+            - heading "Your choice of models, including Claude" [level=4] [ref=e1534]
+            - paragraph [ref=e1535]: Claude on Microsoft Foundry or Azure OpenAI GPT can be the answer model. Embeddings can be self-hosted, with no per-token cost and text kept inside the deployment. Knowledge-base planning and synthesis in Foundry IQ accept Azure OpenAI models only.
+          - generic [ref=e1536]:
+            - heading "In your tenant, keyless" [level=4] [ref=e1537]
+            - paragraph [ref=e1538]: RAG-OS runs in your Azure subscription with managed identity and no keys, and only entitled passages reach the model. Compared with SaaS assistants hosted outside Azure, this keeps the data path in your own tenant.
+          - generic [ref=e1539]:
+            - heading "A stable contract over fast-moving preview APIs" [level=4] [ref=e1540]
+            - paragraph [ref=e1541]: Foundry IQ's governance features (permission ingestion, Purview labels, SharePoint, planning) are in Preview, and the API has changed rapidly. RAG-OS offers customers one stable product contract, and adopts the native features underneath as they mature.
+        - heading "7.1 Current gaps and how the roadmap closes them" [level=3] [ref=e1542]
+        - paragraph [ref=e1543]:
+          - text: RAG-OS doesn't yet cover everything an enterprise knowledge platform may need. The table lists what is not available today, why it matters, the roadmap phase that addresses it (see
+          - link "section 9" [ref=e1544] [cursor=pointer]:
+            - /url: "#s-roadmap"
+          - text: ), and the Azure building block RAG-OS plans to use where one exists. On narrow screens, the table scrolls sideways.
+        - region "Current RAG-OS gaps and roadmap table" [ref=e1545]:
+          - table [ref=e1546]:
+            - rowgroup [ref=e1547]:
+              - row [ref=e1548]:
+                - columnheader "Gap" [ref=e1549]
+                - columnheader "Why it matters" [ref=e1550]
+                - columnheader "Roadmap phase" [ref=e1551]
+                - columnheader "Azure building block RAG-OS will use" [ref=e1552]
+            - rowgroup [ref=e1553]:
+              - row [ref=e1554]:
+                - cell "SharePoint (with permission sync), Google Drive and SFTP connectors" [ref=e1555]
+                - cell "Much enterprise content lives in these stores. Today content arrives through local folders, Azure Blob and uploads." [ref=e1556]
+                - cell "Next" [ref=e1557]
+                - cell "Azure AI Search SharePoint ACL ingestion (Preview), with the RAG-OS policy ANDed on top" [ref=e1559]
+              - row [ref=e1560]:
+                - cell "OCR for scanned PDFs, and PowerPoint (PPTX) files" [ref=e1561]
+                - cell "Scanned documents and slide decks are common sources of policy and training content. PDFs are read from their text layer today." [ref=e1562]
+                - cell "Next" [ref=e1563]
+                - cell "Azure Content Understanding" [ref=e1565]
+              - row [ref=e1566]:
+                - cell "Evaluation as release gates" [ref=e1567]
+                - cell "Answer quality and access correctness should be measured automatically before each release." [ref=e1568]
+                - cell "Next" [ref=e1569]
+                - cell "Azure AI Evaluation (alongside open-source evaluators)" [ref=e1571]
+              - row [ref=e1572]:
+                - cell "Version-aware ranking and a structured conflict flag" [ref=e1573]
+                - cell "When documents disagree, users need the current version ranked first and a clear signal. Effective dates are used today and conflicts are noted in the answer text." [ref=e1574]
+                - cell "Next" [ref=e1575]
+                - cell "None needed (RAG-OS retrieval logic)" [ref=e1577]
+              - row [ref=e1578]:
+                - cell "Streaming answers" [ref=e1579]
+                - cell "Answers appear progressively, which improves perceived response time for long answers." [ref=e1580]
+                - cell "Next" [ref=e1581]
+                - cell "None needed (RAG-OS API and chat UI)" [ref=e1583]
+              - row [ref=e1584]:
+                - cell "Private endpoints and VNet integration" [ref=e1585]
+                - cell "Many security reviews require service traffic to stay off public endpoints." [ref=e1586]
+                - cell "Next" [ref=e1587]
+                - cell "Azure Private Link and Container Apps VNet integration" [ref=e1589]
+              - row [ref=e1590]:
+                - cell "Purview sensitivity label mapping" [ref=e1591]
+                - cell "Microsoft customers expect existing labels to be honoured and shown on citations." [ref=e1592]
+                - cell "Next" [ref=e1593]
+                - cell [ref=e1595]:
+                  - text: Office label metadata and Microsoft Graph sensitivity label APIs (see
+                  - link "section 6" [ref=e1596] [cursor=pointer]:
+                    - /url: "#s-purview"
+                  - text: )
+              - row [ref=e1597]:
+                - cell "Customer-portal sign-in and a multi-tenant SaaS control plane" [ref=e1598]
+                - cell "Needed to serve external customers in a portal and to offer RAG-OS as a metered, multi-customer service. Today users sign in with your own Entra tenant." [ref=e1599]
+                - cell "Later" [ref=e1600]
+                - cell "Microsoft Entra External ID" [ref=e1602]
+              - row [ref=e1603]:
+                - cell "Teams and Copilot Studio distribution, and governed retrieval as an MCP server" [ref=e1604]
+                - cell "Lets people use governed answers in Microsoft 365, and lets other agents call RAG-OS with the user's policy applied." [ref=e1605]
+                - cell "Later" [ref=e1606]
+                - cell "Foundry agent, then Copilot Studio; MCP" [ref=e1608]
+              - row [ref=e1609]:
+                - cell "Agentic, multi-source retrieval" [ref=e1610]
+                - cell "Complex questions benefit from query planning across several sources." [ref=e1611]
+                - cell "Later" [ref=e1612]
+                - cell "Foundry IQ knowledge bases as an optional retrieval engine" [ref=e1614]
+              - row [ref=e1615]:
+                - cell "Ontology and completeness reasoning" [ref=e1616]
+                - cell "Regulated workflows need to check that a document set is complete against a specific guideline, not only answer questions." [ref=e1617]
+                - cell "Horizon" [ref=e1618]
+                - cell "None identified (RAG-OS domain packs)" [ref=e1620]
+      - generic [ref=e1621]:
+        - heading "8Use-case fit" [level=2] [ref=e1622]
+        - paragraph [ref=e1623]:
+          - text: The five use cases from the
+          - link "RAG-OS Product Overview" [ref=e1624] [cursor=pointer]:
+            - /url: RAG-OS-Overview.html#s-usecases
+          - text: . "Foundry IQ alone" means using knowledge bases without a governance layer on top. "AI Search DIY" means building directly on a search index.
+        - region "Use-case fit table" [ref=e1625]:
+          - table [ref=e1626]:
+            - rowgroup [ref=e1627]:
+              - row [ref=e1628]:
+                - columnheader "Use case" [ref=e1629]
+                - columnheader "RAG-OS" [ref=e1630]
+                - columnheader "Foundry IQ alone" [ref=e1631]
+                - columnheader "AI Search DIY" [ref=e1632]
+            - rowgroup [ref=e1633]:
+              - row [ref=e1634]:
+                - cell "Knowledge-base assistant for SMBs (SaaS)" [ref=e1635]
+                - 'cell "Partial The core product is available today: cited answers, department-level privacy and the embed. The multi-tenant SaaS control plane, metering and customer sign-in (External ID) are on the roadmap." [ref=e1636]':
+                  - generic [ref=e1637]: Partial
+                  - text: "The core product is available today: cited answers, department-level privacy and the embed. The multi-tenant SaaS control plane, metering and customer sign-in (External ID) are on the roadmap."
+                - cell "Partial A managed retrieval layer, but the UI, attribute policy and classification are yours to build." [ref=e1638]:
+                  - generic [ref=e1639]: Partial
+                  - text: A managed retrieval layer, but the UI, attribute policy and classification are yours to build.
+                - cell "Build Everything above the index is custom." [ref=e1640]:
+                  - generic [ref=e1641]: Build
+                  - text: Everything above the index is custom.
+              - row [ref=e1642]:
+                - cell "Questionnaire generation and grading" [ref=e1643]
+                - cell "Partial The classified, access-scoped and cited corpus exists. Generation and grading are on the roadmap." [ref=e1644]:
+                  - generic [ref=e1645]: Partial
+                  - text: The classified, access-scoped and cited corpus exists. Generation and grading are on the roadmap.
+                - cell "Build Retrieval only. No generation workflow or review step." [ref=e1646]:
+                  - generic [ref=e1647]: Build
+                  - text: Retrieval only. No generation workflow or review step.
+                - cell "Build Fully custom." [ref=e1648]:
+                  - generic [ref=e1649]: Build
+                  - text: Fully custom.
+              - row [ref=e1650]:
+                - cell "Citation-backed form filling" [ref=e1651]
+                - cell "Partial Page-level citations and abstention are available. The form-filling workflow is on the roadmap." [ref=e1652]:
+                  - generic [ref=e1653]: Partial
+                  - text: Page-level citations and abstention are available. The form-filling workflow is on the roadmap.
+                - cell "Build Extractive references are available. The workflow is custom." [ref=e1654]:
+                  - generic [ref=e1655]: Build
+                  - text: Extractive references are available. The workflow is custom.
+                - cell "Build Fully custom." [ref=e1656]:
+                  - generic [ref=e1657]: Build
+                  - text: Fully custom.
+              - row [ref=e1658]:
+                - cell "Personal assistant" [ref=e1659]
+                - cell "Partial \"Only me\" uploads and personal shares are available. A personal edition is on the roadmap." [ref=e1660]:
+                  - generic [ref=e1661]: Partial
+                  - text: "\"Only me\" uploads and personal shares are available. A personal edition is on the roadmap."
+                - cell "Partial Work IQ (Preview) reaches a user's Microsoft 365 content. Documents outside Microsoft 365 need building." [ref=e1662]:
+                  - generic [ref=e1663]: Partial
+                  - text: Work IQ (Preview) reaches a user's Microsoft 365 content. Documents outside Microsoft 365 need building.
+                - cell "Build Fully custom." [ref=e1664]:
+                  - generic [ref=e1665]: Build
+                  - text: Fully custom.
+              - row [ref=e1666]:
+                - cell "Regulated-vertical completeness checks" [ref=e1667]
+                - cell "Partial A versioned corpus with effective dates, the taxonomy and citations are available. The ontology and completeness agent are on the roadmap." [ref=e1668]:
+                  - generic [ref=e1669]: Partial
+                  - text: A versioned corpus with effective dates, the taxonomy and citations are available. The ontology and completeness agent are on the roadmap.
+                - cell "Build The Fabric Ontology source (Preview) targets structured data. Document completeness logic is custom." [ref=e1670]:
+                  - generic [ref=e1671]: Build
+                  - text: The Fabric Ontology source (Preview) targets structured data. Document completeness logic is custom.
+                - cell "Build Fully custom." [ref=e1672]:
+                  - generic [ref=e1673]: Build
+                  - text: Fully custom.
+      - generic [ref=e1674]:
+        - heading "9Roadmap alignment" [level=2] [ref=e1675]
+        - paragraph [ref=e1676]:
+          - text: The RAG-OS roadmap closes the gaps shown in section 4. Wherever Azure already has a native capability, RAG-OS plans to
+          - strong [ref=e1677]: adopt it rather than rebuild it
+          - text: ", and to keep its governance layer on top."
+        - generic [ref=e1678]:
+          - generic [ref=e1679]:
+            - heading "Next" [level=4] [ref=e1680]
+            - paragraph [ref=e1681]: Complete the enterprise product
+            - list [ref=e1682]:
+              - listitem [ref=e1683]: SharePoint connector with permission sync through Azure's native ACL ingestion, then Google Drive and SFTP
+              - listitem [ref=e1684]: OCR for scanned documents (Azure Content Understanding)
+              - listitem [ref=e1685]: Evaluation pipeline as CI/CD release gates
+              - listitem [ref=e1686]: Version-aware ranking, plus structured conflict and "as of" signals
+              - listitem [ref=e1687]: UI editors for taxonomy and access policy
+              - listitem [ref=e1688]: Streaming answers, private endpoints and VNet
+              - listitem [ref=e1689]: Purview sensitivity labels read at ingestion and mapped to clearance and confidentiality, with label badges on citations
+          - generic [ref=e1690]:
+            - heading "Later" [level=4] [ref=e1691]
+            - paragraph [ref=e1692]: Open the platform
+            - list [ref=e1693]:
+              - listitem [ref=e1694]: Foundry IQ knowledge bases as an alternative retrieval engine (agentic planning, multi-source)
+              - listitem [ref=e1695]: Governed retrieval exposed as an MCP server
+              - listitem [ref=e1696]: Publish as a Foundry agent for Teams and Copilot Studio
+              - listitem [ref=e1697]: Native Azure AI Search Purview enforcement for indexer-based sources, combined with the RAG-OS policy once GA
+              - listitem [ref=e1698]: Multi-tenant SaaS control plane with metering
+              - listitem [ref=e1699]: On-premises and confidential-compute model adapters
+          - generic [ref=e1700]:
+            - heading "Horizon" [level=4] [ref=e1701]
+            - paragraph [ref=e1702]: Workflows on governed knowledge
+            - list [ref=e1703]:
+              - listitem [ref=e1704]: Questionnaire generation and grading
+              - listitem [ref=e1705]: Citation-backed form filling
+              - listitem [ref=e1706]: Completeness-checking agents for regulated verticals
+              - listitem [ref=e1707]: Ontology and knowledge-graph reasoning
+              - listitem [ref=e1708]: A marketplace of domain packs
+              - listitem [ref=e1709]: Personal knowledge assistant edition
+        - heading "Where RAG-OS will adopt Azure natives" [level=3] [ref=e1710]
+        - region "Azure adoption table" [ref=e1711]:
+          - table [ref=e1712]:
+            - rowgroup [ref=e1713]:
+              - row [ref=e1714]:
+                - columnheader "RAG-OS roadmap item" [ref=e1715]
+                - columnheader "Azure native it builds on" [ref=e1716]
+                - columnheader "Azure status today" [ref=e1717]
+                - columnheader "What RAG-OS keeps on top" [ref=e1718]
+            - rowgroup [ref=e1719]:
+              - row [ref=e1720]:
+                - cell "SharePoint with permission sync" [ref=e1721]
+                - cell "SharePoint ACL ingestion (indexer)" [ref=e1722]
+                - cell "Preview" [ref=e1723]
+                - cell "Attribute policy ANDed with source ACLs. Classification and review." [ref=e1725]
+              - row [ref=e1726]:
+                - cell "Agentic retrieval and multi-source" [ref=e1727]
+                - cell "Foundry IQ knowledge bases (search-index knowledge source)" [ref=e1728]
+                - cell "Native GA Preview planning" [ref=e1729]:
+                  - generic [ref=e1730]: Native GA
+                  - generic [ref=e1731]: Preview
+                  - text: planning
+                - cell "Policy filter, grounding guard, token tracing, model choice for answers." [ref=e1732]
+              - row [ref=e1733]:
+                - cell "Purview label mapping (Next)" [ref=e1734]
+                - cell [ref=e1735]:
+                  - text: Office label metadata, plus the Microsoft Graph
+                  - code [ref=e1736]: extractSensitivityLabels
+                  - text: and sensitivity label APIs (v1.0)
+                - cell "Native GA" [ref=e1737]
+                - cell "Labels feed clearance and confidentiality in the same policy, with provenance and SME override." [ref=e1739]
+              - row [ref=e1740]:
+                - cell "Native Purview enforcement (Later)" [ref=e1741]
+                - cell "Azure AI Search Purview label ingestion and query-time enforcement" [ref=e1742]
+                - cell "Preview GA targeted October 2026" [ref=e1743]:
+                  - generic [ref=e1744]: Preview
+                  - text: GA targeted October 2026
+                - cell "The RAG-OS policy filter ANDed with native label enforcement for indexer-based sources." [ref=e1745]
+              - row [ref=e1746]:
+                - cell "MCP server" [ref=e1747]
+                - cell "MCP as the integration standard (knowledge bases already expose one)" [ref=e1748]
+                - cell "Native GA" [ref=e1749]
+                - cell "A governed tool that enforces the RAG-OS policy for the calling user." [ref=e1751]
+              - row [ref=e1752]:
+                - cell "Teams and Copilot Studio" [ref=e1753]
+                - cell "Foundry agent, then Copilot Studio" [ref=e1754]
+                - cell "Preview" [ref=e1755]
+                - cell "The same governed answers in Microsoft 365 surfaces." [ref=e1757]
+              - row [ref=e1758]:
+                - cell "OCR" [ref=e1759]
+                - cell "Azure Content Understanding" [ref=e1760]
+                - cell "Native GA" [ref=e1761]
+                - cell "Classification and access tagging after extraction." [ref=e1763]
+      - generic [ref=e1764]:
+        - heading "10Market context" [level=2] [ref=e1765]
+        - paragraph [ref=e1766]: Trend signals from 2025–2026, drawn from public sources (see section 11), and where RAG-OS plays.
+        - region "Market trend signals table" [ref=e1767]:
+          - table [ref=e1768]:
+            - rowgroup [ref=e1769]:
+              - row [ref=e1770]:
+                - columnheader "Trend signal" [ref=e1771]
+                - columnheader "Evidence" [ref=e1772]
+                - columnheader "Where RAG-OS plays" [ref=e1773]
+            - rowgroup [ref=e1774]:
+              - row [ref=e1775]:
+                - cell "Agentic, multi-step retrieval is the default" [ref=e1776]
+                - cell "Foundry IQ, Onyx Deep Research, Amazon Quick Research, Glean Assistant 3.0" [ref=e1777]
+                - cell "Adopt Foundry IQ for planning, and extend stage tracing to show the plan and subqueries" [ref=e1778]
+              - row [ref=e1779]:
+                - cell "MCP is the integration standard" [ref=e1780]
+                - cell "Donated to the Linux Foundation's Agentic AI Foundation (9 Dec 2025). Supported by Copilot Studio, Glean, Amazon Quick, Rovo, Vectara and Onyx" [ref=e1781]
+                - cell "A governed MCP server that enforces policy for whichever agent calls it" [ref=e1782]
+              - row [ref=e1783]:
+                - cell "Source-permission-aware retrieval is table stakes" [ref=e1784]
+                - cell [ref=e1785]:
+                  - text: Azure AI Search ingests SharePoint and ADLS ACLs and Purview labels (Preview), and exposes
+                  - code [ref=e1786]: knowledge_base_retrieve
+                  - text: over MCP
+                - cell "Policy that works where source ACLs are missing or can't be trusted, plus explainable denials" [ref=e1787]
+              - row [ref=e1788]:
+                - cell "Purview label and DLP awareness is expected" [ref=e1789]
+                - cell "Copilot honours labels and DLP. AI Search returns label info per reference" [ref=e1790]
+                - cell "Purview labels as a classification input mapped to clearance, with label badges on citations (roadmap, section 6)" [ref=e1791]
+              - row [ref=e1792]:
+                - cell "Knowledge graphs and ontologies are back" [ref=e1793]
+                - cell "Fabric IQ (GA June 2026), Glean Enterprise Graph, Atlassian Teamwork Graph" [ref=e1794]
+                - cell "Ontology as validated business rules over documents (completeness), not a relationship graph" [ref=e1795]
+              - row [ref=e1796]:
+                - cell "Evaluation and guardrails as release gates" [ref=e1797]
+                - cell "Copilot Studio Agent Evaluation GA (March 2026). Vectara per-answer hallucination scoring" [ref=e1798]
+                - cell "Abstention and citations today. Evaluation pipeline as release gates (roadmap)" [ref=e1799]
+              - row [ref=e1800]:
+                - cell "Pricing is splitting in two" [ref=e1801]
+                - cell "SMB seats around $20–21 (Copilot Business, Gemini Business, Quick Plus, Onyx). Rovo is bundled. Agents are priced on consumption credits" [ref=e1802]
+                - cell "Per-answer token figures support metering and outcome-based pricing for vertical workflows" [ref=e1803]
+              - row [ref=e1804]:
+                - cell "Vertical agents capture value" [ref=e1805]
+                - cell "Prior authorisation, KYC and source-of-wealth, mortgage loss-mitigation document checks" [ref=e1806]
+                - cell "Completeness checks against a specific version of a specific guideline, with citations" [ref=e1807]
+              - row [ref=e1808]:
+                - cell "Document AI and OCR are a commodity input" [ref=e1809]
+                - cell "Azure Content Understanding GA, with a 2.0 preview in August 2026" [ref=e1810]
+                - cell "Use Content Understanding rather than build OCR" [ref=e1811]
+              - row [ref=e1812]:
+                - cell "Sovereign and in-tenant deployment matters" [ref=e1813]
+                - cell "Glean's customer-hosted option covers GCP and AWS, not Azure. Vectara offers VPC and on-premises" [ref=e1814]
+                - cell "Runs in the customer's own Azure subscription" [ref=e1815]
+              - row [ref=e1816]:
+                - cell "Agent governance control planes have arrived" [ref=e1817]
+                - cell "Microsoft Agent 365 (GA May 2026), Google Agent Registry and Gateway" [ref=e1818]
+                - cell "Governed agents and MCP endpoints that fit these control planes" [ref=e1819]
+              - row [ref=e1820]:
+                - cell "Specialists already serve the planned use cases" [ref=e1821]
+                - cell "Vanta, Loopio and Responsive (questionnaires). Copilot in Microsoft Forms (quizzes). ONLYOFFICE and Nanonets (forms). Hebbia (cited finance grids)" [ref=e1822]
+                - 'cell "Questionnaires and forms generated only from content the author is cleared for, with SME review: suited to regulated training and attestation" [ref=e1823]'
+        - heading "10.1 Other considerations for evaluators" [level=3] [ref=e1824]
+        - list [ref=e1825]:
+          - listitem [ref=e1826]:
+            - strong [ref=e1827]: Total cost of ownership.
+            - text: RAG-OS costs are Azure resources in your subscription plus LLM tokens, rather than a per-seat SaaS fee. RAG-OS reports the tokens used for every answer, so you can model cost from a pilot's real usage.
+          - listitem [ref=e1828]:
+            - strong [ref=e1829]: Security review of the access path.
+            - text: Ask for a threat model covering sign-in, the embed, attribute claims, filter construction and admin bypass, and review it with your security team.
+          - listitem [ref=e1830]:
+            - strong [ref=e1831]: Evaluate on your own golden questions.
+            - text: "Build a set of questions with expected answers and citations from your own documents. Include access-leak tests: users who must"
+            - emphasis [ref=e1832]: not
+            - text: see a document should get an abstention, not an answer.
+          - listitem [ref=e1833]:
+            - strong [ref=e1834]: Side-by-side pilot.
+            - text: Agree a short demo script and run the same questions, users and documents through each option you are considering.
+          - listitem [ref=e1835]:
+            - strong [ref=e1836]: Data residency and model choice.
+            - text: Confirm the regions for search, storage and models, and which models (Claude or Azure OpenAI GPT, self-hosted or Azure OpenAI embeddings) meet your policies.
+          - listitem [ref=e1837]:
+            - strong [ref=e1838]: Preview-feature risk on the Azure side.
+            - text: Several native governance features are in Preview, with no SLA and changing APIs. Check their status on the linked pages before you depend on them.
+      - generic [ref=e1839]:
+        - heading "11References" [level=2] [ref=e1840]
+        - paragraph [ref=e1841]: All links were checked on 9 October 2026. Sources marked [secondary] are trade press or analyst material.
+        - heading "Microsoft Foundry IQ and agentic retrieval" [level=3] [ref=e1842]
+        - list [ref=e1843]:
+          - listitem [ref=e1844]:
+            - link "What is Foundry IQ?" [ref=e1845] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq
+            - text: (Microsoft Learn)
+          - listitem [ref=e1846]:
+            - link "Foundry IQ product page" [ref=e1847] [cursor=pointer]:
+              - /url: https://azure.microsoft.com/en-us/products/foundry/IQ
+          - listitem [ref=e1848]:
+            - link "Build smarter agents faster with Foundry IQ" [ref=e1849] [cursor=pointer]:
+              - /url: https://devblogs.microsoft.com/foundry/build-smarter-agents-faster-with-foundry-iq/
+            - text: (GA announcement, 2 June 2026)
+          - listitem [ref=e1850]:
+            - link "Agentic retrieval overview" [ref=e1851] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-overview
+          - listitem [ref=e1852]:
+            - link "Agentic retrieval API versions and migration" [ref=e1853] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-migrate
+          - listitem [ref=e1854]:
+            - link "Knowledge sources overview" [ref=e1855] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-overview
+          - listitem [ref=e1856]:
+            - link "Blob knowledge source" [ref=e1857] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-blob
+          - listitem [ref=e1858]:
+            - link "Create a knowledge base" [ref=e1859] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-knowledge-base
+          - listitem [ref=e1860]:
+            - link "Create an index for agentic retrieval" [ref=e1861] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-index
+          - listitem [ref=e1862]:
+            - link "Retrieve from a knowledge base (incl. permissions and MCP)" [ref=e1863] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve
+          - listitem [ref=e1864]:
+            - link "Set retrieval reasoning effort" [ref=e1865] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-set-retrieval-reasoning-effort
+          - listitem [ref=e1866]:
+            - link "Answer synthesis" [ref=e1867] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-answer-synthesis
+          - listitem [ref=e1868]:
+            - link "Remote SharePoint knowledge source" [ref=e1869] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-sharepoint-remote
+          - listitem [ref=e1870]:
+            - link "Work IQ knowledge source" [ref=e1871] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-work-iq
+          - listitem [ref=e1872]:
+            - link "MCP server knowledge source" [ref=e1873] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-mcp-server
+          - listitem [ref=e1874]:
+            - link "Connect Foundry IQ to Foundry Agent Service" [ref=e1875] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/foundry-iq-connect
+          - listitem [ref=e1876]:
+            - link "Knowledge sources REST reference (2026-08-01-preview)" [ref=e1877] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/rest/api/searchservice/knowledge-sources/create-or-update?view=rest-searchservice-2026-08-01-preview
+          - listitem [ref=e1878]:
+            - link "Enable or disable agentic retrieval billing" [ref=e1879] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-enable-disable
+          - listitem [ref=e1880]:
+            - link "Service limits" [ref=e1881] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-limits-quotas-capacity
+            - text: ·
+            - link "Azure AI Search pricing" [ref=e1882] [cursor=pointer]:
+              - /url: https://azure.microsoft.com/en-us/pricing/details/search/
+            - text: ·
+            - link "Monitoring data reference" [ref=e1883] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/monitor-azure-cognitive-search-data-reference
+        - heading "Azure AI Search document-level access" [level=3] [ref=e1884]
+        - list [ref=e1885]:
+          - listitem [ref=e1886]:
+            - link "Document-level access overview" [ref=e1887] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-document-level-access-overview
+          - listitem [ref=e1888]:
+            - link "Security filters for trimming results" [ref=e1889] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-security-trimming-for-azure-search
+            - text: (GA)
+          - listitem [ref=e1890]:
+            - link "OData search.in function" [ref=e1891] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-query-odata-search-in-function
+          - listitem [ref=e1892]:
+            - link "ADLS Gen2 ACL and RBAC-scope indexing" [ref=e1893] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-access-control-lists-and-role-based-access
+          - listitem [ref=e1894]:
+            - 'link "Tutorial: index ADLS Gen2 ACLs" [ref=e1895] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/azure/search/tutorial-adls-gen2-indexer-acls
+          - listitem [ref=e1896]:
+            - link "ADLS Gen2 access control model" [ref=e1897] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-access-control-model
+            - text: (Azure Storage)
+          - listitem [ref=e1898]:
+            - link "Blob indexer RBAC scope" [ref=e1899] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-blob-indexer-role-based-access
+          - listitem [ref=e1900]:
+            - link "Permission fields with the push API" [ref=e1901] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-index-access-control-lists-and-rbac-push-api
+          - listitem [ref=e1902]:
+            - link "SharePoint ACL indexing" [ref=e1903] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sharepoint-access-control-lists
+          - listitem [ref=e1904]:
+            - link "Purview sensitivity label indexing" [ref=e1905] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels
+            - text: ·
+            - link "Label enforcement at query time" [ref=e1906] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels
+          - listitem [ref=e1907]:
+            - link "Query-time ACL / RBAC enforcement (x-ms-query-source-authorization)" [ref=e1908] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement
+          - listitem [ref=e1909]:
+            - link "What's new in Azure AI Search" [ref=e1910] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/whats-new
+        - heading "Microsoft Purview sensitivity labels" [level=3] [ref=e1911]
+        - list [ref=e1912]:
+          - listitem [ref=e1913]:
+            - link "Learn about sensitivity labels" [ref=e1914] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/sensitivity-labels
+            - text: (label priority, scopes, metadata)
+          - listitem [ref=e1915]:
+            - 'link "Enable co-authoring for encrypted documents: metadata changes" [ref=e1916] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/purview/sensitivity-labels-coauthoring
+          - listitem [ref=e1917]:
+            - 'link "MS-OFFCRYPTO 2.6.3: LabelInfo versus custom document properties" [ref=e1918] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-offcrypto/13939de6-c833-44ab-b213-e0088bf02341
+          - listitem [ref=e1919]:
+            - 'link "MIP SDK FAQ: metadata storage changes" [ref=e1920] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/information-protection/develop/faq
+            - text: ·
+            - link "MIP SDK overview" [ref=e1921] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/information-protection/develop/overview
+            - text: ·
+            - link "MIP SDK setup and configuration" [ref=e1922] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/information-protection/develop/setup-configure-mip
+          - listitem [ref=e1923]:
+            - 'link "Graph: driveItem extractSensitivityLabels (v1.0)" [ref=e1924] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/graph/api/driveitem-extractsensitivitylabels?view=graph-rest-1.0
+          - listitem [ref=e1925]:
+            - 'link "Graph: get sensitivityLabel (v1.0)" [ref=e1926] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/graph/api/sensitivitylabel-get?view=graph-rest-1.0
+            - text: ·
+            - link "computeInheritance (v1.0)" [ref=e1927] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/graph/api/sensitivitylabel-computeinheritance?view=graph-rest-1.0
+          - listitem [ref=e1928]:
+            - link "Configure super users for Azure Rights Management" [ref=e1929] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/encryption-super-users
+          - listitem [ref=e1930]:
+            - link "Purview for Microsoft 365 Copilot" [ref=e1931] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/ai-m365-copilot
+            - text: ·
+            - link "Copilot considerations" [ref=e1932] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/ai-m365-copilot-considerations
+            - text: ·
+            - link "DLP for Microsoft 365 Copilot" [ref=e1933] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about
+          - listitem [ref=e1934]:
+            - 'link "Azure AI Search: index Purview sensitivity labels" [ref=e1935] [cursor=pointer]':
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels
+            - text: ·
+            - link "Query-time label enforcement" [ref=e1936] [cursor=pointer]:
+              - /url: https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels
+          - listitem [ref=e1937]:
+            - link "Microsoft 365 roadmap RM534610" [ref=e1938] [cursor=pointer]:
+              - /url: https://mc.merill.net/message/RM534610
+            - text: ": Azure AI Search Purview label support, GA targeted October 2026 [secondary: roadmap mirror]"
+        - heading "GitHub samples and issues" [level=3] [ref=e1939]
+        - list [ref=e1940]:
+          - listitem [ref=e1941]:
+            - link "azure-search-rest-samples / acl" [ref=e1942] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-rest-samples/tree/main/acl
+            - text: (acl.http, permissionFilter and query header)
+          - listitem [ref=e1943]:
+            - link "azure-search-python-samples / Quickstart-Document-Permissions-Pull-API" [ref=e1944] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Pull-API
+          - listitem [ref=e1945]:
+            - link "azure-search-python-samples / Quickstart-Document-Permissions-Push-API" [ref=e1946] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Push-API
+          - listitem [ref=e1947]:
+            - link "azure-search-openai-demo / docs/login_and_acl.md" [ref=e1948] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/docs/login_and_acl.md
+          - listitem [ref=e1949]:
+            - link "azure-search-openai-demo / scripts/adlsgen2setup.py" [ref=e1950] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/adlsgen2setup.py
+          - listitem [ref=e1951]:
+            - link "azure-search-openai-demo / scripts/manageacl.py" [ref=e1952] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/manageacl.py
+          - listitem [ref=e1953]:
+            - link "azure-search-openai-demo / scripts/verify_search_index_acls.py" [ref=e1954] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/verify_search_index_acls.py
+          - listitem [ref=e1955]:
+            - link "azure-search-openai-demo / docs/agentic_retrieval.md" [ref=e1956] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/docs/agentic_retrieval.md
+          - listitem [ref=e1957]:
+            - link "azure-search-openai-demo-purviewdatasecurity" [ref=e1958] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-openai-demo-purviewdatasecurity
+            - text: ": uses the native Purview label feature (Preview) on the Blob indexer path, passes the user's token on every search, and shows label badges with a highest-priority label banner"
+          - listitem [ref=e1959]:
+            - link "Quickstart-Agentic-Retrieval (Python)" [ref=e1960] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Agentic-Retrieval
+            - text: ·
+            - link ".NET" [ref=e1961] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-dotnet-samples/blob/main/quickstart-agentic-retrieval
+            - text: ·
+            - link "REST" [ref=e1962] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-rest-samples/tree/main/Quickstart-agentic-retrieval
+          - listitem [ref=e1963]:
+            - link "agentic-retrieval-pipeline-example" [ref=e1964] [cursor=pointer]:
+              - /url: https://github.com/Azure-Samples/azure-search-python-samples/tree/main/agentic-retrieval-pipeline-example
+            - text: (Foundry Agent Service over MCP)
+          - listitem [ref=e1965]:
+            - 'link "azure-sdk-for-python #44454" [ref=e1966] [cursor=pointer]':
+              - /url: https://github.com/azure/azure-sdk-for-python/issues/44454
+            - text: ": the built-in Azure AI Search tool can't pass the user token (open)"
+          - listitem [ref=e1967]:
+            - 'link "microsoft/agent-framework #6864" [ref=e1968] [cursor=pointer]':
+              - /url: https://github.com/microsoft/agent-framework/issues/6864
+            - text: ": query source credential for knowledge-base retrieval (closed)"
+        - heading "Market sources" [level=3] [ref=e1969]
+        - list [ref=e1970]:
+          - listitem [ref=e1971]:
+            - link "Donating MCP and establishing the Agentic AI Foundation" [ref=e1972] [cursor=pointer]:
+              - /url: https://anthropic.com/news/donating-the-model-context-protocol-and-establishing-of-the-agentic-ai-foundation
+            - text: ·
+            - link "MCP joins the Agentic AI Foundation" [ref=e1973] [cursor=pointer]:
+              - /url: https://blog.modelcontextprotocol.io/posts/2025-12-09-mcp-joins-agentic-ai-foundation/
+          - listitem [ref=e1974]:
+            - link "Agent evaluation in Copilot Studio is GA" [ref=e1975] [cursor=pointer]:
+              - /url: https://techcommunity.microsoft.com/blog/copilot-studio-blog/agent-evaluation-in-microsoft-copilot-studio-is-now-generally-available/4507392
+          - listitem [ref=e1976]:
+            - link "Introducing Fabric IQ" [ref=e1977] [cursor=pointer]:
+              - /url: https://blog.fabric.microsoft.com/id-id/blog/introducing-fabric-iq-the-semantic-foundation-for-enterprise-ai?ft=All
+            - text: ·
+            - link "Fabric IQ expansion" [ref=e1978] [cursor=pointer]:
+              - /url: https://letsdatascience.com/news/microsoft-expands-fabric-iq-as-a-context-layer-for-ai-agents-e9a90bd8
+            - text: "[secondary]"
+          - listitem [ref=e1979]:
+            - link "Azure Content Understanding GA" [ref=e1980] [cursor=pointer]:
+              - /url: https://devblogs.microsoft.com/foundry/azure-content-understanding-is-now-generally-available/
+            - text: ·
+            - link "August 2026 updates" [ref=e1981] [cursor=pointer]:
+              - /url: https://devblogs.microsoft.com/foundry/azure-content-understanding-updates-august-2026
+          - listitem [ref=e1982]:
+            - link "Glean Assistant 3.0 and Enterprise Graph" [ref=e1983] [cursor=pointer]:
+              - /url: https://www.glean.com/press/glean-introduces-third-generation-ai-assistant-new-enterprise-graph-to-enable-the-superintelligent-enterprise
+            - text: ·
+            - link "Glean deployment options" [ref=e1984] [cursor=pointer]:
+              - /url: https://docs.glean.com/get-started/prepare/about-deployment
+            - text: ·
+            - link "Glean September 2026 release" [ref=e1985] [cursor=pointer]:
+              - /url: https://docs.glean.com/release-notes/releases/2026-09-08-september-release
+          - listitem [ref=e1986]:
+            - link "Amazon Quick" [ref=e1987] [cursor=pointer]:
+              - /url: https://aws.amazon.com/quick/
+            - text: ·
+            - link "Onyx pricing" [ref=e1988] [cursor=pointer]:
+              - /url: https://www.onyx.app/pricing
+            - text: ·
+            - link "Onyx 1.0 launch" [ref=e1989] [cursor=pointer]:
+              - /url: https://hunted.space/product/onyx-8/launches/onyx-10
+            - text: "[secondary] ·"
+            - link "Vectara" [ref=e1990] [cursor=pointer]:
+              - /url: https://www.vectara.com/
+          - listitem [ref=e1991]:
+            - 'link "Google Cloud Next ''26: Gemini Enterprise Agent Platform" [ref=e1992] [cursor=pointer]':
+              - /url: https://virtualizationreview.com/articles/2026/04/24/google-cloud-next-26-gemini-enterprise-agent-platform-leads-ai-centric-news.aspx
+            - text: "[secondary]"
+          - listitem [ref=e1993]:
+            - link "Microsoft 365 Copilot Business" [ref=e1994] [cursor=pointer]:
+              - /url: https://www.trustedtechteam.com/blogs/microsoft-365/microsoft-365-copilot-business-everything-you-need-to-know
+            - text: "[secondary] ·"
+            - link "Microsoft Agent 365" [ref=e1995] [cursor=pointer]:
+              - /url: https://rencore.com/en/blog/understanding-microsoft-agent-365-pricing
+            - text: "[secondary]"
+          - listitem [ref=e1996]:
+            - link "Microsoft digital sovereignty capabilities" [ref=e1997] [cursor=pointer]:
+              - /url: https://news.microsoft.com/source/emea/2025/11/microsoft-expands-digital-sovereignty-capabilities/
+          - listitem [ref=e1998]:
+            - link "Agentic prior authorisation (PrescriberPoint)" [ref=e1999] [cursor=pointer]:
+              - /url: https://business.prescriberpoint.com/news/ai-powered-prior-authorization-validated-94.5-clinician-acceptance-rate
+            - text: ·
+            - link "Agentic KYC onboarding" [ref=e2000] [cursor=pointer]:
+              - /url: https://fstech.co.uk/fst/Deutsche_Bank_Rolls_Out_Agentic_AI_To_Streamline_KYC_Onboarding_In_Private_Banking.php
+            - text: "[secondary] ·"
+            - link "AI in mortgage servicing" [ref=e2001] [cursor=pointer]:
+              - /url: https://themortgagepoint.com/2026/01/16/responsible-use-of-ai-in-mortgage-servicing-part-2/
+            - text: "[secondary]"
+          - listitem [ref=e2002]:
+            - link "Vanta 2025 year in review" [ref=e2003] [cursor=pointer]:
+              - /url: https://www.vanta.com/resources/vanta-2025-year-in-review
+            - text: ·
+            - link "Copilot in Forms quizzes" [ref=e2004] [cursor=pointer]:
+              - /url: https://m365admin.handsontek.net/microsoft-copilot-microsoft-365-copilot-in-forms-can-generate-quizzes-from-provided-materials/
+            - text: "[secondary] ·"
+            - link "ONLYOFFICE AI form filling" [ref=e2005] [cursor=pointer]:
+              - /url: https://helpcenter.onlyoffice.com/ai/userguides/pdf-forms/ai-filling-forms.aspx
+        - generic [ref=e2006]: RAG-OS Feature Comparison · v1.0 · 9 October 2026. RAG-OS statuses reflect the product as built on this date. Azure statuses are as of 9 October 2026, taken from public Microsoft documentation. Preview features carry no SLA and may change. "Not offered" means not found in the documentation we reviewed. Market information comes from public sources and may change. Microsoft, Azure, Foundry, Purview, SharePoint, Teams and Copilot are trademarks of the Microsoft group of companies. Other names are trademarks of their respective owners.

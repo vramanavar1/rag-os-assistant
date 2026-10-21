@@ -1,0 +1,200 @@
+# =====================================================================================================================
+# Investor A Servicing Guide v2025.1: document requirements, as data (one file per guide version).
+#
+# SYNTHETIC CONTENT. "Investor A" and its guide are invented for the Use Case 1 MVP; nothing here is a real GSE,
+# FHA or VA rule. Edited in Protégé (open this file: the catalog resolves the core and the taxonomy).
+# Each requirement is an instance of uc1:Requirement (an n-ary relation), never a class. Its condition and recency
+# rule are named individuals so they can be edited in Protégé. Dates are xsd:dateTime at midnight (OWL 2 has no
+# xsd:date). Verified by usecase1/checks/check_ontology.py and the golden cases.
+# =====================================================================================================================
+
+@prefix uc1:   <https://rag-os.example/uc1#> .
+@prefix uc1tx: <https://rag-os.example/uc1/taxonomy#> .
+@prefix ia:    <https://rag-os.example/uc1/investor-a#> .
+@prefix ia25:  <https://rag-os.example/uc1/investor-a/2025.1#> .
+@prefix dct:   <http://purl.org/dc/terms/> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://rag-os.example/uc1/investor-a/2025.1>
+    a owl:Ontology ;
+    owl:imports <https://rag-os.example/uc1> ;
+    owl:versionInfo "2025.1" ;
+    dct:title "Investor A Servicing Guide v2025.1: document requirements (synthetic)"@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The investor and this guide version
+# ---------------------------------------------------------------------------------------------------------------------
+
+ia:InvestorA
+    a uc1:Investor , owl:NamedIndividual ;
+    rdfs:label "Investor A (synthetic)"@en .
+
+ia:v2025.1
+    a uc1:GuidelineVersion , owl:NamedIndividual ;
+    rdfs:label "Investor A Servicing Guide v2025.1 (synthetic)"@en ;
+    uc1:issuedBy ia:InvestorA ;
+    uc1:versionLabel "2025.1" ;
+    uc1:effectiveFromDate "2025-01-01T00:00:00"^^xsd:dateTime ;
+    uc1:effectiveToDate "2025-12-31T00:00:00"^^xsd:dateTime ;
+    rdfs:seeAlso <guide://investor-a/2025.1> .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Guide sections cited by the requirements
+# ---------------------------------------------------------------------------------------------------------------------
+
+ia25:s4.2.1
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.2.1 Mortgage assistance application"@en ;
+    uc1:sectionNumber "4.2.1" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.2.1> .
+
+ia25:s4.2.2
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.2.2 Hardship statement"@en ;
+    uc1:sectionNumber "4.2.2" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.2.2> .
+
+ia25:s4.3.1
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.3.1 Salaried income"@en ;
+    uc1:sectionNumber "4.3.1" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.3.1> .
+
+ia25:s4.3.2
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.3.2 Self-employed income"@en ;
+    uc1:sectionNumber "4.3.2" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.3.2> .
+
+ia25:s4.3.4
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.3.4 Rental income"@en ;
+    uc1:sectionNumber "4.3.4" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.3.4> .
+
+ia25:s4.4
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.4 Asset verification"@en ;
+    uc1:sectionNumber "4.4" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.4> .
+
+ia25:s4.5
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.5 Tax transcript authorization"@en ;
+    uc1:sectionNumber "4.5" ;
+    rdfs:seeAlso <guide://investor-a/2025.1#section-4.5> .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Requirements (R-ids are stable across versions; the label carries the section)
+# ---------------------------------------------------------------------------------------------------------------------
+
+ia25:R1
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R1: Mortgage assistance application, signed and dated by every borrower (§4.2.1)"@en ;
+    uc1:requirementId "R1" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:MAA ;
+    uc1:recency ia25:R1-recency ;
+    uc1:guideSection ia25:s4.2.1 .
+
+ia25:R1-recency
+    a uc1:RecencyRule , owl:NamedIndividual ;
+    rdfs:label "R1 recency: signatureRequired true"@en ;
+    uc1:signatureRequired true .
+
+ia25:R2
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R2: Hardship statement (§4.2.2)"@en ;
+    uc1:requirementId "R2" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:HardshipStatement ;
+    uc1:guideSection ia25:s4.2.2 .
+
+ia25:R3
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R3: Two most recent paystubs, each dated within 90 days of receipt (§4.3.1)"@en ;
+    uc1:requirementId "R3" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:Paystub ;
+    uc1:condition ia25:R3-condition ;
+    uc1:recency ia25:R3-recency ;
+    uc1:guideSection ia25:s4.3.1 .
+
+ia25:R3-condition
+    a uc1:ApplicabilityCondition , owl:NamedIndividual ;
+    rdfs:label "R3 applies when employmentType = Salaried"@en ;
+    uc1:onProperty uc1:employmentType ;
+    uc1:expectedValue uc1tx:Salaried .
+
+ia25:R3-recency
+    a uc1:RecencyRule , owl:NamedIndividual ;
+    rdfs:label "R3 recency: minCount 2, maxAgeDays 90"@en ;
+    uc1:minCount 2 ;
+    uc1:maxAgeDays 90 .
+
+ia25:R4
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R4: Profit and loss statement dated within 120 days of receipt (§4.3.2)"@en ;
+    uc1:requirementId "R4" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:ProfitAndLoss ;
+    uc1:condition ia25:R4-condition ;
+    uc1:recency ia25:R4-recency ;
+    uc1:guideSection ia25:s4.3.2 .
+
+ia25:R4-condition
+    a uc1:ApplicabilityCondition , owl:NamedIndividual ;
+    rdfs:label "R4 applies when employmentType = SelfEmployed"@en ;
+    uc1:onProperty uc1:employmentType ;
+    uc1:expectedValue uc1tx:SelfEmployed .
+
+ia25:R4-recency
+    a uc1:RecencyRule , owl:NamedIndividual ;
+    rdfs:label "R4 recency: maxAgeDays 120"@en ;
+    uc1:maxAgeDays 120 .
+
+ia25:R5
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R5: Two most recent monthly bank statements for every account (§4.4)"@en ;
+    uc1:requirementId "R5" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:BankStatement ;
+    uc1:recency ia25:R5-recency ;
+    uc1:guideSection ia25:s4.4 .
+
+ia25:R5-recency
+    a uc1:RecencyRule , owl:NamedIndividual ;
+    rdfs:label "R5 recency: minCount 2, mostRecentMonths 2"@en ;
+    uc1:minCount 2 ;
+    uc1:mostRecentMonths 2 .
+
+ia25:R6
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R6: IRS Form 4506-C, signed (§4.5)"@en ;
+    uc1:requirementId "R6" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:Form4506C ;
+    uc1:recency ia25:R6-recency ;
+    uc1:guideSection ia25:s4.5 .
+
+ia25:R6-recency
+    a uc1:RecencyRule , owl:NamedIndividual ;
+    rdfs:label "R6 recency: signatureRequired true"@en ;
+    uc1:signatureRequired true .
+
+ia25:R7
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R7: Lease agreement for each rental property (§4.3.4)"@en ;
+    uc1:requirementId "R7" ;
+    uc1:guidelineVersion ia:v2025.1 ;
+    uc1:documentType uc1tx:Lease ;
+    uc1:condition ia25:R7-condition ;
+    uc1:guideSection ia25:s4.3.4 .
+
+ia25:R7-condition
+    a uc1:ApplicabilityCondition , owl:NamedIndividual ;
+    rdfs:label "R7 applies when hasRentalIncome = true"@en ;
+    uc1:onProperty uc1:hasRentalIncome ;
+    uc1:expectedValue "true"^^xsd:boolean .

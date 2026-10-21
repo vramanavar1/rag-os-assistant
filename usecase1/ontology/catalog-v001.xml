@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Protégé XML catalog for Use Case 1: resolves the ontology and import IRIs to local files (paths relative to this folder). -->
+<catalog prefer="public" xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+    <uri id="uc1-core" name="https://rag-os.example/uc1" uri="uc1-core.ttl"/>
+    <uri id="uc1-core-1.0" name="https://rag-os.example/uc1/1.0" uri="uc1-core.ttl"/>
+    <!-- Switch to ../taxonomy/uc1-taxonomy.skos.ttl after the VocBench export (step 1.1u); check_ontology.py fails until it is switched. -->
+    <uri id="uc1-taxonomy" name="https://rag-os.example/uc1/taxonomy" uri="../taxonomy/uc1-taxonomy.seed.skos.ttl"/>
+    <!-- One requirements file per guide version. check_ontology.py verifies every target below exists. -->
+    <uri id="investor-a-2025.1" name="https://rag-os.example/uc1/investor-a/2025.1" uri="investor-a-2025.1.ttl"/>
+    <uri id="investor-a-2026.1" name="https://rag-os.example/uc1/investor-a/2026.1" uri="investor-a-2026.1.ttl"/>
+</catalog>

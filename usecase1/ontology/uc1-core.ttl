@@ -1,0 +1,687 @@
+# =====================================================================================================================
+# Use Case 1 core ontology: the loss-mitigation document chase (OWL 2 DL, TBox only).
+#
+# SYNTHETIC CONTENT. Nothing here is a real GSE, FHA or VA rule.
+# Naming contract: usecase1/README.md (authoritative). Design: docs/UseCase1.html, sections 7 and 8.
+# Requirements live in one data file per guide version (investor-a-<version>.ttl), never as classes here.
+# Edited in Protégé; verified by usecase1/checks/check_ontology.py.
+# =====================================================================================================================
+
+@prefix uc1:  <https://rag-os.example/uc1#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Ontology header
+# ---------------------------------------------------------------------------------------------------------------------
+
+<https://rag-os.example/uc1>
+    a owl:Ontology ;
+    owl:versionIRI <https://rag-os.example/uc1/1.0> ;
+    owl:versionInfo "1.0" ;
+    owl:imports <https://rag-os.example/uc1/taxonomy> ;
+    dct:title "Use Case 1: loss-mitigation document chase, core ontology"@en ;
+    rdfs:comment """The classes and properties for deciding whether a mortgage loss-mitigation application is complete
+under the governing version of an investor's servicing guide. All content is synthetic ("Investor A Servicing Guide"
+v2025.1 / v2026.1); nothing here is a real GSE, FHA or VA rule. Requirements are data, one file per guide version;
+completeness is checked by SHACL (closed world), never by OWL reasoning."""@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# External terms, declared so the file stays OWL 2 DL (no axioms are added to them)
+# ---------------------------------------------------------------------------------------------------------------------
+
+skos:Concept         a owl:Class .
+prov:Activity        a owl:Class .
+prov:Entity          a owl:Class .
+prov:used            a owl:ObjectProperty .
+prov:wasGeneratedBy  a owl:ObjectProperty .
+
+# Annotation property used on the ontology header
+dct:title a owl:AnnotationProperty .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Interfaces: shapes that several classes implement (never instantiated directly)
+# ---------------------------------------------------------------------------------------------------------------------
+
+uc1:Evidence
+    a owl:Class ;
+    rdfs:label "Evidence"@en ;
+    rdfs:comment "Interface: anything submitted as proof. Evidence has a document date, a signature, a period it covers and a classification of what kind of document it is."@en .
+
+uc1:Citable
+    a owl:Class ;
+    rdfs:label "Citable"@en ;
+    rdfs:comment "Interface: anything that cites the section of the servicing guide that justifies it."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The rules: investors, guide versions and their requirements (instances live in investor-a-<version>.ttl)
+# ---------------------------------------------------------------------------------------------------------------------
+
+uc1:Investor
+    a owl:Class ;
+    rdfs:label "Investor"@en ;
+    rdfs:comment "The owner of mortgage loans, who publishes the servicing guide that the servicer must follow."@en .
+
+uc1:GuidelineVersion
+    a owl:Class ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:label "Guideline version"@en ;
+    rdfs:comment "One published version of an investor's servicing guide, effective over a date range. A new version is a new instance and a new data file, never a new class."@en .
+
+uc1:Requirement
+    a owl:Class ;
+    rdfs:subClassOf uc1:Citable ;
+    rdfs:label "Requirement"@en ;
+    rdfs:comment "A rule of one guide version that asks for a kind of document, under a condition and a recency rule, citing its section. It is an n-ary relation stored as data (an instance), never a class."@en .
+
+uc1:ApplicabilityCondition
+    a owl:Class ;
+    rdfs:label "Applicability condition"@en ;
+    rdfs:comment "When a requirement applies, for example only when a borrower is self-employed. Its rule parameters are the annotations 'on property' and 'expected value'."@en .
+
+uc1:RecencyRule
+    a owl:Class ;
+    rdfs:label "Recency rule"@en ;
+    rdfs:comment "How recent a document must be, whether it must be signed, and how many are needed to satisfy a requirement. MVP simplifications: R3 (two most recent paystubs) is checked as minCount 2 plus maxAgeDays, with no check of the pay periods' length; R7 (a lease for each rental property) is met by at least one lease, with no per-property count."@en .
+
+uc1:GuideSection
+    a owl:Class ;
+    rdfs:label "Guide section"@en ;
+    rdfs:comment "A numbered section of one guide version; rdfs:seeAlso points at the section in the ingested guide text."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The case: loan, borrowers, application, documents
+# ---------------------------------------------------------------------------------------------------------------------
+
+uc1:Loan
+    a owl:Class ;
+    rdfs:label "Loan"@en ;
+    rdfs:comment "The mortgage loan the borrowers are asking for help with."@en .
+
+uc1:Borrower
+    a owl:Class ;
+    rdfs:label "Borrower"@en ;
+    rdfs:comment "A person who owes the loan. Identity only: everything that can change between applications lives on the application party. Personal data."@en .
+
+uc1:Application
+    a owl:Class ;
+    rdfs:label "Application"@en ;
+    rdfs:comment "One loss-mitigation application: the borrowers' request for help, received on a date, with its submitted documents."@en .
+
+uc1:ApplicationParty
+    a owl:Class ;
+    rdfs:label "Application party"@en ;
+    rdfs:comment "Object-backed link between an application and a borrower: the borrower's role, employment and rental income as of this application."@en .
+
+uc1:PartyRole
+    a owl:Class ;
+    rdfs:label "Party role"@en ;
+    rdfs:comment "Value partition: the role a borrower plays in an application, either primary borrower or co-borrower."@en .
+
+uc1:SubmittedDocument
+    a owl:Class ;
+    rdfs:subClassOf uc1:Evidence ;
+    rdfs:label "Submitted document"@en ;
+    rdfs:comment "A document actually received for an application: what arrived, as opposed to the kind of document (a taxonomy concept) or the rule that asks for it (a requirement). Personal data."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Structs: groups of related fields that belong to evidence
+# ---------------------------------------------------------------------------------------------------------------------
+
+uc1:Signature
+    a owl:Class ;
+    rdfs:label "Signature"@en ;
+    rdfs:comment "Struct: whether a document is signed, and the date it was signed."@en .
+
+uc1:Period
+    a owl:Class ;
+    rdfs:label "Period"@en ;
+    rdfs:comment "Struct: the start and end dates a document covers, such as the month of a bank statement."@en .
+
+uc1:Classification
+    a owl:Class ;
+    rdfs:label "Classification"@en ;
+    rdfs:comment "Struct: what kind of document this is, with the confidence of that label, how it was produced (classifier, LLM or human) and who reviewed it."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The decision: evaluations, their items and outcomes
+# ---------------------------------------------------------------------------------------------------------------------
+
+uc1:Evaluation
+    a owl:Class ;
+    rdfs:subClassOf prov:Activity ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty prov:used ; owl:someValuesFrom uc1:GuidelineVersion ] ;
+    rdfs:label "Evaluation"@en ;
+    rdfs:comment "One completeness decision for an application, frozen as an audit snapshot; it used one guide version (prov:used)."@en .
+
+uc1:EvaluationItem
+    a owl:Class ;
+    rdfs:subClassOf uc1:Citable ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty prov:wasGeneratedBy ; owl:someValuesFrom uc1:Evaluation ] ;
+    rdfs:label "Evaluation item"@en ;
+    rdfs:comment "Object-backed link between an evaluation and a requirement: the outcome, the reason, and the documents that satisfied it (several when minCount > 1), if any. Generated by its evaluation (prov:wasGeneratedBy)."@en .
+
+uc1:Outcome
+    a owl:Class ;
+    rdfs:label "Outcome"@en ;
+    rdfs:comment "Value partition: the result for one requirement in an evaluation, either met, missing or not applicable."@en .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Disjointness: every concrete class is pairwise disjoint (interfaces Evidence and Citable are excluded)
+# ---------------------------------------------------------------------------------------------------------------------
+
+[] a owl:AllDisjointClasses ;
+   owl:members (
+       uc1:Investor uc1:GuidelineVersion uc1:Requirement uc1:ApplicabilityCondition uc1:RecencyRule uc1:GuideSection
+       uc1:Loan uc1:Borrower uc1:Application uc1:ApplicationParty uc1:PartyRole uc1:SubmittedDocument
+       uc1:Signature uc1:Period uc1:Classification
+       uc1:Evaluation uc1:EvaluationItem uc1:Outcome
+   ) .
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Value partitions
+# ---------------------------------------------------------------------------------------------------------------------
+
+uc1:PrimaryBorrower
+    a uc1:PartyRole, owl:NamedIndividual ;
+    rdfs:label "Primary borrower"@en ;
+    rdfs:comment "The borrower who leads the application."@en .
+
+uc1:CoBorrower
+    a uc1:PartyRole, owl:NamedIndividual ;
+    rdfs:label "Co-borrower"@en ;
+    rdfs:comment "Any other borrower on the application."@en .
+
+[] a owl:AllDifferent ;
+   owl:distinctMembers ( uc1:PrimaryBorrower uc1:CoBorrower ) .
+
+uc1:Met
+    a uc1:Outcome, owl:NamedIndividual ;
+    rdfs:label "Met"@en ;
+    rdfs:comment "The requirement applies and a submitted document satisfies it."@en .
+
+uc1:Missing
+    a uc1:Outcome, owl:NamedIndividual ;
+    rdfs:label "Missing"@en ;
+    rdfs:comment "The requirement applies and no submitted document satisfies it: an item to chase."@en .
+
+uc1:NotApplicable
+    a uc1:Outcome, owl:NamedIndividual ;
+    rdfs:label "Not applicable"@en ;
+    rdfs:comment "The requirement's applicability condition does not hold for this application."@en .
+
+[] a owl:AllDifferent ;
+   owl:distinctMembers ( uc1:Met uc1:Missing uc1:NotApplicable ) .
+
+# =====================================================================================================================
+# Object properties (links): named so they read from their source; inverses are named and declared too
+# =====================================================================================================================
+
+# --- Investor and guide versions -------------------------------------------------------------------------------------
+
+uc1:guidelineVersions
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Investor ;
+    rdfs:range uc1:GuidelineVersion ;
+    owl:inverseOf uc1:issuedBy ;
+    rdfs:label "guideline versions"@en ;
+    rdfs:comment "The versions of its servicing guide that an investor has published. Stored direction: uc1:issuedBy; its inverse uc1:guidelineVersions is inferred only. Not the inverse of the look-alike uc1:guidelineVersion (requirement to guide version)."@en .
+
+uc1:issuedBy
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:GuidelineVersion ;
+    rdfs:range uc1:Investor ;
+    rdfs:label "issued by"@en ;
+    rdfs:comment "The investor that published this guide version. Stored direction: uc1:issuedBy; its inverse uc1:guidelineVersions is inferred only."@en .
+
+uc1:requirements
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:GuidelineVersion ;
+    rdfs:range uc1:Requirement ;
+    owl:inverseOf uc1:guidelineVersion ;
+    rdfs:label "requirements"@en ;
+    rdfs:comment "The document requirements stated by this guide version. Stored direction: uc1:guidelineVersion; its inverse uc1:requirements is inferred only. Not the inverse of the look-alike uc1:requirement (evaluation item to requirement)."@en .
+
+uc1:guidelineVersion
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Requirement ;
+    rdfs:range uc1:GuidelineVersion ;
+    rdfs:label "guideline version"@en ;
+    rdfs:comment "The guide version that states this requirement. Stored direction: uc1:guidelineVersion; its inverse uc1:requirements is inferred only. Not the inverse of the look-alike uc1:guidelineVersions (investor to its guide versions)."@en .
+
+# --- Requirement (n-ary relation) ------------------------------------------------------------------------------------
+
+uc1:documentType
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Requirement ;
+    rdfs:range skos:Concept ;
+    rdfs:label "document type"@en ;
+    rdfs:comment "The kind of document a requirement asks for: a concept in the document-type taxonomy. Any narrower kind also satisfies it."@en .
+
+uc1:condition
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Requirement ;
+    rdfs:range uc1:ApplicabilityCondition ;
+    rdfs:label "condition"@en ;
+    rdfs:comment "When the requirement applies. A requirement without a condition always applies; with several conditions, all must hold."@en .
+
+uc1:recency
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Requirement ;
+    rdfs:range uc1:RecencyRule ;
+    rdfs:label "recency"@en ;
+    rdfs:comment "How recent, signed or how many documents the requirement demands."@en .
+
+uc1:guideSection
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Citable ;
+    rdfs:range uc1:GuideSection ;
+    rdfs:label "guide section"@en ;
+    rdfs:comment "The guide section that states this requirement or justifies this evaluation item. On an EvaluationItem it is Derived: copied from its requirement by the bridge, never stored."@en .
+
+# --- Loan and application --------------------------------------------------------------------------------------------
+
+uc1:loan
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range uc1:Loan ;
+    rdfs:label "loan"@en ;
+    rdfs:comment "The loan the application asks for help with."@en .
+
+uc1:ownedBy
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Loan ;
+    rdfs:range uc1:Investor ;
+    rdfs:label "owned by"@en ;
+    rdfs:comment "The investor that currently owns the loan, and whose guide therefore governs it."@en .
+
+uc1:governingVersion
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range uc1:GuidelineVersion ;
+    rdfs:label "governing version"@en ;
+    rdfs:comment "Derived: computed by the bridge per evaluation and never stored. The loan investor's guide version whose effective dates contain the date the application was received."@en .
+
+uc1:hardshipReason
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range skos:Concept ;
+    rdfs:label "hardship reason"@en ;
+    rdfs:comment "Why the borrowers need help, such as unemployment or a medical event: a concept in the hardship-reason taxonomy. Sensitive: it can reveal health or family circumstances (medical, divorce, death)."@en .
+
+uc1:parties
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range uc1:ApplicationParty ;
+    owl:inverseOf uc1:partyTo ;
+    rdfs:label "parties"@en ;
+    rdfs:comment "The borrowers on this application, each with their role and circumstances as of the application. Stored direction: uc1:parties; its inverse uc1:partyTo is inferred only."@en .
+
+uc1:partyTo
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:ApplicationParty ;
+    rdfs:range uc1:Application ;
+    rdfs:label "party to"@en ;
+    rdfs:comment "The application this borrower takes part in. Stored direction: uc1:parties; its inverse uc1:partyTo is inferred only."@en .
+
+# --- Application party (object-backed link) --------------------------------------------------------------------------
+
+uc1:borrower
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:ApplicationParty ;
+    rdfs:range uc1:Borrower ;
+    rdfs:label "borrower"@en ;
+    rdfs:comment "The person taking part in the application."@en .
+
+uc1:role
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:ApplicationParty ;
+    rdfs:range uc1:PartyRole ;
+    rdfs:label "role"@en ;
+    rdfs:comment "Whether this borrower is the primary borrower or a co-borrower on this application."@en .
+
+uc1:employmentType
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:ApplicationParty ;
+    rdfs:range skos:Concept ;
+    rdfs:label "employment type"@en ;
+    rdfs:comment "How this borrower earns a living as of this application, such as salaried or self-employed: a concept in the employment-type taxonomy."@en .
+
+# --- Submitted documents ---------------------------------------------------------------------------------------------
+
+uc1:documents
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range uc1:SubmittedDocument ;
+    owl:inverseOf uc1:application ;
+    rdfs:label "documents"@en ;
+    rdfs:comment "The documents received for this application. Stored direction: uc1:documents; its inverse uc1:application is inferred only."@en .
+
+uc1:application
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:SubmittedDocument ;
+    rdfs:range uc1:Application ;
+    rdfs:label "application"@en ;
+    rdfs:comment "The application this document was received for. Stored direction: uc1:documents; its inverse uc1:application is inferred only."@en .
+
+# --- Evidence structs ------------------------------------------------------------------------------------------------
+
+uc1:signature
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range uc1:Signature ;
+    rdfs:label "signature"@en ;
+    rdfs:comment "Whether and when the evidence was signed."@en .
+
+uc1:period
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range uc1:Period ;
+    rdfs:label "period"@en ;
+    rdfs:comment "The dates the evidence covers."@en .
+
+uc1:classification
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range uc1:Classification ;
+    rdfs:label "classification"@en ;
+    rdfs:comment "What kind of document the evidence is, with how sure we are and who decided."@en .
+
+uc1:docType
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Classification ;
+    rdfs:range skos:Concept ;
+    rdfs:label "classified document type"@en ;
+    rdfs:comment "The document-type taxonomy concept assigned to the evidence."@en .
+
+# --- Evaluation and its items ----------------------------------------------------------------------------------------
+
+uc1:evaluations
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range uc1:Evaluation ;
+    owl:inverseOf uc1:evaluates ;
+    rdfs:label "evaluations"@en ;
+    rdfs:comment "The completeness decisions made for this application; order by evaluatedAt. Stored direction: uc1:evaluations; its inverse uc1:evaluates is inferred only. Not the inverse of the look-alike uc1:evaluation (evaluation item to its evaluation)."@en .
+
+uc1:evaluates
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Evaluation ;
+    rdfs:range uc1:Application ;
+    rdfs:label "evaluates"@en ;
+    rdfs:comment "The application this completeness decision is about. Stored direction: uc1:evaluations; its inverse uc1:evaluates is inferred only."@en .
+
+uc1:items
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Evaluation ;
+    rdfs:range uc1:EvaluationItem ;
+    owl:inverseOf uc1:evaluation ;
+    rdfs:label "items"@en ;
+    rdfs:comment "One result per requirement of the governing guide version in this evaluation. Stored direction: uc1:items; its inverse uc1:evaluation is inferred only."@en .
+
+uc1:evaluation
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:EvaluationItem ;
+    rdfs:range uc1:Evaluation ;
+    rdfs:label "evaluation"@en ;
+    rdfs:comment "The completeness decision this result belongs to. Stored direction: uc1:items; its inverse uc1:evaluation is inferred only. Not the inverse of the look-alike uc1:evaluations (application to its evaluations)."@en .
+
+uc1:requirement
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:EvaluationItem ;
+    rdfs:range uc1:Requirement ;
+    rdfs:label "requirement"@en ;
+    rdfs:comment "The requirement this result is about. Not the inverse of the look-alike uc1:requirements (guide version to its requirements)."@en .
+
+uc1:satisfiedBy
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:EvaluationItem ;
+    rdfs:range uc1:SubmittedDocument ;
+    rdfs:label "satisfied by"@en ;
+    rdfs:comment "The submitted documents that met the requirement (several when minCount > 1). This is the only link between a document and a requirement."@en .
+
+uc1:outcome
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:EvaluationItem ;
+    rdfs:range uc1:Outcome ;
+    rdfs:label "outcome"@en ;
+    rdfs:comment "Whether the requirement was met, missing or not applicable."@en .
+
+# =====================================================================================================================
+# Datatype properties
+# =====================================================================================================================
+
+# --- Guide version ---------------------------------------------------------------------------------------------------
+
+uc1:versionLabel
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:GuidelineVersion ;
+    rdfs:range xsd:string ;
+    rdfs:label "version label"@en ;
+    rdfs:comment "The version as the investor publishes it, such as \"2026.1\"."@en .
+
+uc1:effectiveFromDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:GuidelineVersion ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "effective from date"@en ;
+    rdfs:comment "The first day this guide version governs applications received on or after it."@en .
+
+uc1:effectiveToDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:GuidelineVersion ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "effective to date"@en ;
+    rdfs:comment "The last day this guide version governs; absent while the version is still current."@en .
+
+# --- Requirement, guide section, recency rule ------------------------------------------------------------------------
+
+uc1:requirementId
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Requirement ;
+    rdfs:range xsd:string ;
+    rdfs:label "requirement id"@en ;
+    rdfs:comment "The requirement's short identifier within its guide version, \"R1\" to \"R8\"."@en .
+
+uc1:sectionNumber
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:GuideSection ;
+    rdfs:range xsd:string ;
+    rdfs:label "section number"@en ;
+    rdfs:comment "The section's number as printed in the guide, such as \"4.3.2\"."@en .
+
+uc1:maxAgeDays
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:RecencyRule ;
+    rdfs:range xsd:nonNegativeInteger ;
+    rdfs:label "maximum age (days)"@en ;
+    rdfs:comment "The most days a document may be dated before the application was received."@en .
+
+uc1:signatureRequired
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:RecencyRule ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "signature required"@en ;
+    rdfs:comment "Whether the document must be signed to count."@en .
+
+uc1:minCount
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:RecencyRule ;
+    rdfs:range xsd:positiveInteger ;
+    rdfs:label "minimum count"@en ;
+    rdfs:comment "How many qualifying documents are needed, such as two paystubs. Treated as 1 when absent."@en .
+
+uc1:mostRecentMonths
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:RecencyRule ;
+    rdfs:range xsd:positiveInteger ;
+    rdfs:label "most recent months"@en ;
+    rdfs:comment "The window of whole calendar months before the month of receipt (1 = the month before) in which document periods must end; with minCount, that many distinct months in the window must be covered. A period ending in the month of receipt does not count."@en .
+
+# --- Loan and borrower -----------------------------------------------------------------------------------------------
+
+uc1:lienPosition
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Loan ;
+    rdfs:range xsd:positiveInteger ;
+    rdfs:label "lien position"@en ;
+    rdfs:comment "The loan's lien position on the property: 1 for a first mortgage, 2 for a second."@en .
+
+uc1:propertyState
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Loan ;
+    rdfs:range xsd:string ;
+    rdfs:label "property state"@en ;
+    rdfs:comment "The US state where the mortgaged property is, as a two-letter code."@en .
+
+uc1:displayName
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Borrower ;
+    rdfs:range xsd:string ;
+    rdfs:label "display name"@en ;
+    rdfs:comment "The borrower's name for people to read. PII: column-restricted, and never put in the engine's graph."@en .
+
+# --- Application and application party -------------------------------------------------------------------------------
+
+uc1:receivedAt
+    a owl:DatatypeProperty ;
+    rdfs:domain [ a owl:Class ; owl:unionOf ( uc1:Application uc1:SubmittedDocument ) ] ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "received at"@en ;
+    rdfs:comment "When the application or the document was received by the servicer."@en .
+
+uc1:foreclosureSaleDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "foreclosure sale date"@en ;
+    rdfs:comment "The scheduled foreclosure sale date, if one is set; it shortens the deadlines."@en .
+
+uc1:hasRentalIncome
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:ApplicationParty ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has rental income"@en ;
+    rdfs:comment "Whether this borrower receives rent from a property, as of this application."@en .
+
+# --- Evidence and its structs ----------------------------------------------------------------------------------------
+
+uc1:documentDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "document date"@en ;
+    rdfs:comment "The date printed on the evidence, used to judge how recent it is."@en .
+
+uc1:signed
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Signature ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "signed"@en ;
+    rdfs:comment "Whether the document is signed by every required signer. MVP simplification: one flag per document, not one per signer."@en .
+
+uc1:signatureDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Signature ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "signature date"@en ;
+    rdfs:comment "The date next to the signature."@en .
+
+uc1:startDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Period ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "start date"@en ;
+    rdfs:comment "The first day the document covers."@en .
+
+uc1:endDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Period ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "end date"@en ;
+    rdfs:comment "The last day the document covers."@en .
+
+uc1:confidence
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Classification ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "confidence"@en ;
+    rdfs:comment "How sure the classifier is of the document type, from 0 to 1."@en .
+
+uc1:classificationMethod
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Classification ;
+    rdfs:range xsd:string ;
+    rdfs:label "classification method"@en ;
+    rdfs:comment "How the document type was assigned: \"classifier\", \"llm\" or \"human\"."@en .
+
+uc1:reviewedBy
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Classification ;
+    rdfs:range xsd:string ;
+    rdfs:label "reviewed by"@en ;
+    rdfs:comment "Who confirmed the document type, if a person reviewed it. Staff personal data."@en .
+
+uc1:ageAtReceiptDays
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range xsd:integer ;
+    rdfs:label "age at application receipt (days)"@en ;
+    rdfs:comment "Derived: computed by the bridge per evaluation and never stored. Days between the evidence's document date and the date the application was received."@en .
+
+uc1:monthsBeforeReceipt
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range xsd:integer ;
+    rdfs:label "months before receipt"@en ;
+    rdfs:comment "Derived: computed by the bridge per evaluation and never stored. Calendar months between the end of the evidence's period and the month the application was received."@en .
+
+# --- Evaluation ------------------------------------------------------------------------------------------------------
+
+uc1:dueDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evaluation ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "due date"@en ;
+    rdfs:comment "The deadline for acting on this decision, such as sending the borrowers the notice of missing documents."@en .
+
+uc1:evaluatedAt
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evaluation ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "evaluated at"@en ;
+    rdfs:comment "When the completeness decision was made."@en .
+
+uc1:engineVersion
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evaluation ;
+    rdfs:range xsd:string ;
+    rdfs:label "engine version"@en ;
+    rdfs:comment "The version of the rules engine that made the decision, so it can be reproduced."@en .
+
+uc1:reason
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:EvaluationItem ;
+    rdfs:range xsd:string ;
+    rdfs:label "reason"@en ;
+    rdfs:comment "Why the requirement was met, missing or not applicable, in words a servicer can read to the borrower."@en .
+
+# =====================================================================================================================
+# Annotation properties: rule parameters of an applicability condition, read by the SHACL templates
+# =====================================================================================================================
+
+uc1:onProperty
+    a owl:AnnotationProperty ;
+    rdfs:label "on property"@en ;
+    rdfs:comment "The uc1 property an applicability condition tests, on the application or on any of its parties."@en .
+
+uc1:expectedValue
+    a owl:AnnotationProperty ;
+    rdfs:label "expected value"@en ;
+    rdfs:comment "The value that property must have for the requirement to apply: a taxonomy concept or a literal."@en .

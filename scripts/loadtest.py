@@ -10,6 +10,13 @@
 Server-side retrieval latency (embed_query + search timings returned by /api/chat) is compared between the
 baseline phase and the phase while the bulk backfill is running. PASS if p95(during) <= 1.25 x p95(baseline).
 Ingestion throughput (documents/minute) is read from the run report for the capacity model.
+
+3) compare two deployments (e.g. Dedicated vs Consumption plan) with identical load parameters:
+       ... run ... --results-json before.json --label "query=Dedicated"
+       ... run ... --compare-to before.json --max-regression 1.10
+   FAILs when retrieval p95 in either phase is more than --max-regression times the saved run, or the error rate
+   rose by more than a percentage point. End-to-end p95 is reported but not gated: it is dominated by the hosted
+   LLM's latency, which no change to this deployment's compute moves, and gating on it fails runs at random.
 """
 
 from __future__ import annotations
@@ -17,11 +24,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import json
+import math
 import random
 import statistics
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -94,6 +105,54 @@ async def phase(c: httpx.AsyncClient, headers: dict[str, str], rps: float, secon
     return {"retrieval": retrieval, "total": total, "errors": [float(errors)]}
 
 
+def summarize(r: dict[str, list[float]]) -> dict[str, float | int | None]:
+    """One phase as plain numbers for --results-json. NaN (no successful request) becomes null to stay valid JSON."""
+    def ms(v: float) -> float | None:
+        return None if math.isnan(v) else round(v, 1)
+    return {"n": len(r["retrieval"]), "errors": int(r["errors"][0]),
+            "retrieval_p50": ms(pct(r["retrieval"], 50)), "retrieval_p95": ms(pct(r["retrieval"], 95)),
+            "total_p50": ms(pct(r["total"], 50)), "total_p95": ms(pct(r["total"], 95))}
+
+
+# Two runs only measure the same thing when they offered the same load for the same time.
+COMPARABLE = ("rps", "baseline_s", "during_s")
+GATED = ("retrieval_p95",)
+REPORTED = ("retrieval_p95", "total_p95")
+
+
+class NotComparableError(ValueError):
+    """The saved run used different load parameters; a ratio between the two would mean nothing."""
+
+
+def compare_runs(prev: dict[str, Any], now: dict[str, Any],
+                 max_regression: float) -> tuple[list[str], list[str]]:
+    """(failures, notes) for `now` against a saved run `prev`. Raises NotComparableError on mismatched load."""
+    mismatched = [k for k in COMPARABLE if prev.get(k) != now.get(k)]
+    if mismatched:
+        detail = ", ".join(f"{k} {prev.get(k)} vs {now.get(k)}" for k in mismatched)
+        raise NotComparableError(f"the saved run used different load parameters ({detail})")
+    failures: list[str] = []
+    notes: list[str] = []
+    for phase_name in ("baseline", "during"):
+        before, after = prev[phase_name], now[phase_name]
+        for metric in REPORTED:
+            b, a = before.get(metric), after.get(metric)
+            if not b or a is None:
+                notes.append(f"{phase_name} {metric}: no data to compare")
+                continue
+            ratio = a / b
+            line = f"{phase_name} {metric}: {b:.0f}ms -> {a:.0f}ms ({ratio:.2f}x, limit {max_regression:.2f}x)"
+            if ratio > max_regression and metric in GATED:
+                failures.append(line)
+            else:
+                notes.append(line + ("  [not gated: LLM latency]" if ratio > max_regression else ""))
+        rate_before = before["errors"] / before["n"] if before.get("n") else 0.0
+        rate_after = after["errors"] / after["n"] if after.get("n") else 0.0
+        if rate_after > rate_before + 0.01:
+            failures.append(f"{phase_name} error rate: {rate_before:.1%} -> {rate_after:.1%}")
+    return failures, notes
+
+
 def report(name: str, r: dict[str, list[float]]) -> None:
     print(f"{name:>9}: n={len(r['retrieval'])} errors={int(r['errors'][0])} "
           f"retrieval p50={pct(r['retrieval'], 50):.0f}ms p95={pct(r['retrieval'], 95):.0f}ms | "
@@ -138,6 +197,27 @@ async def run(a: argparse.Namespace) -> int:
         print(f"\nretrieval p95 ratio during/baseline = {ratio:.2f} (limit {a.max_ratio}) -> {'PASS' if ok else 'FAIL'}")
         if statistics.fmean(during["errors"]) > 0:
             print("note: errors occurred during the ingestion phase")
+        results = {"taken_at": datetime.now(UTC).isoformat(timespec="seconds"), "label": a.label,
+                   "base_url": a.base_url, "rps": a.rps, "baseline_s": a.baseline_s, "during_s": a.during_s,
+                   "baseline": summarize(base), "during": summarize(during)}
+        if a.results_json:
+            a.results_json.parent.mkdir(parents=True, exist_ok=True)
+            a.results_json.write_text(json.dumps(results, indent=2), encoding="utf-8")
+            print(f"results written to {a.results_json}")
+        if a.compare_to:
+            prev = json.loads(a.compare_to.read_text(encoding="utf-8"))
+            try:
+                failures, notes = compare_runs(prev, results, a.max_regression)
+            except NotComparableError as exc:
+                print(f"\ncannot compare with {a.compare_to}: {exc}. Re-run with the same --rps/--baseline-s/--during-s.")
+                return 2
+            print(f"\ncompared with {a.compare_to} ({prev.get('label') or 'no label'}, {prev.get('taken_at')}):")
+            for line in notes:
+                print(f"  ok    {line}")
+            for line in failures:
+                print(f"  FAIL  {line}")
+            print(f"comparison -> {'FAIL' if failures else 'PASS'}")
+            ok = ok and not failures
         return 0 if ok else 1
 
 
@@ -157,6 +237,10 @@ def main() -> int:
     r.add_argument("--during-s", type=float, default=180)
     r.add_argument("--max-ratio", type=float, default=1.25)
     r.add_argument("--insecure", action="store_true")
+    r.add_argument("--results-json", type=Path, help="write this run's percentiles to a JSON file")
+    r.add_argument("--compare-to", type=Path, help="a --results-json file from an earlier run to compare against")
+    r.add_argument("--max-regression", type=float, default=1.10, help="allowed retrieval p95 ratio vs --compare-to")
+    r.add_argument("--label", default="", help="free text stored with --results-json, e.g. the compute plan")
     a = ap.parse_args()
     if a.cmd == "generate":
         generate(a.docs, a.out)

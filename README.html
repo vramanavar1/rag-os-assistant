@@ -371,10 +371,10 @@
 <div class="wrap">
   <h3>Why queries stay fast while millions of documents ingest</h3>
   <ol>
-    <li>The query and ingestion paths run on <strong>separate compute</strong> (different workload profiles).</li>
+    <li>The query and ingestion paths run on <strong>separate compute</strong>: different workload profiles on the Dedicated plan, or separate apps with reserved per-replica CPU and memory on the <a href="#15-scaling-and-operations">Consumption plan</a>.</li>
     <li>Each path has <strong>its own embedding pool</strong>, so queries never wait behind document batches.</li>
     <li><strong>Queue back-pressure</strong> limits the load: KEDA <code>maxReplicas</code> × worker concurrency caps writes to Search and PostgreSQL.</li>
-    <li><strong>Search is protected</strong> by ≥2 replicas, batched writes with a concurrency cap and adaptive backoff. <code>Scale-SearchReplicas.ps1</code> adds replicas for backfills.</li>
+    <li><strong>Search is protected</strong> by ≥2 replicas, batched writes with a concurrency cap and adaptive backoff. <code>Scale-SearchReplicas.ps1</code> adds replicas for backfills, and <code>Set-CostSavingMode.ps1</code> removes the warm capacity while the environment is idle (see <a href="#15-scaling-and-operations">Scaling and operations</a>).</li>
     <li>A <strong>priority lane</strong> keeps interactive uploads ahead of bulk backfills.</li>
     <li><strong>Operator controls</strong> pause or throttle ingestion from the admin page.</li>
   </ol>
@@ -1922,6 +1922,33 @@ az rest --method patch --url https://graph.microsoft.com/v1.0/users/priya@contos
       <p>3. Sync the source off-peak.</p>
       <p>4. Watch <code>/admin</code> → Runs.</p>
       <p>5. Scale back.</p>
+    </div>
+    <div class="card">
+      <h4>Dedicated or Consumption plan</h4>
+      <p>Each tier runs on Dedicated D-series nodes by default, and they bill around the clock. Set
+        <code>QueryPlan</code> and/or <code>IngestPlan = 'Consumption'</code> in the psd1 and run step 07 to move that
+        tier to the per-second Consumption profile. 07 deletes the emptied Dedicated profile, and switching back
+        re-adds it.</p>
+      <p>Replicas keep the same CPU/memory. To prove nothing slowed down, run <code>10-loadtest.ps1 -SaveBaseline</code>
+        before and <code>-CompareToBaseline</code> after, which gives PASS or FAIL on retrieval p95.</p>
+      <p>Estimates and the procedure:
+        <a href="Deployment.md#dedicated-or-consumption-plan">Deployment.md: Dedicated or Consumption plan</a>.</p>
+    </div>
+    <div class="card">
+      <h4>Cost saving while idle</h4>
+      <p><code>Set-CostSavingMode.ps1</code> takes out the capacity that is kept warm on purpose (dedicated nodes,
+        app replicas, the second Search replica, PostgreSQL compute). One command puts it back.</p>
+      <p><code>-Mode Status</code> (default): read-only report.<br>
+        <code>-Mode ScaleDown</code>: still reachable; the first request cold-starts.<br>
+        <code>-Mode Hibernate</code>: everything stopped, and the Dedicated profiles deleted so the Dedicated plan
+        management fee (~$73/month) stops too (<code>-WhatIf</code> for a dry run).<br>
+        <code>-Mode Resume</code>: restores the recorded state exactly, re-adding the profiles and moving every app
+        and job back (allow 5-10 extra minutes).</p>
+      <p>The state before the first change is recorded in <code>infra/env/&lt;env&gt;.costsaver.json</code>.
+        Azure restarts a stopped PostgreSQL server after 7 days, and a step 07 deploy re-applies the psd1 values.
+        Re-run the mode after either.</p>
+      <p>Details and scheduling:
+        <a href="Deployment.md#cost-saving-scale-down-hibernate-resume">Deployment.md: Cost saving</a>.</p>
     </div>
     <div class="card">
       <h4>Which embedding profile?</h4>

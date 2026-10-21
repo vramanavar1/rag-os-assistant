@@ -1,0 +1,1286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG-OS Strategy Review</title>
+<meta name="description" content="INTERNAL — not for distribution. Candid strategy review of RAG-OS against Microsoft Foundry IQ and Azure AI Search document-level access, with a claim-vs-code audit, direction check, build-vs-adopt matrix, a Purview sensitivity-label decision, market lens and 90-day plan.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f8fafc; --panel:#ffffff; --fg:#0f172a; --muted:#475569; --faint:#64748b;
+    --line:#e2e8f0; --line-strong:#cbd5e1; --accent:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+    --ok:#047857; --ok-bg:#ecfdf5; --ok-line:#a7f3d0;
+    --warn:#b45309; --warn-bg:#fffbeb; --warn-line:#fde68a;
+    --plan:#475569; --plan-bg:#f1f5f9; --plan-line:#cbd5e1;
+    /* Azure availability badges (shared spec with the external edition): Native GA uses the --ok family */
+    --pv:#6d28d9; --pv-bg:#f5f3ff; --pv-line:#ddd6fe;
+    --diy:#475569; --diy-bg:#f1f5f9; --diy-line:#cbd5e1;
+    --na:#b42318; --na-bg:#fef3f2; --na-line:#fecdca;
+    --add:#1d4ed8; --add-bg:#eff6ff; --add-line:#bfdbfe;
+    --drop:#9f1239; --drop-bg:#fff1f2; --drop-line:#fecdd3;
+    --int:#ffffff; --int-bg:#b91c1c; --int-line:#fca5a5;
+    --cover-a:#312e81; --cover-b:#4338ca; --cover-fg:#ffffff; --cover-muted:#c7d2fe;
+    --d-bg:#ffffff; --d-lane:#f8fafc; --d-lane-br:#e2e8f0; --d-lane-tx:#475569;
+    --d-query-bg:#eef2ff; --d-query-br:#6366f1; --d-query-tx:#312e81;
+    --d-ingest-bg:#fff7ed; --d-ingest-br:#f59e0b; --d-ingest-tx:#92400e;
+    --d-data-bg:#f1f5f9; --d-data-br:#64748b; --d-data-tx:#1e293b;
+    --d-ai-bg:#f5f3ff; --d-ai-br:#8b5cf6; --d-ai-tx:#5b21b6;
+    --d-sec-bg:#ecfdf5; --d-sec-br:#10b981; --d-sec-tx:#065f46;
+    --d-obs-bg:#f8fafc; --d-obs-br:#94a3b8; --d-obs-tx:#334155;
+    --d-ext-bg:#ffffff; --d-ext-br:#0f172a; --d-ext-tx:#0f172a;
+    --d-state-bg:#ffffff; --d-state-br:#334155; --d-state-tx:#0f172a;
+    --d-bad-bg:#fef2f2; --d-bad-br:#ef4444; --d-bad-tx:#991b1b;
+    --d-text:#0f172a; --d-muted:#475569; --d-edge:#64748b; --d-edge-tx:#334155;
+    --d-chip:#ffffff; --d-badge:#0f172a; --d-badge-tx:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0b1220; --bg-soft:#0f172a; --panel:#111c33; --fg:#e2e8f0; --muted:#94a3b8; --faint:#8296b0;
+      --line:#233149; --line-strong:#334155; --accent:#a5b4fc; --accent-soft:#1e1b4b; --accent-line:#3730a3;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+      --ok:#6ee7b7; --ok-bg:#052e26; --ok-line:#065f46;
+      --warn:#fcd34d; --warn-bg:#3b2a0c; --warn-line:#78350f;
+      --plan:#cbd5e1; --plan-bg:#1c2942; --plan-line:#334155;
+      --pv:#c4b5fd; --pv-bg:#2e1065; --pv-line:#5b21b6;
+      --diy:#cbd5e1; --diy-bg:#1e293b; --diy-line:#475569;
+      --na:#fda29b; --na-bg:#3b0d0c; --na-line:#7a271a;
+      --add:#93c5fd; --add-bg:#172554; --add-line:#1e40af;
+      --drop:#fda4af; --drop-bg:#3f0d1a; --drop-line:#881337;
+      --int:#fff1f2; --int-bg:#991b1b; --int-line:#f87171;
+      --cover-a:#1e1b4b; --cover-b:#312e81; --cover-fg:#eef2ff; --cover-muted:#a5b4fc;
+      --d-bg:#0f172a; --d-lane:#111c33; --d-lane-br:#2a3a56; --d-lane-tx:#94a3b8;
+      --d-query-bg:#1e1b4b; --d-query-br:#818cf8; --d-query-tx:#c7d2fe;
+      --d-ingest-bg:#3b2a0c; --d-ingest-br:#fbbf24; --d-ingest-tx:#fde68a;
+      --d-data-bg:#1c2942; --d-data-br:#94a3b8; --d-data-tx:#e2e8f0;
+      --d-ai-bg:#2e1065; --d-ai-br:#a78bfa; --d-ai-tx:#ddd6fe;
+      --d-sec-bg:#052e26; --d-sec-br:#34d399; --d-sec-tx:#a7f3d0;
+      --d-obs-bg:#172033; --d-obs-br:#94a3b8; --d-obs-tx:#cbd5e1;
+      --d-ext-bg:#0b1220; --d-ext-br:#cbd5e1; --d-ext-tx:#e2e8f0;
+      --d-state-bg:#111c33; --d-state-br:#94a3b8; --d-state-tx:#e2e8f0;
+      --d-bad-bg:#3f1d1d; --d-bad-br:#f87171; --d-bad-tx:#fecaca;
+      --d-text:#e2e8f0; --d-muted:#94a3b8; --d-edge:#94a3b8; --d-edge-tx:#cbd5e1;
+      --d-chip:#0f172a; --d-badge:#e2e8f0; --d-badge-tx:#0f172a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1220; --bg-soft:#0f172a; --panel:#111c33; --fg:#e2e8f0; --muted:#94a3b8; --faint:#8296b0;
+    --line:#233149; --line-strong:#334155; --accent:#a5b4fc; --accent-soft:#1e1b4b; --accent-line:#3730a3;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    --ok:#6ee7b7; --ok-bg:#052e26; --ok-line:#065f46;
+    --warn:#fcd34d; --warn-bg:#3b2a0c; --warn-line:#78350f;
+    --plan:#cbd5e1; --plan-bg:#1c2942; --plan-line:#334155;
+    --pv:#c4b5fd; --pv-bg:#2e1065; --pv-line:#5b21b6;
+    --diy:#cbd5e1; --diy-bg:#1e293b; --diy-line:#475569;
+    --na:#fda29b; --na-bg:#3b0d0c; --na-line:#7a271a;
+    --add:#93c5fd; --add-bg:#172554; --add-line:#1e40af;
+    --drop:#fda4af; --drop-bg:#3f0d1a; --drop-line:#881337;
+    --int:#fff1f2; --int-bg:#991b1b; --int-line:#f87171;
+    --cover-a:#1e1b4b; --cover-b:#312e81; --cover-fg:#eef2ff; --cover-muted:#a5b4fc;
+    --d-bg:#0f172a; --d-lane:#111c33; --d-lane-br:#2a3a56; --d-lane-tx:#94a3b8;
+    --d-query-bg:#1e1b4b; --d-query-br:#818cf8; --d-query-tx:#c7d2fe;
+    --d-ingest-bg:#3b2a0c; --d-ingest-br:#fbbf24; --d-ingest-tx:#fde68a;
+    --d-data-bg:#1c2942; --d-data-br:#94a3b8; --d-data-tx:#e2e8f0;
+    --d-ai-bg:#2e1065; --d-ai-br:#a78bfa; --d-ai-tx:#ddd6fe;
+    --d-sec-bg:#052e26; --d-sec-br:#34d399; --d-sec-tx:#a7f3d0;
+    --d-obs-bg:#172033; --d-obs-br:#94a3b8; --d-obs-tx:#cbd5e1;
+    --d-ext-bg:#0b1220; --d-ext-br:#cbd5e1; --d-ext-tx:#e2e8f0;
+    --d-state-bg:#111c33; --d-state-br:#94a3b8; --d-state-tx:#e2e8f0;
+    --d-bad-bg:#3f1d1d; --d-bad-br:#f87171; --d-bad-tx:#fecaca;
+    --d-text:#e2e8f0; --d-muted:#94a3b8; --d-edge:#94a3b8; --d-edge-tx:#cbd5e1;
+    --d-chip:#0f172a; --d-badge:#e2e8f0; --d-badge-tx:#0f172a;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:24px}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.65 "Segoe UI",Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:.86em;
+    background:var(--bg-soft);border:1px solid var(--line);border-radius:5px;padding:.06em .32em;overflow-wrap:anywhere}
+  .skip{position:absolute;left:-9999px;top:0;background:var(--accent-soft);padding:10px 16px;border-radius:0 0 8px 0;z-index:100}
+  .skip:focus{left:0}
+
+  .layout{display:grid;grid-template-columns:288px minmax(0,1fr);max-width:1600px;margin:0 auto}
+  /* ---------- sidebar ---------- */
+  #toc{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--line);
+    background:var(--bg-soft);padding:22px 18px 40px}
+  #toc .brand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  #toc .brand b{font-size:15px}
+  #toc .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+  #toc .sub{color:var(--faint);font-size:12px;margin:0 0 14px}
+  #toc .tools{display:flex;gap:8px;margin:0 0 14px}
+  #toc .tools button{flex:1}
+  #toc ol{list-style:none;margin:0;padding:0}
+  #toc li{margin:1px 0}
+  #toc a{display:block;padding:6px 10px;border-radius:7px;color:var(--muted);font-size:13.5px;border-left:2px solid transparent}
+  #toc a:hover{background:var(--panel);color:var(--fg);text-decoration:none}
+  #toc a.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+  #toc .num{display:inline-block;width:24px;color:var(--faint);font-variant-numeric:tabular-nums}
+  #toc ol ol a{padding:4px 10px 4px 34px;font-size:12.5px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--panel);
+    border:1px solid var(--line);border-radius:9px;padding:8px 12px;font:600 13px/1 inherit;color:var(--muted);cursor:pointer}
+  .btn:hover{color:var(--accent);border-color:var(--accent-line)}
+  .btn.primary{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+  .toc-toggle{display:none}
+
+  /* ---------- content ---------- */
+  main{padding:0 40px 90px;min-width:0}
+  .wrap{max-width:1040px}
+  section.chapter{max-width:1040px}
+
+  /* cover */
+  .cover{margin:0 -40px 8px;padding:64px 56px 52px;color:var(--cover-fg);
+    background:linear-gradient(135deg,var(--cover-a),var(--cover-b));position:relative;overflow:hidden}
+  .cover::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;
+    border:56px solid rgba(255,255,255,.07)}
+  .cover .kicker{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--cover-muted);margin:0 0 14px}
+  .cover h1{font-size:46px;line-height:1.1;margin:0 0 14px;letter-spacing:-.02em;max-width:820px;text-wrap:balance}
+  .cover .tag{font-size:20px;line-height:1.5;max-width:760px;margin:0 0 26px;color:var(--cover-fg);opacity:.92}
+  .cover .meta{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:13.5px;color:var(--cover-muted);margin:0;padding:0;list-style:none}
+  .cover .meta b{color:var(--cover-fg);font-weight:600}
+  .cover .pillars{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:34px 0 0;
+    padding:0;list-style:none;max-width:980px}
+  .cover .pillars li{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:12px;
+    padding:12px 14px;font-size:13.5px;line-height:1.45;color:var(--cover-muted)}
+  .cover .pillars b{display:block;color:var(--cover-fg);font-size:15px;margin-bottom:2px}
+  .print-toc{display:none}
+
+  /* INTERNAL ribbon */
+  .ribbon{display:inline-block;position:relative;z-index:1;background:var(--int-bg);color:var(--int);border:1px solid var(--int-line);
+    font-size:12.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;border-radius:6px;padding:5px 12px;margin:0 0 16px}
+  .int-tag{display:inline-block;background:var(--int-bg);color:var(--int);font-size:10.5px;font-weight:800;letter-spacing:.1em;
+    text-transform:uppercase;border-radius:4px;padding:1px 7px;margin:0 0 12px}
+
+  /* anchor targets stop just below the top edge; the scroll-spy threshold (120px) sits below this */
+  .chapter,h2[id],h3[id]{scroll-margin-top:24px}
+  h2{font-size:26px;margin:56px 0 6px;letter-spacing:-.01em;padding-top:20px;border-top:1px solid var(--line)}
+  h2 .n{color:var(--faint);font-weight:600;margin-right:8px}
+  h3{font-size:18px;margin:30px 0 4px}
+  h4{font-size:15.5px;margin:20px 0 2px}
+  p{margin:12px 0}
+  ul,ol{margin:12px 0;padding-left:24px}
+  li{margin:6px 0}
+  strong{font-weight:650}
+  .lede{font-size:17.5px;color:var(--muted)}
+
+  table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--panel);border:1px solid var(--line)}
+  th,td{padding:10px 13px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{background:var(--bg-soft);font-weight:650;font-size:13px;color:var(--muted)}
+  tbody tr:last-child td{border-bottom:0}
+  td ul{margin:2px 0;padding-left:18px}
+  td li{margin:2px 0}
+  .table-wrap{overflow-x:auto;margin:16px 0;border-radius:10px}
+  td.nowrap{white-space:nowrap}
+  /* dense tables keep a readable width and scroll sideways inside .table-wrap on phones */
+  .table-wrap table.wide{min-width:1000px;font-size:13.5px}
+  .table-wrap table.mid{min-width:760px}
+  tr.grp td{background:var(--bg-soft);font-weight:700;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  /* wide comparison tables keep their first column pinned while the rest scrolls sideways */
+  table.pin1 th:first-child,table.pin1 td:first-child{position:sticky;left:0;background:var(--panel);z-index:1;
+    box-shadow:inset -1px 0 0 var(--line)}
+  table.pin1 th:first-child{background:var(--bg-soft)}
+  /* group rows span every column: the row scrolls, only its label stays in view */
+  table.pin1 tr.grp td:first-child{position:static;background:var(--bg-soft);box-shadow:none}
+  table.pin1 tr.grp td > span{position:sticky;left:13px}
+  /* long identifiers break at the <wbr> hints, never mid-word */
+  td code{overflow-wrap:break-word;word-break:normal}
+  .ie{font:600 12.5px/1.4 ui-monospace,"Cascadia Mono",Consolas,monospace;white-space:nowrap;color:var(--fg)}
+  .src{display:block;font-size:12px;color:var(--faint);margin-top:4px}
+
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;
+    padding:12px 18px;margin:18px 0}
+  .callout.note{border-color:var(--line-strong);background:var(--bg-soft);color:var(--muted)}
+  .callout.warn{border-color:var(--warn);background:var(--warn-bg)}
+  .callout.risk{border-color:var(--drop);background:var(--drop-bg)}
+  .callout p{margin:6px 0}
+
+  /* status badges */
+  .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    border-radius:999px;padding:2px 9px;border:1px solid;vertical-align:2px;white-space:nowrap;line-height:1.5}
+  .badge.av{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line)}
+  .badge.pt{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+  .badge.rm{color:var(--plan);background:var(--plan-bg);border-color:var(--plan-line)}
+  /* Azure availability */
+  .badge.nat{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line)}
+  .badge.pv{color:var(--pv);background:var(--pv-bg);border-color:var(--pv-line)}
+  .badge.diy{color:var(--diy);background:var(--diy-bg);border-color:var(--diy-line);border-style:dashed}
+  .badge.na{color:var(--na);background:var(--na-bg);border-color:var(--na-line)}
+  /* direction: square-cornered tags so they never read as availability pills (Keep vs Native GA share green) */
+  .badge.keep,.badge.fix,.badge.add,.badge.drop{border-radius:4px}
+  .badge.keep{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line)}
+  .badge.fix{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+  .badge.add{color:var(--add);background:var(--add-bg);border-color:var(--add-line)}
+  /* drop / overstated: muted rose outline, so it can't be mistaken for the filled red "Not offered" */
+  .badge.drop{color:var(--drop);background:transparent;border-color:var(--drop)}
+  /* audit verdicts */
+  .badge.v-acc{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-line)}
+  .badge.v-over{color:var(--drop);background:transparent;border-color:var(--drop)}
+  .badge.v-under{color:var(--add);background:var(--add-bg);border-color:var(--add-line)}
+  .badge.v-risk{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-line)}
+  .badge.v-drift{color:var(--plan);background:var(--plan-bg);border-color:var(--plan-line)}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:13.5px;color:var(--muted);
+    margin:14px 0;padding:10px 14px;border:1px dashed var(--line-strong);border-radius:10px}
+  .legend > b{flex:0 0 100%}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:18px 0}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel)}
+  .card h4{margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .card p,.card li{font-size:14.5px;color:var(--muted)}
+  .card p{margin:6px 0}
+  .card ul{margin:6px 0;padding-left:20px}
+  .card .ex{font-size:13.5px;border-top:1px dashed var(--line);margin-top:10px;padding-top:8px}
+
+  .phases{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:18px 0}
+  .phase{border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:12px;padding:14px 16px;background:var(--panel)}
+  .phase h4{margin:0 0 2px}
+  .phase .when{font-size:12.5px;color:var(--faint);margin:0 0 8px}
+  .phase ul{margin:0;padding-left:18px;font-size:14px;color:var(--muted)}
+
+  figure{margin:22px 0 30px}
+  .fig-frame{border:1px solid var(--line);border-radius:14px;background:var(--d-bg);padding:14px;box-shadow:var(--shadow);overflow:hidden}
+  .fig-frame svg{display:block;width:100%;height:auto}
+  figcaption{margin-top:10px;font-size:13.5px;color:var(--muted)}
+  figcaption b{color:var(--fg)}
+
+  /* ---------- inline diagrams (SVG inherits the page's --d-* variables above) ---------- */
+  svg.ragos-diagram text{font-family:"Segoe UI",Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif}
+  svg.ragos-diagram .t-title{font-size:15px;font-weight:650}
+  /* sizes in viewBox units (1200 wide): >=13 units is >=11px on screen at full width and >=7pt on a landscape A4 page */
+  svg.ragos-diagram .t-line{font-size:13.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .t-small{font-size:13.2px;fill:var(--d-muted)}
+  svg.ragos-diagram .t-lane{font-size:13px;font-weight:700;letter-spacing:.06em;fill:var(--d-lane-tx)}
+  svg.ragos-diagram .t-edge{font-size:13px;fill:var(--d-edge-tx)}
+  svg.ragos-diagram .t-badge{font-size:11.5px;font-weight:700;fill:var(--d-badge-tx)}
+  svg.ragos-diagram .t-head{font-size:17px;font-weight:700;fill:var(--d-text)}
+  svg.ragos-diagram .t-code{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:12.5px;fill:var(--d-text)}
+  svg.ragos-diagram .t-codesm{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;font-size:13px;fill:var(--d-muted)}
+  svg.ragos-diagram .edge{fill:none;stroke:var(--d-edge);stroke-width:1.7}
+  svg.ragos-diagram .edge-dash{fill:none;stroke:var(--d-edge);stroke-width:1.5;stroke-dasharray:6 5}
+  svg.ragos-diagram .lane{fill:var(--d-lane);stroke:var(--d-lane-br);stroke-width:1.5}
+  svg.ragos-diagram .chip{fill:var(--d-chip);stroke:var(--d-lane-br);stroke-width:1}
+  svg.ragos-diagram .lifeline{stroke:var(--d-edge);stroke-width:1.6;stroke-dasharray:5 5}
+
+  footer.doc-end{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:13px}
+  .theme{position:fixed;top:16px;right:20px;z-index:20}
+
+  @media (max-width:1100px){
+    .layout{grid-template-columns:1fr}
+    #toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);display:none}
+    #toc.open{display:block}
+    .toc-toggle{display:inline-flex;margin:16px 0}
+    main{padding:0 16px 70px}
+    .cover{margin:0 -16px 8px;padding:40px 20px 34px}
+    .cover h1{font-size:32px}
+    .cover .tag{font-size:17px}
+    .phases{grid-template-columns:1fr}
+    .theme{position:absolute;top:10px;right:10px}
+    /* diagrams stay legible on phones: scroll sideways instead of shrinking */
+    .fig-frame{overflow-x:auto}
+    .fig-frame svg{min-width:760px}
+  }
+  @media (max-width:480px){
+    .cards{grid-template-columns:1fr}
+    .cover h1{font-size:28px}
+    h2{font-size:22px}
+  }
+
+  /* ======================================================================
+     PRINT. Two paths share these rules:
+     - "Print / Save as PDF" opens ?print=1, which lays the document out with
+       Paged.js (page X of Y footers, ToC page numbers, landscape figures).
+     - Ctrl+P on the web view falls back to the browser's own pagination.
+     ====================================================================== */
+  @page{size:A4;margin:18mm 16mm 20mm;
+    @bottom-left{content:"RAG-OS \2014  Strategy Review (Internal)";font:8.5pt "Segoe UI",Arial,sans-serif;color:#64748b}
+    @bottom-center{content:"INTERNAL \2014  not for distribution";font:700 8.5pt "Segoe UI",Arial,sans-serif;color:#b91c1c}
+    @bottom-right{content:"Page " counter(page) " of " counter(pages);font:8.5pt "Segoe UI",Arial,sans-serif;color:#64748b}
+  }
+  @page cover{margin:0;
+    @bottom-left{content:none} @bottom-center{content:none} @bottom-right{content:none}
+  }
+
+  @media print{
+    :root{--bg:#fff;--panel:#fff;--bg-soft:#f8fafc;--shadow:none}
+    body{font-size:10.5pt;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #toc,.theme,.toc-toggle,.skip,.print-bar{display:none !important}
+    .layout{display:block;max-width:none}
+    main{padding:0}
+    .cover{page:cover;margin:0;height:296mm;padding:60mm 22mm 0;break-after:page}
+    .cover::after{display:none}
+    .cover h1{font-size:34pt}
+    .cover .tag{font-size:14pt}
+    .cover .pillars{grid-template-columns:repeat(2,1fr);max-width:150mm}
+    .print-toc{display:block;break-after:page}
+    section.chapter{break-before:page;max-width:none}
+    h2{margin-top:0;border-top:0;padding-top:0;font-size:19pt}
+    h3{font-size:13pt;break-after:avoid}
+    h4{break-after:avoid}
+    .card,.phase,tr,.callout,.legend{break-inside:avoid}
+    figure{break-inside:avoid}
+    figure.landscape{break-before:page;break-after:page;margin:0;height:250mm;position:relative}
+    figure.landscape .rot{position:absolute;top:0;left:0;width:250mm;height:176mm;
+      transform-origin:top left;transform:translateY(250mm) rotate(-90deg)}
+    figure.landscape .fig-frame svg{max-height:152mm}
+    .fig-frame{box-shadow:none}
+    .table-wrap{overflow:visible}
+    table{font-size:9pt}
+    .table-wrap table.mid{min-width:0;font-size:9pt}
+    .table-wrap table.wide{min-width:0;font-size:8.5pt}
+    .table-wrap table.wide th,.table-wrap table.wide td{padding:5px 6px}
+    table.pin1 th:first-child,table.pin1 td:first-child{position:static;box-shadow:none}
+    .card p,.card dd,.card li{font-size:9.5pt}
+    a{color:inherit}
+    footer.doc-end{break-inside:avoid}
+  }
+  .print-toc h2{border:0;margin:0 0 18px;padding:0}
+  .print-toc ol{list-style:none;margin:0;padding:0}
+  .print-toc li{margin:0}
+  .print-toc a{display:flex;align-items:baseline;color:var(--fg);text-decoration:none;padding:5px 0;font-size:11pt}
+  .print-toc li.l2 a{padding:2px 0 2px 26px;font-size:10pt;color:var(--muted)}
+  .print-toc li.l1 a{font-weight:600;margin-top:6px}
+  .print-toc .tt{flex:1;display:flex;align-items:baseline}
+  .print-toc .tt::after{content:"";flex:1;border-bottom:1px dotted #94a3b8;margin:0 8px}
+  .print-toc a::after{content:target-counter(attr(href), page);font-variant-numeric:tabular-nums;min-width:20px;text-align:right}
+
+  /* Paged.js: the cover colour is painted on the whole sheet, not on an element that has to match its height */
+  html.print-mode .cover{background:none;height:auto}
+  /* print preview hides the web-only chrome; it stays in the DOM so a failed Paged.js load leaves a working page */
+  html.print-mode #toc,html.print-mode .theme,html.print-mode .toc-toggle,html.print-mode .skip{display:none !important}
+  html.print-mode .layout{display:block;max-width:none}
+  html.print-mode .pagedjs_cover_page .pagedjs_sheet{background:linear-gradient(135deg,#312e81,#4338ca)}
+  /* Paged.js preview on screen: grey desk, white sheets */
+  @media screen{
+    html.print-mode body{background:#e5e7eb}
+    html.print-mode .pagedjs_pages{display:flex;flex-direction:column;align-items:center;padding:28px 0 60px}
+    html.print-mode .pagedjs_page{background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.18);margin-bottom:24px}
+  }
+  .print-bar{position:fixed;top:12px;right:12px;z-index:50;display:flex;gap:8px;background:#fff;border:1px solid #cbd5e1;
+    border-radius:12px;padding:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);font:13px "Segoe UI",Arial,sans-serif;align-items:center}
+  .print-bar span{color:#475569;padding:0 6px}
+  .print-bar .btn{background:#fff;color:#334155;border-color:#cbd5e1}
+  .print-bar .btn.primary{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<button class="btn theme" id="themeBtn" type="button" aria-label="Toggle light or dark theme">◐ Theme</button>
+<div class="layout">
+  <nav id="toc" aria-label="Table of contents">
+    <div class="brand"><span class="dot"></span><b>RAG-OS</b></div>
+    <p class="sub">Strategy review · v1.0 · 9 October 2026</p>
+    <span class="int-tag">Internal — not for distribution</span>
+    <div class="tools"><button class="btn primary" id="printBtn" type="button">Print / Save as PDF</button></div>
+    <ol>
+      <li><a href="#s-verdict"><span class="num">1</span>Verdict on one page</a></li>
+      <li><a href="#s-read"><span class="num">2</span>How to read</a></li>
+      <li><a href="#s-h2h"><span class="num">3</span>Head-to-head comparison</a></li>
+      <li><a href="#s-catalogue"><span class="num">4</span>Feature catalogue</a>
+        <ol>
+          <li><a href="#s-cat-table">4.1 Key features</a></li>
+          <li><a href="#s-adls">4.2 ADLS Gen2 ACL model</a></li>
+        </ol>
+      </li>
+      <li><a href="#s-audit"><span class="num">5</span>Claim-vs-code audit</a></li>
+      <li><a href="#s-diff"><span class="num">6</span>Differentiators and gaps</a>
+        <ol>
+          <li><a href="#s-protect">6.1 Protect</a></li>
+          <li><a href="#s-gaps">6.2 Close</a></li>
+        </ol>
+      </li>
+      <li><a href="#s-direction"><span class="num">7</span>Direction check</a></li>
+      <li><a href="#s-build"><span class="num">8</span>Build vs adopt</a></li>
+      <li><a href="#s-purview"><span class="num">9</span>Purview labels</a>
+        <ol>
+          <li><a href="#s-pv-compare">9.1 Labels vs ABAC</a></li>
+          <li><a href="#s-pv-options">9.2 Options</a></li>
+          <li><a href="#s-pv-impl">9.3 Option B notes</a></li>
+          <li><a href="#s-pv-encrypted">9.4 Encrypted files</a></li>
+          <li><a href="#s-pv-avoid">9.5 Complications</a></li>
+          <li><a href="#s-pv-refs">9.6 References</a></li>
+        </ol>
+      </li>
+      <li><a href="#s-usecases"><span class="num">10</span>Use-case fit and market</a></li>
+      <li><a href="#s-trends"><span class="num">11</span>Market trends and risks</a>
+        <ol>
+          <li><a href="#s-trend-table">11.1 Trends</a></li>
+          <li><a href="#s-risks">11.2 Risk register</a></li>
+        </ol>
+      </li>
+      <li><a href="#s-plan"><span class="num">12</span>90-day plan</a></li>
+      <li><a href="#s-next"><span class="num">13</span>Appendix</a></li>
+      <li><a href="#s-refs"><span class="num">14</span>References</a></li>
+    </ol>
+  </nav>
+
+  <main id="content">
+    <button class="btn toc-toggle" id="tocToggle" type="button" aria-expanded="false" aria-controls="toc">☰ Contents</button>
+
+    <header class="cover">
+      <p class="ribbon" role="note">Internal — not for distribution</p>
+      <p class="kicker">Internal strategy review · v1.0 · 9 October 2026</p>
+      <h1>RAG-OS vs Azure: strategy review</h1>
+      <p class="tag">A candid comparison of RAG-OS with Microsoft Foundry IQ and Azure AI Search document-level access. Every claim here is checked against the code as it stands, and the document names the course corrections to make before the market forces them.</p>
+      <ul class="meta">
+        <li><b>Audience</b> Founder and architects</li>
+        <li><b>Evidence</b> Code inventory, Microsoft Learn and market scan, all checked 9 Oct 2026</li>
+        <li><b>Companion</b> <code style="color:inherit;background:transparent;border-color:rgba(255,255,255,.3)">RAG-OS-FeatureComparison.html</code> (external edition)</li>
+      </ul>
+      <ul class="pillars">
+        <li><b>Direction is right</b>Policy-based access and governed classification are real gaps that Azure's native features don't cover.</li>
+        <li><b>Claims need trimming</b>The Overview overstates "no per-token cost" embeddings (live dev runs Azure OpenAI 3-small) and leaves out admin tracing entirely.</li>
+        <li><b>Microsoft is closing in</b>Foundry IQ went GA in June 2026, and native ACL and Purview ingestion are in preview, all in the same Azure AI Search we run on.</li>
+        <li><b>Adopt, don't rebuild</b>Take SharePoint ACLs, OCR, Purview label metadata and quotas from Azure. Keep policy, classification, grounding and tracing custom.</li>
+      </ul>
+    </header>
+
+    <nav class="print-toc" aria-label="Contents"><h2>Contents</h2><ol></ol></nav>
+
+    <!-- ===================================================================== 1 -->
+    <section class="chapter" id="s-verdict">
+      <h2><span class="n">1</span>Verdict on one page</h2>
+      <p class="lede">RAG-OS is pointed at a real gap, but it is a narrower product today than the Overview implies. The platform underneath it (Azure AI Search) is moving toward governed RAG quickly. The plan should be to sit on top of Microsoft's stack, not compete with it.</p>
+      <ul>
+        <li><strong>The direction is broadly right.</strong> Policy-based access is the differentiator: department any-of, hierarchical region, clearance level and personal share, combined with default deny and compiled into a pre-filter that runs inside the search. Azure's native document-level access understands only <code>userIds</code>, <code>groupIds</code>, <code>rbacScope</code> and Purview labels. A match on any of them grants access, and there is no hierarchy or clearance logic. Microsoft's own guidance is to use security filters (the RAG-OS pattern) for custom policies. Layered classification with SME review and per-facet provenance has no counterpart in the Foundry IQ docs we reviewed. That is absence in the docs, not a Microsoft statement.</li>
+        <li><strong>The product is narrower than it reads.</strong> The working connectors are local folder, Blob and upload; SharePoint, Drive and FTP are stubs that raise <code>NotSupported</code>. There is no OCR, only one retriever (<code>direct</code>), and only single-tenant Entra. Customer-portal context injection doesn't exist yet. The live dev deployment embeds with Azure OpenAI <code>text-embedding-3-small</code>, not the self-hosted TEI model the Overview leads with.</li>
+        <li><strong>Risk 1: Microsoft builds governed RAG into the same Azure AI Search.</strong> Foundry IQ went GA on 2 June 2026 (narrow scope). Native SharePoint and ADLS ACL ingestion, Purview labels and a per-knowledge-base MCP endpoint are all shipping (the ACL and Purview pieces in preview). Every quarter, the "AI Search plus a UI" part of RAG-OS gets cheaper for anyone to copy.</li>
+        <li><strong>Risk 2: seat prices have collapsed to about $20.</strong> Copilot Business is $21, Gemini Business $21, Quick Plus $20, Onyx $20 (with a free open-source edition), and Rovo comes bundled. An SMB knowledge-base SaaS sold per seat can't win on features alone.</li>
+        <li><strong>Risk 3: the planned use cases are crowded.</strong> Questionnaires have Vanta, Loopio and Responsive. Quizzes have Copilot in Microsoft Forms. Form filling has ONLYOFFICE and Nanonets. Cited finance grids have Hebbia.</li>
+        <li><strong>Top five moves:</strong>
+          <ol>
+            <li>Correct the Overview this month: TEI wording, admin tracing, "hosted on Foundry", external portal users.</li>
+            <li>Ship SharePoint through Azure AI Search's native ACL ingestion as a <em>source-ACL mode</em> ANDed with RAG-OS policy, isolated behind an adapter. Don't build our own ACL sync.</li>
+            <li>Move "governed retrieval as an MCP server" from Later to Next. The goal is to become the policy gateway for Copilot, Claude and Foundry agents rather than one more chat UI.</li>
+            <li>Ship evaluation release gates with a faithfulness score, and OCR through Content Understanding. Both are entry tickets for regulated verticals.</li>
+            <li>Lead with regulated-vertical completeness (mortgage loss-mitigation, then prior-auth and KYC) plus the governed enterprise knowledge base. Defer the personal edition, Drive/FTP and the marketplace, and drop "fun quizzes".</li>
+          </ol>
+        </li>
+      </ul>
+      <div class="callout"><p><strong>Internal positioning in one line:</strong> RAG-OS is the policy, classification and accountability layer <em>on top of</em> Azure AI Search and Foundry IQ, for documents whose source ACLs are missing or can't be trusted. It doesn't replace them.</p></div>
+    </section>
+
+    <!-- ===================================================================== 2 -->
+    <section class="chapter" id="s-read">
+      <h2><span class="n">2</span>How to read this document</h2>
+      <div class="legend" role="note"><b>RAG-OS status (verified in code on 9 Oct 2026, not as the Overview states it)</b>
+        <span><span class="badge av">Available</span> built and working</span>
+        <span><span class="badge pt">Partial</span> works with known limits</span>
+        <span><span class="badge rm">Roadmap</span> not built (stubs count as Roadmap)</span>
+      </div>
+      <div class="legend" role="note"><b>Azure capability (Foundry IQ and Azure AI Search)</b>
+        <span><span class="badge nat">Native GA</span> generally available, SLA-backed</span>
+        <span><span class="badge pv">Preview</span> available, no SLA, API may change</span>
+        <span><span class="badge diy">Build-it-yourself</span> possible, but the customer writes the logic</span>
+        <span><span class="badge na">Not offered</span> not found in the docs reviewed</span>
+      </div>
+      <div class="legend" role="note"><b>Direction verdicts (sections 7 and 9) and use-case calls (section 10)</b>
+        <span><span class="badge keep">Keep</span> protect and invest; also "Lead" in section 10</span>
+        <span><span class="badge fix">Course-correct</span> right idea, wrong shape; also "Reposition"</span>
+        <span><span class="badge add">Add</span> new commitment; also "Pursue"</span>
+        <span><span class="badge drop">Remove / Defer</span> stop or park; also "Defer"</span>
+      </div>
+      <div class="legend" role="note"><b>Claim-vs-code audit verdicts (section 5)</b>
+        <span><span class="badge v-acc">Accurate</span></span>
+        <span><span class="badge v-over">Overstated</span></span>
+        <span><span class="badge v-under">Understated</span></span>
+        <span><span class="badge v-risk">Wording risk</span></span>
+        <span><span class="badge v-drift">Drift</span> minor doc or config mismatch</span>
+      </div>
+      <ul>
+        <li><strong>Impact / Effort</strong> is written as <span class="ie">H/M/L · S/M/L</span>. Impact is High, Medium or Low on win-rate and defensibility. Effort is Small (≤2 weeks for one engineer), Medium (≤6 weeks) or Large (more than a quarter).</li>
+        <li><strong>Repo paths</strong> such as <code>src/rag_os/…</code> are relative to the <code>rag-os-assistant/</code> root. <strong>T1–T12</strong> refer to the market trends in <a href="#s-trend-table">section 11.1</a>.</li>
+        <li><strong>Negative findings</strong> ("not found") mean we found no mention in the primary docs or sources we reviewed. They are not statements by the vendor. Items we couldn't verify are marked <em>unverified</em> or left out.</li>
+        <li><strong>Consistency:</strong> this edition and the external <code>RAG-OS-FeatureComparison.html</code> come from the same facts file. This edition adds the internal-only material: code stubs, the live config, the audit, risks and pricing strategy.</li>
+        <li><strong>Use-case fit scales:</strong> External edition ratings map as Strong ≈ High, Partial ≈ Medium/Low, Build ≈ Low; the internal scale is stricter because it reflects verified code.</li>
+      </ul>
+    </section>
+
+    <!-- ===================================================================== 3 -->
+    <section class="chapter" id="s-h2h">
+      <h2><span class="n">3</span>Head-to-head comparison</h2>
+      <p>The dimensions are the same as in the external edition. The difference is that the RAG-OS column shows what the code does today, including stubs and the live configuration. The last column is the blunt read.</p>
+      <div class="table-wrap"><table class="wide pin1">
+        <thead><tr><th style="width:12%">Dimension</th><th style="width:26%">RAG-OS (verified)</th><th style="width:22%">Foundry IQ</th><th style="width:22%">AI Search document-level access</th><th style="width:18%">Candid read</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Classification &amp; taxonomy</strong></td>
+            <td><span class="badge av">Available</span> SME taxonomy in <code>config/<wbr>classification/<wbr>facets.<wbr>yaml</code> (6 facets, hierarchies, synonyms). 7-layer precedence, with the embedding classifier (cosine against facet prototypes, min 0.30, margin 0.03) feeding a review queue with provenance. Single-label only. The LLM layer is opt-in and off by default. Review never gates indexing.<br><span class="badge rm">Roadmap</span> Ontology: not in <code>src/</code>; a prototype exists only in the untracked <code>usecase1/</code> folder.</td>
+            <td><span class="badge na">Not offered</span> No classification, taxonomy or review queue found. Generated pipelines are fixed templates ("avoid editing"). <span class="badge pv">Preview</span> <code>queryHints</code> steer the planner but don't assign categories.</td>
+            <td><span class="badge diy">Build-it-yourself</span> Only via a custom skill or push. A Custom Web API skill <em>drops</em> SharePoint ACL inheritance and skips Purview-labelled documents.</td>
+            <td>Clear RAG-OS win, and the hardest thing for Microsoft to template. Protect it, and add multi-label.</td></tr>
+          <tr><td><strong>Query filtering / access control</strong></td>
+            <td><span class="badge av">Available</span> YAML ABAC compiled to OData <code>search.in</code>/<code>le</code>, applied in every search, facet and listing call. Missing attributes ⇒ <code>DENY_ALL</code>. Claim allow-list (401). Property test proves OData filter = Python predicate. Explain command; audited admin bypass.<br><span class="badge pt">Partial</span> ACLs come only from config, upload or admin. No source-ACL ingestion. The group→attribute <code>value_map</code> is commented out in the sample.</td>
+            <td><span class="badge pv">Preview</span> Permission ingestion (<code>ingestion<wbr>Permission<wbr>Options</code> was removed from GA 2026-04-01). User token goes in <code>x-ms-query-source-authorization</code>. <strong>Fails open</strong> if permission ingestion isn't configured, or if the token is omitted on knowledge-base retrieve or in a Foundry agent. No ABAC; dept/region rules have to be the caller's own OData.</td>
+            <td><span class="badge nat">Native GA</span> Security filters (the RAG-OS pattern). <span class="badge pv">Preview</span> <code>userIds</code>/<code>groupIds</code>/<code>rbacScope</code>/Purview: OR semantics, ≤1000 values per field, ≤5 <code>rbacScope</code> values per index, Entra object IDs only. The caller's <code>$filter</code> is ANDed, so a <strong>hybrid is possible</strong>.</td>
+            <td>RAG-OS wins on policy semantics. Azure wins on mirroring source ACLs. Combine them rather than pick one.</td></tr>
+          <tr><td><strong>Ingestion &amp; connectors</strong></td>
+            <td><span class="badge av">Available</span> <code>local_folder</code>, <code>azure_blob</code> (keyless, sidecars), upload (priority lane). Service Bus queue, KEDA 0–10 workers, dead-letter queue after 5 tries. Etag/hash change detection, RETAG without re-embedding, deletion propagation.<br><span class="badge rm">Roadmap</span> SharePoint, Google Drive and SFTP are <strong>registered stubs</strong> that raise <code>NotSupported</code> (<code>src/<wbr>rag_<wbr>os/<wbr>infrastructure/<wbr>sources/<wbr>stubs.<wbr>py</code>).</td>
+            <td><span class="badge nat">Native GA</span> <code>searchIndex</code>, <code>azureBlob</code>, <code>indexedOneLake</code>, <code>web</code>. <span class="badge pv">Preview</span> Indexed and remote SharePoint, SQL, file, MCP, Work IQ, Fabric. ≤10 sources per knowledge base (3 on Free).</td>
+            <td><span class="badge pv">Preview</span> ACL-aware ADLS Gen2 and SharePoint indexers. ACL changes need a touch, <code>/resetdocs</code> or <code>/resync</code>.</td>
+            <td>Azure is far ahead on reach. Our own stub docstring says to use the AI Search SharePoint source. Don't hand-build ACL sync.</td></tr>
+          <tr><td><strong>Formats / OCR</strong></td>
+            <td><span class="badge av">Available</span> PDF (text layer only), DOCX, TXT/MD/log, CSV/TSV, XLSX/XLSM, XLS, JSON, JSONL/NDJSON, JSONP, XML (defusedxml).<br><span class="badge rm">Roadmap</span> No OCR (<code>src/<wbr>rag_<wbr>os/<wbr>infrastructure/<wbr>parsers/<wbr>pdf.<wbr>py</code>), no PPTX or legacy DOC, no HTML parser, no language detection.</td>
+            <td><code>content<wbr>Extraction<wbr>Mode</code> is <code>minimal</code> by default; <span class="badge pv">Preview</span> <code>standard</code> (layout-aware, Content Understanding) is listed as Preview in the 2 June 2026 GA announcement. <span class="badge pv">Preview</span> Automatic language analyzers.</td>
+            <td><span class="badge diy">Build-it-yourself</span> Assembled from indexers and skillsets. Note: image serving is <em>disabled</em> when native ACL ingestion is on.</td>
+            <td>Scanned paper is exactly the corpus without source ACLs, so missing OCR blocks our best pitch. Adopt Content Understanding (GA since Nov 2025).</td></tr>
+          <tr><td><strong>Retrieval</strong></td>
+            <td><span class="badge av">Available</span> Hybrid search (k=50) with semantic ranker, minimum reranker score, top 8, taxonomy-synonym expansion, follow-up condensation, heading-aware chunking (450/60).<br><span class="badge rm">Roadmap</span> Only the <code>direct</code> retriever exists. No agentic planning or multi-index. <code>retrievers.py:2</code> says "Foundry IQ … is phase 2".</td>
+            <td><span class="badge nat">Native GA</span> Minimal-effort extractive retrieval across sources. <span class="badge pv">Preview</span> LLM query planning, low/medium/auto effort, multi-turn, answer synthesis. Vendor claims "up to 20%" better answers and "up to 54%" better recall (Microsoft's own benchmark).</td>
+            <td><span class="badge pv">Preview</span> Trimming applies to any query type. The first ACL query can be slower.</td>
+            <td>Single-shot top-k looks dated (T1). Put Foundry IQ behind our Retriever port as an option rather than competing on retrieval.</td></tr>
+          <tr><td><strong>Answer quality</strong></td>
+            <td><span class="badge av">Available</span> Page-level <code>[n]</code> citations, de-duplicated. Abstains <em>before</em> calling the LLM. Uncited answers are refused. Reason codes.<br><span class="badge pt">Partial</span> Version conflicts are reported in prose only.<br><span class="badge rm">Roadmap</span> Confidence score, eval gates.</td>
+            <td><span class="badge nat">Native GA</span> Extractive references (<code>docKey</code>, <code>rerankerScore</code>). <span class="badge pv">Preview</span> Answer synthesis with <code>[ref_id:N]</code> citations. In GA, the answer and its grounding are the calling app's job.</td>
+            <td><span class="badge diy">Build-it-yourself</span> Returns documents; citations are up to your app.</td>
+            <td>We're ahead on abstention discipline, but we have no numbers to prove it (T6). Eval gates are the gap.</td></tr>
+          <tr><td><strong>Embeddings &amp; residency</strong></td>
+            <td><span class="badge av">Available</span> One active profile pins model, revision, dimensions and prefixes for both ingestion and query. The fingerprint names the index, and a profile change rebuilds side by side (<code>application/<wbr>services/<wbr>profile_<wbr>guard.<wbr>py</code>). Options: TEI with Qwen3-0.6B (self-hosted, no per-token cost) or Azure OpenAI 3-small.<br><span class="badge pt">Partial</span> <strong>Live dev runs <code>aoai-3-small-1536</code></strong> (<code>infra/<wbr>env/<wbr>dev.<wbr>psd1:152</code>) since 27 Sep 2026, after TEI hit CPU and T4 CUDA out-of-memory failures. TEI is parked.</td>
+            <td>Generated pipelines accept <strong>Azure OpenAI embeddings only</strong>. <span class="badge diy">Build-it-yourself</span> TEI works only through a self-built index with a <code>customWebApi</code> vectorizer (semantic configuration required).</td>
+            <td><span class="badge nat">Native GA</span> Any supported vectorizer; matching ingestion and query is your job.</td>
+            <td>The self-hosted story is real as an option, but it isn't what we run. Fix TEI or soften the message.</td></tr>
+          <tr><td><strong>Models</strong></td>
+            <td><span class="badge av">Available</span> Claude on Foundry (Entra token, prompt caching) or Azure OpenAI GPT. Separate answer and utility roles. A Claude refusal is retried once on Azure OpenAI. The default adapter in code is <code>fake</code> (extractive), for local dev.</td>
+            <td><span class="badge pv">Preview</span> Knowledge-base planning and synthesis use <strong>Azure OpenAI GPT only</strong> (<code>Knowledge<wbr>Base<wbr>Model<wbr>Kind = azure<wbr>Open<wbr>AI</code>). No Claude.</td>
+            <td><span class="badge diy">Build-it-yourself</span> No model inside; you choose it in your app.</td>
+            <td>A real differentiator for customers who want Claude or vendor choice.</td></tr>
+          <tr><td><strong>Observability &amp; cost</strong></td>
+            <td><span class="badge av">Available</span> OpenTelemetry to App Insights. One correlation ID from browser through queue to worker. <code>rag.tokens</code> by kind, provider, model and purpose. Tokens shown on every answer; KQL pack. Admin stage-by-stage traces with a near-miss probe and replay.<br><span class="badge rm">Roadmap</span> Per-user quotas, exportable answer audit trail.</td>
+            <td><span class="badge nat">Native GA</span> Activity log with token counts per response. No agentic-specific Azure Monitor category found. The MCP path drops <code>activity</code> and <code>references</code>. Microsoft's cost guidance is to "use a public tokenizer".</td>
+            <td><span class="badge nat">Native GA</span> Azure Monitor operation logs and metrics. No explain-why-denied. <span class="badge pv">Preview</span> Elevated read works on Search POST only, not on knowledge-base retrieve. Audit only for elevated read on Purview indexes.</td>
+            <td>Clear RAG-OS win that we undersell. Market it.</td></tr>
+          <tr><td><strong>Admin / SME tooling</strong></td>
+            <td><span class="badge av">Available</span> Admin console: dashboard, sources, sync now, runs with ETA, per-document status, bulk retry, CSV export, review queue, dead-letter viewer, throttling, config editing, query traces. Attribute edits are written back to Entra via Graph.<br><span class="badge rm">Roadmap</span> UI editors for taxonomy and policy (YAML today).</td>
+            <td><span class="badge pv">Preview</span> The portals give preview-only access to agentic retrieval features. <span class="badge nat">Native GA</span> Knowledge-source status API.</td>
+            <td><span class="badge pv">Preview</span> <span class="badge diy">Build-it-yourself</span> Native ACL features aren't supported in the Azure portal (REST or preview SDK only).</td>
+            <td>Our operations surface is a moat for regulated buyers. The YAML-only editors are the weak spot for SMB.</td></tr>
+          <tr><td><strong>Channels</strong></td>
+            <td><span class="badge av">Available</span> Own chat UI, plus a one-script embed (iframe <code>/embed</code>, postMessage token, origin allow-list, CSP <code>frame-ancestors</code>).<br><span class="badge rm">Roadmap</span> No portal context injection (<code>ChatRequest</code> = question, history, filters), single-tenant Entra, Teams/Copilot Studio, MCP.</td>
+            <td><span class="badge nat">Native GA</span> MCP server per knowledge base (<code>knowledge_<wbr>base_<wbr>retrieve</code>). <span class="badge pv">Preview</span> Foundry Agent Service via RemoteTool; Copilot Studio via a Foundry agent; knowledge-base CORS.</td>
+            <td><span class="badge diy">Build-it-yourself</span> Up to your app.</td>
+            <td>Microsoft wins distribution. We need MCP and a Foundry agent to be present where users already are.</td></tr>
+          <tr><td><strong>Deployment / ops</strong></td>
+            <td><span class="badge av">Available</span> Deploys into the customer's subscription on Container Apps, with a user-assigned managed identity and no keys. Idempotent az CLI scripts in PowerShell 7 (<code>infra/<wbr>scripts/<wbr>*.<wbr>ps1</code>); no Bicep, by choice. Scales to zero.</td>
+            <td><span class="badge nat">Native GA</span> Microsoft-run, nothing to operate. Network isolation and managed identity are GA. <span class="badge pv">Preview</span> Serverless tier. Portal objects may need migration. Five preview API versions in about 15 months.</td>
+            <td><span class="badge pv">Preview</span> Needs Basic tier or higher and RBAC. Purview needs a <em>system-assigned</em> identity, and <code>purviewEnabled</code> is permanent.</td>
+            <td>"Nothing to operate" is Microsoft's strongest argument against us. Our answer is isolating the customer from churn.</td></tr>
+          <tr><td><strong>Compliance</strong></td>
+            <td><span class="badge av">Available</span> Runs in the customer's tenant. Only entitled passages reach the LLM. Keyless models via Foundry. Text stays in the deployment <em>with the TEI option</em>.<br><span class="badge rm">Roadmap</span> Private endpoints/VNet, confidential compute, Purview label → clearance input (<a href="#s-purview">section 9</a>).</td>
+            <td><span class="badge nat">Native GA</span> Network isolation, shared private link, NSP. <span class="badge pv">Preview</span> Cross-tenant CMK, Purview label auditing. Work IQ "might send data outside the Azure compliance boundary".</td>
+            <td><span class="badge pv">Preview</span> Purview is single-tenant with no guests, needs a Global Administrator or Privileged Role Administrator to grant <code>Content.<wbr>SuperUser</code>, and covers indexer (pull) sources only. Fails closed (5xx) on ACL evaluation errors.</td>
+            <td>Even on its own story, we lack private networking today, and buyers will ask.</td></tr>
+          <tr><td><strong>Pricing</strong></td>
+            <td>Not set (no published price). Cost is the customer's Azure consumption plus model tokens, and per-answer token data could support usage pricing.</td>
+            <td><span class="badge nat">Native GA</span> First 50M agentic tokens a month free. Per-1M rate not published as text (unverified). Azure OpenAI billed separately. Serverless Developer tier billed from 13 Sep 2026. Remote SharePoint needs a per-user M365 Copilot licence or pay-as-you-go.</td>
+            <td>Needs a billable tier (Basic or higher).</td>
+            <td>We can't beat "free 50M tokens" on price. Price on governance and vertical outcomes.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout note"><p><strong>Where Foundry IQ is genuinely stronger</strong> (we should say this out loud internally and externally): agentic query planning with multi-source fan-out; first-party M365, SharePoint, OneLake and Work IQ reach; a native MCP endpoint per knowledge base; Microsoft runs it, so there's no app to operate; a Purview and native ACL path (preview); 50M free agentic tokens; distribution through Copilot Studio and Teams.</p></div>
+    </section>
+
+    <!-- ===================================================================== 4 -->
+    <section class="chapter" id="s-catalogue">
+      <h2><span class="n">4</span>Feature catalogue (condensed)</h2>
+      <h3 id="s-cat-table">4.1 Key features</h3>
+      <div class="table-wrap"><table class="wide pin1">
+        <thead><tr><th style="width:14%">Feature</th><th style="width:22%">What it is and why</th><th style="width:17%">Example</th><th style="width:16%">RAG-OS (verified)</th><th style="width:17%">Azure equivalent</th><th style="width:14%">Refs</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ABAC pre-filter</strong></td><td>A declarative policy (any_of, hierarchical, max_level, exact) compiled into the search filter, so forbidden content is never retrieved. Default deny.</td><td>An HR, UK, clearance-1 user sees HR documents tagged UK, EMEA or Global at level ≤1, plus anything shared to their ID.</td><td><span class="badge av">Available</span></td><td><span class="badge nat">Native GA</span> security filters (mechanism only). <span class="badge diy">Build-it-yourself</span> as policy semantics.</td><td><code>config/<wbr>access-policy/<wbr>access-policy.<wbr>yaml</code>; <a href="https://learn.microsoft.com/en-us/azure/search/search-security-trimming-for-azure-search">Learn: security trimming</a></td></tr>
+          <tr><td><strong>Explain access</strong></td><td>Prints the exact filter for a person, plus a near-miss probe that re-runs a refused query without the filter (admin only, audited).</td><td>"Why can't Priya see the salary policy?" → <code>acl_<wbr>clearance le 1</code> excludes the level-3 document.</td><td><span class="badge av">Available</span></td><td><span class="badge pv">Preview</span> Elevated read only (Search POST); no explain-why-denied API.</td><td><a href="https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement">Learn: query-time ACL</a></td></tr>
+          <tr><td><strong>Layered classification</strong></td><td>Seven layers from cheapest to most expensive, with low-confidence results sent to an SME review queue. Approved labels are frozen, and every facet records where it came from.</td><td>Path rule says <code>HR/**</code> ⇒ HR; the classifier proposes topic "leave" at 0.31 (close call) ⇒ review queue.</td><td><span class="badge av">Available</span> single-label; LLM layer off by default</td><td><span class="badge na">Not offered</span> in Foundry IQ (not found); <span class="badge diy">Build-it-yourself</span> on AI Search</td><td><code>config/<wbr>classification/<wbr>facets.<wbr>yaml</code>; <code>docs/<wbr>classification-guide.<wbr>md</code></td></tr>
+          <tr><td><strong>Embedding profile guard</strong></td><td>One active profile shared by ingestion and query. A change builds a new index alongside the old one, so vectors and queries can never mismatch.</td><td>Switching from qwen3-1024 to aoai-3-small-1536 creates a new fingerprinted index; the old one keeps serving.</td><td><span class="badge av">Available</span></td><td><span class="badge nat">Native GA</span> vectorizers; keeping ingestion and query on one model is the customer's job (no guard).</td><td><code>config/<wbr>embedding/<wbr>profiles.<wbr>yaml</code></td></tr>
+          <tr><td><strong>Grounding guard</strong></td><td>Abstains before the LLM is called when nothing passes the filter or relevance threshold. Refuses uncited answers. Returns reason codes.</td><td><code>no_access</code> vs <code>no_<wbr>relevant_<wbr>context</code>, so support can tell a permission problem from a coverage gap.</td><td><span class="badge av">Available</span></td><td><span class="badge diy">Build-it-yourself</span> (GA is extractive only)</td><td><a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-answer-synthesis">Learn: answer synthesis</a></td></tr>
+          <tr><td><strong>Token &amp; stage tracing</strong></td><td>Token usage on every answer, plus an admin trace through identity, access, query, embed, search, relevance, prompt, LLM and grounding, with replay.</td><td>A refused answer shows search returned 0 entitled hits while the near-miss found 3. That's a tagging fix, not a model fix.</td><td><span class="badge av">Available</span> (Overview omits it)</td><td><span class="badge nat">Native GA</span> Per-response activity log; MCP drops it.</td><td><code>application/<wbr>services/<wbr>query_<wbr>trace.<wbr>py</code>; <code>docs/kql.md</code></td></tr>
+          <tr><td><strong>Embeddable chat</strong></td><td>One script tag puts governed chat into a host page; the host passes an Entra token by postMessage.</td><td>An intranet page embeds HR chat, scoped by the signed-in employee's token.</td><td><span class="badge av">Available</span> (embed) · <span class="badge rm">Roadmap</span> signed portal context, External ID<br><small>Candidly: no context injection yet (<code>ChatRequest</code> has no context fields) and Entra is single-tenant.</small></td><td><span class="badge pv">Preview</span> Knowledge-base CORS for direct browser retrieve.</td><td><code>src/<wbr>rag_<wbr>os/<wbr>api/<wbr>schemas.<wbr>py</code></td></tr>
+          <tr><td><strong>Native document-level access</strong></td><td>Azure stores Entra user, group and RBAC-scope IDs in <code>permissionFilter</code> fields and trims results using the user's token.</td><td>A document with <code>group<wbr>Ids=[HR-group-oid]</code> is returned only to members, with nesting resolved through Graph.</td><td><span class="badge rm">Roadmap</span> not used</td><td><span class="badge pv">Preview</span> (2026-08-01-preview)</td><td><a href="https://learn.microsoft.com/en-us/azure/search/search-document-level-access-overview">Learn: overview</a>; <a href="https://learn.microsoft.com/en-us/azure/search/search-index-access-control-lists-and-rbac-push-api">push API</a></td></tr>
+          <tr><td><strong>SharePoint ACL ingestion</strong></td><td>The SharePoint indexer computes the effective ACL per item (site → library → folder → item).</td><td>A unique-permission item is picked up incrementally; a change in parent permissions needs <code>/resync</code>.</td><td><span class="badge rm">Roadmap</span> stub</td><td><span class="badge pv">Preview</span> No guests, no "Anyone" or org-wide links; Entra groups inside SharePoint groups aren't expanded; ≤1000 entries per file.</td><td><a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-sharepoint-access-control-lists">Learn: SharePoint ACLs</a></td></tr>
+          <tr><td><strong>Purview labels</strong></td><td>Azure: the indexer extracts labels and Search enforces usage rights (EXTRACT per the query docs) at query time. RAG-OS plan: read the label at ingestion and map it to clearance, with ABAC as the only enforcement point.</td><td>A "Highly Confidential" document maps to clearance 3, so only level-3 users retrieve it, and its citations carry the label badge.</td><td><span class="badge rm">Roadmap</span> label → clearance input (<a href="#s-purview">section 9</a>)</td><td><span class="badge pv">Preview</span> Indexer (pull) only; single tenant, no guests; Global Admin or Privileged Role Admin grants <code>Content.<wbr>SuperUser</code> to a system-assigned identity; permanent RBAC-only index flag; labelled docs skipped with a Custom Web API skill.</td><td><a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels">Learn: labels (ingest)</a>; <a href="https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels">(query)</a></td></tr>
+          <tr><td><strong>Foundry IQ knowledge base</strong></td><td>A managed knowledge layer: knowledge sources plus agentic retrieval on top of Azure AI Search.</td><td>One knowledge base fans out over Blob, OneLake and web, plans sub-queries and merges with reranking.</td><td><span class="badge rm">Roadmap</span> "phase 2"</td><td><span class="badge nat">Native GA</span> narrow (extractive, minimal effort); everything else <span class="badge pv">Preview</span></td><td><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq">Learn: Foundry IQ</a></td></tr>
+          <tr><td><strong>MCP endpoint</strong></td><td>Each knowledge base is an MCP server with one tool, <code>knowledge_<wbr>base_<wbr>retrieve</code>.</td><td>Claude, GitHub Copilot or a Foundry agent calls the knowledge base, forwarding the user token as a header.</td><td><span class="badge rm">Roadmap</span></td><td><span class="badge nat">Native GA</span> (server); synthesized answers via MCP <span class="badge pv">Preview</span></td><td><a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve">Learn: retrieve</a>; <a href="https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/foundry-iq-connect">connect</a></td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="s-adls">4.2 How the ADLS Gen2 POSIX-like ACL model works in Azure AI Search</h3>
+      <p>This is the one native ACL path that fits customers whose file shares already sit in Data Lake Storage Gen2 with folder permissions. That is exactly the "file-share corpus" RAG-OS targets, so architects should understand it before we pick a SharePoint or ADLS design.</p>
+      <ol>
+        <li><strong>Storage model.</strong> In a hierarchical-namespace account, each directory and file carries POSIX-like ACL entries that grant read, write or execute to named users and groups. Access ACLs apply to the item. Default ACLs are copied to <em>new</em> children only; existing children don't inherit new defaults. Azure RBAC is evaluated before ACLs, so an ACL can't take away access a role already grants.</li>
+        <li><strong>Ingestion.</strong> An ADLS Gen2 indexer (from <code>2025-05-01-preview</code>) or a Blob knowledge source with <code>isADLSGen2</code> (from <code>2025-11-01-preview</code>) sets <code>indexerPermissionOptions</code> / <code>ingestionPermissionOptions</code>. It walks container root → each directory → file, computes the <em>effective</em> access list per file, and writes it to the <code>userIds</code> and <code>groupIds</code> fields (<code>metadata_user_ids</code>, <code>metadata_group_ids</code>). Container-level RBAC (Storage Blob Data Reader) goes into <code>rbacScope</code>. When chunking, the ACL fields must be carried to each chunk with index projections.</li>
+        <li><strong>Query.</strong> The app sends its own credential in <code>Authorization</code> and the user's Entra token (scope <code>https://search.azure.com/.default</code>) in <code>x-ms-query-source-authorization</code>. The token's <code>oid</code> is matched against <code>userIds</code>, and groups are resolved live through Microsoft Graph, including nested groups. A match on any type grants access. The internal filter is appended to the caller's <code>$filter</code>.</li>
+        <li><strong>Required setup.</strong> Assign every group and user at root <code>/</code> with Read+Execute, also as Default, then "apply ACLs recursively" and remove excess entries.</li>
+      </ol>
+      <div class="callout warn">
+        <p><strong>Limits that matter for RAG-OS:</strong></p>
+        <ul>
+          <li><strong>Named users and groups only.</strong> The owning user, owning group and "Other" entries aren't supported in preview, and ADLS ABAC conditions aren't evaluated.</li>
+          <li><strong>≤32 ACL entries per file or directory</strong> (effectively 28). Entries beyond the limit "might not be enforced". In practice this pushes customers toward group-based ACL designs.</li>
+          <li><strong>No live sync.</strong> ACLs are captured on the first crawl and for new files only. Later permission changes need a file touch, <code>/resetdocs</code> or <code>/resync</code> (preview). Otherwise the index keeps serving stale ACLs. Group <em>membership</em> changes do apply live.</li>
+          <li><strong>Pipeline restrictions.</strong> Not supported with the Custom Web API skill, enrichment cache, knowledge store or asset store (so no image serving), debug sessions or the Azure portal. Fails closed (5xx) if Graph is unavailable.</li>
+          <li><strong>Preview, with no SLA</strong> (latest <code>2026-08-01-preview</code>).</li>
+        </ul>
+        <p><strong>Sample caveat:</strong> the recommended cloud-ingestion flow in <code>azure-search-openai-demo</code> uses a custom Azure Function that parses each file's ACL string and "does not consider directory-level ACL inheritance". The reference demo cuts the same corner we would be tempted to.</p>
+      </div>
+      <p><strong>Learn:</strong> <a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-access-control-lists-and-role-based-access">ACL and RBAC indexer ingestion</a> · <a href="https://learn.microsoft.com/en-us/azure/search/tutorial-adls-gen2-indexer-acls">ADLS Gen2 ACL tutorial</a> · <a href="https://learn.microsoft.com/en-us/azure/search/search-index-access-control-lists-and-rbac-push-api">Push API with permissions</a> · <a href="https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement">Query-time enforcement</a> · <a href="https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-access-control-model">ADLS access control model</a></p>
+      <p><strong>GitHub:</strong> <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/docs/login_and_acl.md">azure-search-openai-demo · docs/login_and_acl.md</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/adlsgen2setup.py">scripts/adlsgen2setup.py</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/manageacl.py">scripts/manageacl.py</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/verify_search_index_acls.py">scripts/verify_search_index_acls.py</a> · <a href="https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Pull-API">azure-search-python-samples · Quickstart-Document-Permissions-Pull-API</a> · <a href="https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Push-API">Quickstart-Document-Permissions-Push-API</a> · <a href="https://github.com/Azure-Samples/azure-search-rest-samples/tree/main/acl">azure-search-rest-samples · acl/acl.http</a></p>
+    </section>
+
+    <!-- ===================================================================== 5 -->
+    <section class="chapter" id="s-audit">
+      <h2><span class="n">5</span>Claim-vs-code audit</h2>
+      <p>Each claim in <code>docs/RAG-OS-Overview.html</code> (v1.0, 2 Oct 2026) was checked against the repository on 9 Oct 2026. Most claims hold up. The four in bold are the ones a technical buyer or a Microsoft partner would catch.</p>
+      <div class="table-wrap"><table class="wide">
+        <thead><tr><th style="width:4%">#</th><th style="width:22%">Overview claim</th><th style="width:30%">Code evidence</th><th style="width:11%">Verdict</th><th style="width:33%">Recommended fix to the Overview</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>Self-hosted TEI embeddings with "no per-token charge" as a headline</strong> (§1 cost card, §6 "default self-hosted model", §8 "zero-token-cost embeddings", Appendix A)</td><td><code>infra/<wbr>env/<wbr>dev.<wbr>psd1:152</code> <code>Embedding<wbr>Profile = 'aoai-3-small-1536'</code> since 27 Sep 2026, after TEI CPU OOM and T4 CUDA OOM. TEI is parked, not removed. <code>infra/<wbr>env/<wbr>dev.<wbr>sample.<wbr>psd1</code> and docker-compose still default to qwen3.</td><td><span class="badge v-over">Overstated</span></td><td>"Embeddings are configurable. The self-hosted option (Qwen3 on TEI) has no per-token cost and keeps text inside the deployment; Azure OpenAI <code>text-embedding-3-small</code> is also supported." Drop "default" until TEI is stable on GPU, and change §8 to "optional zero-token-cost embeddings".</td></tr>
+          <tr><td>2</td><td><strong>Admin query tracing</strong>: the Overview HTML lists only correlation-ID tracing. It never mentions the stage-by-stage admin trace, near-miss probe or replay.</td><td><code>src/<wbr>rag_<wbr>os/<wbr>application/<wbr>services/<wbr>query_<wbr>trace.<wbr>py</code>, <code>src/<wbr>rag_<wbr>os/<wbr>api/<wbr>routers/<wbr>admin_<wbr>traces.<wbr>py</code>, <code>chat-ui/<wbr>src/<wbr>admin/<wbr>traces.<wbr>ts</code>, <code>migrations/<wbr>versions/<wbr>d4e7a1c9b302_<wbr>query_<wbr>traces.<wbr>py</code>, <code>tests/<wbr>integration/<wbr>test_<wbr>query_<wbr>traces.<wbr>py</code></td><td><span class="badge v-under">Understated</span></td><td>Add as <span class="badge av">Available</span> in §7 and as a §8 differentiator: "Every chat traced stage by stage; near-miss probe explains refusals; admin replay." This is our best demo against Foundry IQ's MCP path, which returns no activity.</td></tr>
+          <tr><td>3</td><td><strong>Embeddable chat "scoped by the host's identity token"</strong>; §1 "even external portal users"; §9 Copilot row "can serve external portal users"</td><td><code>src/<wbr>rag_<wbr>os/<wbr>api/<wbr>schemas.<wbr>py</code> <code>ChatRequest</code> = <code>question</code>, <code>history</code>, <code>filters</code>, with no context fields. Context comes only from token claims. Entra is single-tenant; External ID/B2C would need a change in <code>src/<wbr>rag_<wbr>os/<wbr>composition.<wbr>py</code>.</td><td><span class="badge v-risk">Wording risk</span></td><td>The embed claim is accurate. The <em>external users</em> claims aren't true yet. Reword to "employees and partner users in your Entra tenant; customer-portal identities (External ID) and signed context injection: Roadmap". This also falls short of the CLAUDE.md goal ("context injected for RBAC").</td></tr>
+          <tr><td>4</td><td><strong>"Platform: Microsoft Azure · Microsoft Foundry"</strong> (cover) and the CLAUDE.md goal "host on Microsoft Foundry"</td><td>Models are on Foundry (<code>infra/<wbr>scripts/<wbr>05-foundry.<wbr>ps1</code>). The apps are on Container Apps (<code>infra/<wbr>scripts/<wbr>07-container-apps.<wbr>ps1</code>), not Foundry Agent Service.</td><td><span class="badge v-risk">Wording risk</span></td><td>"Models on Microsoft Foundry; application in your Azure Container Apps." Publishing a Foundry agent (Teams/Copilot Studio) would make "on Foundry" literally true.</td></tr>
+          <tr><td>5</td><td>Taxonomy <span class="badge av">Available</span>, ontology <span class="badge rm">Roadmap</span></td><td><code>config/<wbr>classification/<wbr>facets.<wbr>yaml</code>. No ontology in <code>src/</code> (grep for owl/skos/rdf = 0). The prototype is in the untracked <code>usecase1/</code> (SKOS, OWL+SHACL, 11 golden cases; Phase 1 of 5).</td><td><span class="badge v-acc">Accurate</span></td><td>Keep it. Any ontology demo must be labelled "prototype".</td></tr>
+          <tr><td>6</td><td>Connectors SharePoint/Drive/FTP <span class="badge rm">Roadmap</span></td><td><code>src/<wbr>rag_<wbr>os/<wbr>infrastructure/<wbr>sources/<wbr>stubs.<wbr>py</code> raises <code>NotSupported</code>. Its own docstring recommends the Azure AI Search indexed SharePoint source with ACL sync.</td><td><span class="badge v-acc">Accurate</span></td><td>Reword the roadmap line to "SharePoint via Azure AI Search native ACL ingestion" (see section 7).</td></tr>
+          <tr><td>7</td><td>7-layer classification including an LLM layer</td><td>The LLM layer is opt-in (<code>CLASSIFIER=embedding+llm</code>) and off by default. Single-label only.</td><td><span class="badge v-acc">Accurate</span></td><td>Say "optional LLM layer for close calls" so no one assumes LLM cost is part of every ingest.</td></tr>
+          <tr><td>8</td><td>Appendix A: Python 3.13</td><td><code>pyproject.toml</code> <code>requires-python = "&gt;=3.<wbr>12"</code></td><td><span class="badge v-drift">Drift</span></td><td>"Python 3.12+".</td></tr>
+          <tr><td>9</td><td>§11 Next: "Bicep templates"</td><td><code>infra/<wbr>scripts/<wbr>*.<wbr>ps1</code>: az CLI in PowerShell 7, by design</td><td><span class="badge v-drift">Drift</span></td><td>Remove it from the roadmap, or say "community Bicep template later". Pick one (see section 7).</td></tr>
+          <tr><td>10</td><td>Clearance levels: 5 in <code>docs/<wbr>RAG-OS-Overview.<wbr>md</code>, 4 in the HTML</td><td>The levels are configurable in the policy</td><td><span class="badge v-drift">Drift</span></td><td>Align on the 4 in the sample policy, and state that levels are configurable.</td></tr>
+          <tr><td>11</td><td>(Config, not Overview) <code>infra/<wbr>env/<wbr>dev.<wbr>psd1:97–98</code> comment says embeddings come from TEI</td><td>The profile is Azure OpenAI 3-small</td><td><span class="badge v-drift">Drift</span></td><td>Correct the comment. Add a deploy-time check that names the active embedding profile, so config drift is surfaced, not silent.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout risk"><p><strong>Why this matters:</strong> claims 1, 3 and 4 are exactly what a Microsoft-aligned evaluator tests first ("show me the embedding endpoint", "log in as a customer", "where is it on Foundry?"). Being caught overstating costs more credibility than the differentiators earn back. Fix these before the external edition ships.</p></div>
+    </section>
+
+    <!-- ===================================================================== 6 -->
+    <section class="chapter" id="s-diff">
+      <h2><span class="n">6</span>What RAG-OS uniquely has, and what is missing</h2>
+      <h3 id="s-protect">6.1 Differentiators to protect (ranked)</h3>
+      <div class="table-wrap"><table class="wide">
+        <thead><tr><th>#</th><th>Differentiator</th><th>Why Azure doesn't cover it</th><th>Impact · Effort to harden</th><th>Linked use case</th><th>Market signal</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>ABAC policy engine</strong>: in-search pre-filter, default deny, claim allow-list, property-tested</td><td>Native types are OR'd user/group/RBAC/label IDs with no hierarchy or clearance. Microsoft points custom policy to security filters.</td><td><span class="ie">H · S</span></td><td>Governed KB; regulated verticals</td><td>Every platform sells ACL <em>sync</em>. No profiled competitor advertises dept × region-hierarchy × clearance with default deny (absence not proven). T3.</td></tr>
+          <tr><td>2</td><td><strong>Layered classification + SME review + provenance</strong></td><td>No classification or review found in Foundry IQ. Custom skills break native ACL and Purview sync.</td><td><span class="ie">H · M</span></td><td>Vertical completeness; governed KB</td><td>None found in the scan. Graphs and ontologies are resurging (T5).</td></tr>
+          <tr><td>3</td><td><strong>Explain access, near-miss probe, audited bypass</strong></td><td>No explain-why-denied API. Elevated read isn't available on knowledge-base retrieve.</td><td><span class="ie">M–H · S</span></td><td>Regulated audit</td><td>Differentiation is moving to explainable denials and audit (T3).</td></tr>
+          <tr><td>4</td><td><strong>Per-query token + stage tracing</strong></td><td>Tokens only in the per-response activity log; the MCP path drops it; "use a public tokenizer".</td><td><span class="ie">M · S</span></td><td>Usage and outcome pricing; FinOps</td><td>Consumption pricing makes token data a billing asset (T7).</td></tr>
+          <tr><td>5</td><td><strong>Grounding guard: abstain, cite, reason codes</strong></td><td>GA Foundry IQ is extractive, so grounding is the app's job. Synthesis is preview.</td><td><span class="ie">M · S</span></td><td>All</td><td>Necessary, but not sufficient without measured scores (T6).</td></tr>
+          <tr><td>6</td><td><strong>Pluggable LLM including Claude</strong></td><td>The knowledge-base LLM is Azure OpenAI only.</td><td><span class="ie">M · S</span></td><td>Verticals; customers who want Claude</td><td>BYO-LLM is standard at Vectara; customers want choice.</td></tr>
+          <tr><td>7</td><td><strong>Embedding profile guard</strong></td><td>Generated pipelines use Azure OpenAI embeddings only; a matching vectorizer is by convention.</td><td><span class="ie">M · S</span></td><td>All; sovereignty</td><td>Supports sovereignty (T10), but only if TEI actually runs.</td></tr>
+          <tr><td>8</td><td><strong>In-tenant, keyless deployment</strong></td><td>Foundry IQ is Microsoft-run too, so this differentiates against Glean, Quick, Gemini and Rovo, <em>not</em> against Microsoft or Vectara.</td><td><span class="ie">M · S</span></td><td>Regulated enterprises</td><td>Glean's customer hosting covers only GCP and AWS (T10).</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="s-gaps">6.2 Gaps that would make the best differentiators (ranked)</h3>
+      <div class="table-wrap"><table class="wide">
+        <thead><tr><th>#</th><th>Gap to close</th><th>Why it would differentiate</th><th>Impact · Effort</th><th>Linked use case</th><th>Market signal</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><strong>SharePoint via native AI Search ACL ingestion, ANDed with RAG-OS ABAC</strong> (hybrid source-ACL mode) instead of custom ACL sync</td><td>Source ACLs <em>and</em> clearance/region policy in one query, which neither side offers alone. Microsoft maintains the ACL crawl.</td><td><span class="ie">H · M</span></td><td>Governed KB (Microsoft shops)</td><td>Permission-aware connectors are table stakes (T3).</td></tr>
+          <tr><td>2</td><td><strong>Governed retrieval as an MCP server</strong> (search/ask tools that enforce ABAC for the calling user)</td><td>Turns Copilot, Claude, ChatGPT and Gemini into channels instead of competitors.</td><td><span class="ie">H · M</span></td><td>All; co-opetition</td><td>MCP is the standard: Linux Foundation, Copilot Studio GA Jul 2026 (T2).</td></tr>
+          <tr><td>3</td><td><strong>Eval release gates + per-answer faithfulness/confidence score</strong></td><td>Puts numbers behind the abstention claims; regulated buyers require it.</td><td><span class="ie">H · M</span></td><td>Verticals; governed KB</td><td>Copilot Studio Agent Evaluation GA; Vectara hallucination scoring (T6).</td></tr>
+          <tr><td>4</td><td><strong>OCR via Content Understanding</strong></td><td>Scanned paper is the corpus with no source ACLs, our home turf. It's also a prerequisite for form filling.</td><td><span class="ie">H · S–M</span></td><td>Form filling; loss-mit; prior-auth</td><td>Document AI is a commodity input (T9).</td></tr>
+          <tr><td>5</td><td><strong>Customer-portal context injection + Entra External ID / multi-tenant</strong></td><td>Native Azure ACLs are Entra-only, with no documented External ID support. Security filters (our pattern) are the documented route for custom identities.</td><td><span class="ie">H · L</span></td><td>SMB SaaS; customer portals</td><td>Meets the CLAUDE.md goal; Microsoft docs route custom IdPs to security filters.</td></tr>
+          <tr><td>6</td><td><strong>Purview label → clearance input</strong> (not a second enforcement engine), plus citation label badges</td><td>Turns a parallel scheme into an extension of the customer's existing labels, while ABAC stays the single enforcement point. Native AI Search label enforcement can't see content we parse and push ourselves (<a href="#s-purview">section 9</a>).</td><td><span class="ie">M–H · M</span></td><td>Microsoft shops</td><td>Purview awareness is expected (T4); Copilot sets the UX (citation badges, inherited answer label). Unencrypted labels are read from file metadata; the label catalogue needs <code>Sensitivity<wbr>Label.<wbr>Read</code> and SharePoint extraction <code>Files.Read.All</code>. Only an encrypted-content sidecar needs super-user rights.</td></tr>
+          <tr><td>7</td><td><strong>Foundry agent publish (Teams/Copilot Studio)</strong></td><td>Makes "on Foundry" true and puts us inside Microsoft's distribution.</td><td><span class="ie">M · M</span></td><td>Governed KB</td><td>Agent governance planes (T11). The Copilot Studio link is preview.</td></tr>
+          <tr><td>8</td><td><strong>Exportable answer audit trail</strong></td><td>Who asked what, which documents informed the answer, and under which filter. Regulators ask for this.</td><td><span class="ie">M · S</span></td><td>Regulated verticals</td><td>Azure audits only elevated reads on Purview indexes.</td></tr>
+          <tr><td>9</td><td><strong>Foundry IQ agentic retriever behind the Retriever port</strong></td><td>Agentic recall without giving up policy. The user token and the RAG-OS filter must <em>always</em> be passed, otherwise it fails open.</td><td><span class="ie">M · M</span></td><td>Complex multi-hop questions</td><td>Agentic retrieval is the default UX (T1).</td></tr>
+          <tr><td>10</td><td><strong>Per-user token quotas and budgets (APIM)</strong></td><td>Cost control per user or tenant; needed for SaaS metering.</td><td><span class="ie">M · S</span></td><td>SMB SaaS</td><td>Consumption credits (T7).</td></tr>
+          <tr><td>11</td><td><strong>Multi-label classification</strong></td><td>Real documents span topics (for example, a hardship letter that is also income evidence).</td><td><span class="ie">M · S–M</span></td><td>Verticals</td><td>T5</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== 7 -->
+    <section class="chapter" id="s-direction">
+      <h2><span class="n">7</span>Direction check</h2>
+      <p class="lede">This is the key table: what to keep, what to reshape, what to add and what to stop. It has 28 items: 7 Keep, 7 Course-correct, 8 Add and 6 Remove/Defer.</p>
+      <div class="table-wrap"><table class="wide pin1">
+        <thead><tr><th style="width:17%">Item</th><th style="width:10%">Verdict</th><th style="width:33%">Rationale and evidence</th><th style="width:12%">Use case(s)</th><th style="width:18%">Market signal</th><th style="width:10%">Impact · Effort</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="6"><span>Keep</span></td></tr>
+          <tr><td>ABAC policy engine, in-search pre-filter, default deny</td><td><span class="badge keep">Keep</span></td><td>The core moat. Azure native is OR of IDs with no hierarchy or clearance, and Microsoft recommends security filters for custom policy. Keep ABAC as the <em>authority</em> even when native ACLs are added.</td><td>All</td><td>T3: ACL sync is commoditised; policy isn't</td><td><span class="ie">H · S</span></td></tr>
+          <tr><td>Layered classification + SME review + provenance</td><td><span class="badge keep">Keep</span></td><td>No Foundry IQ equivalent found. Custom skills break native ACL and Purview, so Microsoft can't easily bolt this on in its generated pipelines.</td><td>Verticals; governed KB</td><td>T5; none found in scan</td><td><span class="ie">H · M</span></td></tr>
+          <tr><td>Abstain/cite grounding guard</td><td><span class="badge keep">Keep</span></td><td>GA Foundry IQ is extractive only, so grounding stays the app's job. Pair it with eval scores (Add).</td><td>All</td><td>T6</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>Per-query token + stage tracing</td><td><span class="badge keep">Keep</span></td><td>Upgrade to <span class="badge av">Available</span> in the Overview and market it. Foundry IQ's MCP path returns no activity or references.</td><td>All; pricing</td><td>T7</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>In-tenant keyless deployment</td><td><span class="badge keep">Keep</span></td><td>Beats Glean (no Azure customer hosting), Quick, Gemini and Rovo on residency. It's no edge against Microsoft-native or Vectara, so don't lead with it there.</td><td>Regulated</td><td>T10</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>Pluggable LLM incl. Claude</td><td><span class="badge keep">Keep</span></td><td>The knowledge-base LLM is Azure OpenAI only. Claude on Foundry plus the refusal fallback is a real choice for buyers.</td><td>All</td><td>BYO-LLM norm</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>Embedding-profile guard</td><td><span class="badge keep">Keep</span></td><td>Prevents the silent vector/query mismatch that bites anyone who changes models. Cheap to keep.</td><td>All</td><td>T10</td><td><span class="ie">M · S</span></td></tr>
+
+          <tr class="grp"><td colspan="6"><span>Course-correct</span></td></tr>
+          <tr><td>SharePoint connector</td><td><span class="badge fix">Course-correct</span></td><td>Replace the "custom connector with permission sync" plan with Azure AI Search native SharePoint (and ADLS) ACL ingestion as a <strong>source-ACL mode</strong>, ANDed with ABAC (Search appends its permission filter to our <code>$filter</code>). ABAC stays the authority. Isolate preview risk behind a source adapter. Open design point: classification can't run as a Custom Web API skill in the same indexer (see section 8).</td><td>Governed KB</td><td>T3; our own stub docstring says the same</td><td><span class="ie">H · M</span></td></tr>
+          <tr><td>Foundry IQ positioning</td><td><span class="badge fix">Course-correct</span></td><td>Move it from "Later, alternative engine" to "Next, optional agentic retriever behind the Retriever port". Always pass the user token plus the RAG-OS filter, and refuse in RAG-OS if the token is missing (knowledge-base retrieve fails open).</td><td>Complex Q&amp;A</td><td>T1</td><td><span class="ie">M · M</span></td></tr>
+          <tr><td>Embeddings messaging</td><td><span class="badge fix">Course-correct</span></td><td>Say "configurable; self-hosted option" until TEI is stable on a GPU pool. The live dev deployment runs <code>aoai-3-small-1536</code>.</td><td>All</td><td>T10</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>Hosting wording + Foundry agent publish</td><td><span class="badge fix">Course-correct</span></td><td>"Models on Foundry, app in your Azure Container Apps". Then publish a Foundry agent (Teams/Copilot Studio, preview link) so the CLAUDE.md "host on Foundry" goal is honestly met.</td><td>Governed KB</td><td>T11</td><td><span class="ie">M · M</span></td></tr>
+          <tr><td>Embeddable chat</td><td><span class="badge fix">Course-correct</span></td><td>Add a <strong>signed portal context</strong> (host-signed claims that feed the policy) plus External ID, so customer portals and SMB SaaS actually work. Today <code>ChatRequest</code> has no context fields and Entra is single-tenant.</td><td>SMB SaaS; portals</td><td>CLAUDE.md goal</td><td><span class="ie">H · M</span></td></tr>
+          <tr><td>Questionnaire use case (10.2)</td><td><span class="badge fix">Course-correct</span></td><td>Reposition as "assessments grounded in your governed corpus" for compliance and training attestation, reusing the review queue and ABAC. Drop "fun quizzes" and stay out of sales RFPs.</td><td>Compliance training</td><td>T12: Vanta, Loopio, Responsive, Copilot in Forms</td><td><span class="ie">M · M</span></td></tr>
+          <tr><td>SMB SaaS pricing</td><td><span class="badge fix">Course-correct</span></td><td>We can't win at about $20 a seat against Copilot Business ($21), Gemini Business ($21), Quick Plus ($20), Onyx ($20, free open-source edition) and bundled Rovo. Price on governance and vertical value (per file or outcome), using per-answer token data for metering.</td><td>10.1</td><td>T7</td><td><span class="ie">H · S</span></td></tr>
+
+          <tr class="grp"><td colspan="6"><span>Add</span></td></tr>
+          <tr><td>MCP server (governed search/ask)</td><td><span class="badge add">Add</span></td><td>Move from Later to <strong>Next</strong>. This makes RAG-OS the ABAC gateway for every agent. The user identity must flow through (OBO) and the server must fail closed.</td><td>All</td><td>T2</td><td><span class="ie">H · M</span></td></tr>
+          <tr><td>Eval release gates + faithfulness score</td><td><span class="badge add">Add</span></td><td>Golden sets per use case plus access-leak tests in CI; a per-answer score shown in the UI and API.</td><td>All; verticals</td><td>T6</td><td><span class="ie">H · M</span></td></tr>
+          <tr><td>OCR (Content Understanding)</td><td><span class="badge add">Add</span></td><td>Prerequisite for form filling and verticals. Adopt it rather than build (CU GA Nov 2025; CU 2.0 preview Aug 2026).</td><td>10.3, 10.5</td><td>T9</td><td><span class="ie">H · S–M</span></td></tr>
+          <tr><td>Purview label → clearance input</td><td><span class="badge add">Add</span></td><td><strong>Next.</strong> A new tagging layer reads <code>MSIP_Label_*</code> and <code>LabelInfo.xml</code> (Graph <code>extract<wbr>Sensitivity<wbr>Labels</code> for SharePoint) and maps label → <code>acl_clearance</code> + <code>f_<wbr>confidentiality</code> through a reviewed table, with provenance <code>purview:&lt;label&gt;</code>. ABAC stays the single enforcement point. Pair it with citation label badges and an inherited answer label, as Copilot does. See <a href="#s-purview">section 9</a>.</td><td>Governed KB; Microsoft shops</td><td>T4</td><td><span class="ie">M–H · M</span></td></tr>
+          <tr><td>Multi-tenant control plane / External ID</td><td><span class="badge add">Add</span></td><td>Tenant isolation, per-tenant config and metering. Requires changing the single-tenant assumption in <code>composition.py</code>.</td><td>10.1</td><td>T7</td><td><span class="ie">H · L</span></td></tr>
+          <tr><td>Exportable answer audit trail</td><td><span class="badge add">Add</span></td><td>Builds on the trace store: export who, what, which passages, which filter and which model.</td><td>Verticals</td><td>T3, T6</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>Per-user quotas / budgets</td><td><span class="badge add">Add</span></td><td>APIM in front of the API; token budgets per user and tenant.</td><td>10.1</td><td>T7</td><td><span class="ie">M · S</span></td></tr>
+          <tr><td>Multi-label classification</td><td><span class="badge add">Add</span></td><td>The classifier is single-label today (min 0.30, margin 0.03). Vertical document bundles need multi-label.</td><td>10.5</td><td>T5</td><td><span class="ie">M · S–M</span></td></tr>
+
+          <tr class="grp"><td colspan="6"><span>Remove / Defer</span></td></tr>
+          <tr><td>Bicep on the roadmap</td><td><span class="badge drop">Remove / Defer</span></td><td>az CLI in PowerShell 7 is the chosen infrastructure-as-code. Remove Bicep, or state "community template later". Two IaC stacks double the drift.</td><td>Ops</td><td>—</td><td><span class="ie">L · S</span></td></tr>
+          <tr><td>Personal assistant edition (10.4)</td><td><span class="badge drop">Remove / Defer</span></td><td>Defer. It's off-strategy for enterprise governance; incumbents are ChatGPT/Claude projects, Copilot Notebooks and NotebookLM (not individually verified).</td><td>10.4</td><td>T12</td><td><span class="ie">L · L</span></td></tr>
+          <tr><td>Google Drive / FTP custom connectors</td><td><span class="badge drop">Remove / Defer</span></td><td>Defer behind SharePoint. Not the Azure buyer's first ask, and each one is another ACL-fidelity liability.</td><td>Governed KB</td><td>T3</td><td><span class="ie">L · M</span></td></tr>
+          <tr><td>Domain-pack marketplace</td><td><span class="badge drop">Remove / Defer</span></td><td>Defer until two verticals are proven. A marketplace with no packs signals immaturity.</td><td>10.5</td><td>T8</td><td><span class="ie">L · L</span></td></tr>
+          <tr><td>Native Purview enforcement (AI Search <code>purviewEnabled</code>)</td><td><span class="badge drop">Remove / Defer</span></td><td>Defer. Preview, and indexer (pull) only, so it can't see content we parse and push. Labelled documents are skipped with a Custom Web API skill, enrichment cache or knowledge store. Same tenant, no guests; a Global or Privileged Role Administrator grants <code>Content.<wbr>SuperUser</code>; the index becomes permanently RBAC-only. GA is targeted for October 2026 (roadmap RM534610): revisit then, for indexer-based sources only, ANDed with ABAC.</td><td>Governed KB (SharePoint)</td><td>T3, T4</td><td><span class="ie">M · L</span></td></tr>
+          <tr><td>"Fun quizzes" vertical</td><td><span class="badge drop">Remove / Defer</span></td><td>Remove. Copilot in Forms already generates quizzes, and it dilutes the governance story.</td><td>10.2</td><td>T12</td><td><span class="ie">L · S</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== 8 -->
+    <section class="chapter" id="s-build">
+      <h2><span class="n">8</span>Build vs adopt</h2>
+      <p>The rule: adopt what Microsoft will keep improving for free (crawling, OCR, labels, quotas, channels). Keep what encodes the customer's <em>policy and judgement</em>.</p>
+      <div class="table-wrap"><table class="mid">
+        <thead><tr><th>Capability</th><th>Adopt from Azure</th><th>Keep custom</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>SharePoint / ADLS source ACLs</td><td><span class="badge pv">Preview</span> AI Search ACL ingestion</td><td>ABAC ANDed on top</td><td>Microsoft maintains the crawl and inheritance; we add clearance and region.</td></tr>
+          <tr><td>OCR and field extraction</td><td><span class="badge nat">Native GA</span> Content Understanding</td><td>—</td><td>Commodity input (T9); its confidence scores feed completeness checks.</td></tr>
+          <tr><td>Agentic retrieval</td><td><span class="badge pv">Preview</span> Foundry IQ (optional, behind the port)</td><td>The <code>direct</code> retriever stays the default</td><td>Agentic recall where it's needed, without vendor lock or fail-open.</td></tr>
+          <tr><td>Sensitivity labels</td><td><span class="badge nat">Native GA</span> Purview label catalogue and metadata (Graph v1.0 <code>sensitivityLabels</code>, <code>extract<wbr>Sensitivity<wbr>Labels</code>). Native enforcement is <span class="badge pv">Preview</span>: defer.</td><td>Label → clearance mapping inside the ABAC filter</td><td>Reuse the customer's labels instead of a parallel scheme, with one enforcement point (<a href="#s-purview">section 9</a>).</td></tr>
+          <tr><td>Quotas and rate limits</td><td>Azure API Management</td><td>Token budget policy</td><td>Standard gateway; we supply per-user token data.</td></tr>
+          <tr><td>Teams / Copilot Studio channel</td><td><span class="badge pv">Preview</span> Foundry agent → Copilot Studio</td><td>—</td><td>Distribution we can't build.</td></tr>
+          <tr><td>ABAC policy and claims mapping</td><td>—</td><td><span class="badge keep">Keep</span></td><td>No native equivalent; the core moat.</td></tr>
+          <tr><td>Classification layers and review queue</td><td>—</td><td><span class="badge keep">Keep</span></td><td>No native equivalent; can't run inside native ACL pipelines.</td></tr>
+          <tr><td>Grounding and abstention</td><td>—</td><td><span class="badge keep">Keep</span></td><td>GA Foundry IQ is extractive only.</td></tr>
+          <tr><td>Tracing and explain-access</td><td>—</td><td><span class="badge keep">Keep</span></td><td>No explain-why-denied in Azure; MCP drops activity.</td></tr>
+          <tr><td>Embedding profile guard</td><td>—</td><td><span class="badge keep">Keep</span></td><td>Protects against model swaps either way.</td></tr>
+          <tr><td>Admin console</td><td>—</td><td><span class="badge keep">Keep</span></td><td>Native ACL features have no portal support.</td></tr>
+        </tbody>
+      </table></div>
+
+      <figure class="landscape"><div class="rot">
+        <div class="fig-frame"><svg class="ragos-diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 462" width="1200" height="462" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="fig-hybrid-title"><title id="fig-hybrid-title">Proposed source-ACL mode: Azure AI Search native ACL trimming ANDed with the RAG-OS ABAC filter, with RAG-OS refusing before the call when the user token or attributes are missing</title><defs><marker id="arr-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs>
+          <text class="t-head" x="24" y="36">Source-ACL mode (proposed): Azure trims by source ACL, RAG-OS policy still decides</text>
+          <rect class="lane" x="16" y="58" width="1168" height="182" rx="14"/>
+          <text class="t-lane" x="34" y="82">INGESTION</text>
+          <rect x="40" y="98" width="220" height="124" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/>
+          <text class="t-title" x="150" y="125" text-anchor="middle" fill="var(--d-ext-tx)">SharePoint / ADLS Gen2</text>
+          <text class="t-line" x="150" y="148" text-anchor="middle">source ACLs on sites,</text>
+          <text class="t-line" x="150" y="165" text-anchor="middle">folders and files</text>
+          <text class="t-line" x="150" y="182" text-anchor="middle">(customer-owned)</text>
+          <rect x="290" y="98" width="300" height="124" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/>
+          <text class="t-title" x="440" y="125" text-anchor="middle" fill="var(--d-ai-tx)">AI Search indexer (Preview)</text>
+          <text class="t-line" x="440" y="148" text-anchor="middle">computes effective ACL per item</text>
+          <text class="t-line" x="440" y="165" text-anchor="middle">→ userIds / groupIds fields</text>
+          <text class="t-line" x="440" y="182" text-anchor="middle">ACL changes need /resync</text>
+          <text class="t-line" x="440" y="199" text-anchor="middle">no Custom Web API skill</text>
+          <rect x="620" y="98" width="270" height="124" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/>
+          <text class="t-title" x="755" y="125" text-anchor="middle" fill="var(--d-sec-tx)">RAG-OS enrichment</text>
+          <text class="t-line" x="755" y="148" text-anchor="middle">classify → f_* facets</text>
+          <text class="t-line" x="755" y="165" text-anchor="middle">policy tags → acl_* fields</text>
+          <text class="t-line" x="755" y="182" text-anchor="middle">merged onto the same docs</text>
+          <text class="t-line" x="755" y="199" text-anchor="middle">(spike: fields preserved?)</text>
+          <rect x="920" y="98" width="240" height="124" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/>
+          <text class="t-title" x="1040" y="125" text-anchor="middle" fill="var(--d-data-tx)">One index</text>
+          <text class="t-line" x="1040" y="148" text-anchor="middle">permissionFilter fields</text>
+          <text class="t-line" x="1040" y="165" text-anchor="middle">+ acl_* attributes</text>
+          <text class="t-line" x="1040" y="182" text-anchor="middle">+ f_* facets + vectors</text>
+          <path class="edge" d="M260 160 L290 160" marker-end="url(#arr-h)"/>
+          <path class="edge" d="M590 160 L620 160" marker-end="url(#arr-h)"/>
+          <path class="edge" d="M890 160 L920 160" marker-end="url(#arr-h)"/>
+          <rect class="lane" x="16" y="256" width="1168" height="190" rx="14"/>
+          <text class="t-lane" x="34" y="280">QUERY</text>
+          <rect x="40" y="296" width="220" height="132" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/>
+          <text class="t-title" x="150" y="323" text-anchor="middle" fill="var(--d-ext-tx)">User (Entra token)</text>
+          <text class="t-line" x="150" y="346" text-anchor="middle">oid; groups via Graph</text>
+          <text class="t-line" x="150" y="363" text-anchor="middle">department, region,</text>
+          <text class="t-line" x="150" y="380" text-anchor="middle">clearance claims</text>
+          <rect x="290" y="296" width="300" height="132" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/>
+          <text class="t-title" x="440" y="323" text-anchor="middle" fill="var(--d-sec-tx)">rag-api · AccessPolicyEngine</text>
+          <text class="t-line" x="440" y="346" text-anchor="middle">1 · no token or attribute → DENY</text>
+          <text class="t-line" x="440" y="363" text-anchor="middle">2 · ABAC → OData $filter</text>
+          <text class="t-line" x="440" y="380" text-anchor="middle">3 · forward user token in</text>
+          <text class="t-codesm" x="440" y="398" text-anchor="middle">x-ms-query-source-authorization</text>
+          <rect x="620" y="296" width="270" height="132" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/>
+          <text class="t-title" x="755" y="323" text-anchor="middle" fill="var(--d-data-tx)">Azure AI Search</text>
+          <text class="t-line" x="755" y="346" text-anchor="middle">internal permission filter</text>
+          <text class="t-line" x="755" y="363" text-anchor="middle">(userIds OR groupIds OR scope)</text>
+          <text class="t-line" x="755" y="380" text-anchor="middle">AND caller $filter (ABAC)</text>
+          <rect x="920" y="296" width="240" height="132" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/>
+          <text class="t-title" x="1040" y="323" text-anchor="middle" fill="var(--d-sec-tx)">Entitled passages only</text>
+          <text class="t-line" x="1040" y="346" text-anchor="middle">→ grounding guard</text>
+          <text class="t-line" x="1040" y="363" text-anchor="middle">→ LLM → cited answer</text>
+          <text class="t-line" x="1040" y="380" text-anchor="middle">trace logs both filters</text>
+          <path class="edge" d="M260 362 L290 362" marker-end="url(#arr-h)"/>
+          <path class="edge" d="M590 362 L620 362" marker-end="url(#arr-h)"/>
+          <path class="edge" d="M890 362 L920 362" marker-end="url(#arr-h)"/>
+          <path class="edge-dash" d="M1040 222 L1040 276 L755 276 L755 296" marker-end="url(#arr-h)"/>
+        </svg></div>
+        <figcaption><b>Figure 1. Recommended course-correction for SharePoint and ADLS.</b> Native ACL trimming and RAG-OS ABAC run in the same query. The open design point is ingestion: Microsoft says custom classification and native permission sync can't share one indexer pipeline, so either RAG-OS merges its fields after the native indexer (unverified, needs a spike) or RAG-OS writes the ACL fields itself through the push API. Search appends its internal permission filter to the caller's <code>$filter</code> (Learn: query-time ACL enforcement, preview). Direct search without a user token returns only public documents, but knowledge-base retrieve and the Foundry agent MCP tool return unfiltered results without it, so RAG-OS must refuse before the call and never rely on Azure to fail closed. Alternative to the merge spike: RAG-OS pushes <code>userIds</code>/<code>groupIds</code> itself through the push API. That's documented, but it means we own the ACL sync again.</figcaption>
+      </div></figure>
+      <div class="callout"><p><strong>Guardrails for anything adopted from Azure preview:</strong> (1) put it behind an adapter port with a feature flag, never in the domain layer; (2) keep the ABAC filter on every call, even when native ACLs are on; (3) RAG-OS refuses when the user token or required attributes are missing, so we never depend on the service's fail-closed behaviour; (4) pin API versions and add a contract test per preview API, given five breaking preview versions in about 15 months; (5) document every privileged permission and consent role (Sites.FullControl.All or Sites.Selected, Content.SuperUser) in the README.</p></div>
+    </section>
+
+    <!-- ===================================================================== 9 -->
+    <section class="chapter" id="s-purview">
+      <h2><span class="n">9</span>Purview sensitivity labels: needed or complication?</h2>
+      <p class="lede">The question: where and how should Microsoft Purview Information Protection sensitivity labels be used alongside the attribute-based filter, and is this worth the complexity?</p>
+      <div class="callout"><p><strong>Verdict: needed, but only as a classification <em>input</em> that feeds the existing ABAC filter. It must not become a second enforcement engine.</strong> One enforcement point stays: the OData pre-filter inside Azure AI Search. A label becomes another way to set <code>acl_clearance</code> and <code>f_confidentiality</code>, with provenance <code>purview:&lt;label&gt;</code>, in the same way a path rule or manifest row does today. Ignoring labels fails procurement in Microsoft shops. Adopting Microsoft's native label enforcement now would add a parallel access model that can't see the content we parse ourselves.</p></div>
+
+      <h3 id="s-pv-compare">9.1 What labels add, and what ABAC already does</h3>
+      <div class="table-wrap"><table class="mid">
+        <thead><tr><th style="width:18%">Aspect</th><th style="width:41%">Purview sensitivity label</th><th style="width:41%">RAG-OS ABAC (today)</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Question it answers</strong></td><td><strong>How sensitive</strong> is this item?</td><td><strong>Who</strong> may see it?</td></tr>
+          <tr><td><strong>Who sets it</strong></td><td>The author, or an auto-labelling policy in Microsoft 365. It travels with the file.</td><td>SMEs through path rules, sidecars, the manifest, upload and the classifier. User attributes come from Entra.</td></tr>
+          <tr><td><strong>What it can express</strong></td><td>One label per item from an ordered list (priority). It may also carry encryption with per-user usage rights, visual markings, and the trigger for DLP policies.</td><td>Department any-of, hierarchical region, clearance max-level and personal share, with default deny.</td></tr>
+          <tr><td><strong>Where it is enforced</strong></td><td>Across Microsoft 365: Office apps, SharePoint, Copilot and DLP, on the file itself.</td><td>Inside every search, facet and listing call that RAG-OS makes.</td></tr>
+          <tr><td><strong>Overlap</strong></td><td colspan="2"><strong>Confidentiality and clearance.</strong> A label's position in the customer's list maps naturally onto clearance bands. This is the one place where labels should feed ABAC, through a reviewed mapping table.</td></tr>
+          <tr><td><strong>No overlap</strong></td><td>Labels know nothing about department or region. An HR file labelled "Confidential" and a Finance file labelled "Confidential" look identical to Purview.</td><td>ABAC can't enforce encryption usage rights (VIEW, EXTRACT) on the file outside the index, and it isn't DLP across Microsoft 365. We shouldn't try to make it either.</td></tr>
+          <tr><td><strong>Blind spot</strong></td><td>Unlabelled files, which are common in file shares and scanned paper (our home corpus), carry no signal.</td><td>Works on any file once it's tagged, but tagging is a parallel effort if labels already exist.</td></tr>
+        </tbody>
+      </table></div>
+
+      <figure class="landscape"><div class="rot">
+        <div class="fig-frame"><svg class="ragos-diagram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 528" width="1200" height="528" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="fig-purview-title"><title id="fig-purview-title">Purview label as a classification input: the label is read at ingestion, mapped through a reviewed table to acl_clearance and f_confidentiality, and enforced only by the existing ABAC filter in Azure AI Search. Encrypted files are skipped with a protected_content status unless an opt-in MIP sidecar is approved.</title><defs><marker id="arr-pv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs>
+          <text class="t-head" x="24" y="36">Option B: the label feeds classification; ABAC stays the only enforcement point</text>
+          <rect class="lane" x="16" y="58" width="1168" height="262" rx="14"/>
+          <text class="t-lane" x="34" y="82">INGESTION</text>
+          <rect x="40" y="96" width="200" height="120" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/>
+          <text class="t-title" x="140" y="123" text-anchor="middle" fill="var(--d-ext-tx)">Document</text>
+          <text class="t-line" x="140" y="146" text-anchor="middle">DOCX · XLSX · PPTX</text>
+          <text class="t-line" x="140" y="163" text-anchor="middle">local folder, Blob, upload</text>
+          <text class="t-line" x="140" y="180" text-anchor="middle">SharePoint later</text>
+          <rect x="270" y="96" width="280" height="120" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/>
+          <text class="t-title" x="410" y="123" text-anchor="middle" fill="var(--d-ingest-tx)">Read label (new layer)</text>
+          <text class="t-codesm" x="410" y="146" text-anchor="middle">MSIP_Label_&lt;GUID&gt;_* props</text>
+          <text class="t-codesm" x="410" y="164" text-anchor="middle">+ docMetadata/LabelInfo.xml</text>
+          <text class="t-line" x="410" y="183" text-anchor="middle">SharePoint: Graph v1.0</text>
+          <text class="t-codesm" x="410" y="201" text-anchor="middle">extractSensitivityLabels</text>
+          <rect x="580" y="96" width="270" height="120" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/>
+          <text class="t-title" x="715" y="123" text-anchor="middle" fill="var(--d-state-tx)">Label → clearance table</text>
+          <text class="t-line" x="715" y="146" text-anchor="middle">explicit, SME-reviewed config</text>
+          <text class="t-line" x="715" y="163" text-anchor="middle">name + priority from Graph</text>
+          <text class="t-codesm" x="715" y="181" text-anchor="middle">sensitivityLabels/{id}</text>
+          <text class="t-line" x="715" y="200" text-anchor="middle">unknown GUID → fail closed</text>
+          <rect x="880" y="96" width="280" height="120" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/>
+          <text class="t-title" x="1020" y="123" text-anchor="middle" fill="var(--d-data-tx)">Chunk fields (index)</text>
+          <text class="t-codesm" x="1020" y="146" text-anchor="middle">acl_clearance</text>
+          <text class="t-codesm" x="1020" y="164" text-anchor="middle">f_confidentiality</text>
+          <text class="t-codesm" x="1020" y="182" text-anchor="middle">provenance purview:&lt;label&gt;</text>
+          <text class="t-line" x="1020" y="201" text-anchor="middle">SME review overrides</text>
+          <path class="edge" d="M240 156 L270 156" marker-end="url(#arr-pv)"/>
+          <path class="edge" d="M550 156 L580 156" marker-end="url(#arr-pv)"/>
+          <path class="edge" d="M850 156 L880 156" marker-end="url(#arr-pv)"/>
+          <path class="edge-dash" d="M410 216 L410 246" marker-end="url(#arr-pv)"/>
+          <text class="t-edge" x="420" y="236">encrypted?</text>
+          <rect x="270" y="248" width="580" height="58" rx="10" fill="var(--d-bad-bg)" stroke="var(--d-bad-br)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <text class="t-title" x="560" y="271" text-anchor="middle" fill="var(--d-bad-tx)">Encrypted (rights-protected) file</text>
+          <text class="t-small" x="560" y="292" text-anchor="middle">skip content, keep label · status protected_content · opt-in .NET MIP sidecar</text>
+          <rect class="lane" x="16" y="336" width="1168" height="176" rx="14"/>
+          <text class="t-lane" x="34" y="360">QUERY</text>
+          <rect x="40" y="376" width="200" height="118" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/>
+          <text class="t-title" x="140" y="403" text-anchor="middle" fill="var(--d-ext-tx)">User (Entra token)</text>
+          <text class="t-line" x="140" y="426" text-anchor="middle">department, region,</text>
+          <text class="t-line" x="140" y="443" text-anchor="middle">clearance, employee ID</text>
+          <text class="t-line" x="140" y="460" text-anchor="middle">claims (allow-listed)</text>
+          <rect x="270" y="376" width="280" height="118" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/>
+          <text class="t-title" x="410" y="403" text-anchor="middle" fill="var(--d-sec-tx)">rag-api · ABAC policy</text>
+          <text class="t-line" x="410" y="426" text-anchor="middle">the single enforcement point</text>
+          <text class="t-codesm" x="410" y="444" text-anchor="middle">acl_clearance le &lt;level&gt;</text>
+          <text class="t-line" x="410" y="463" text-anchor="middle">AND dept AND region</text>
+          <text class="t-line" x="410" y="480" text-anchor="middle">OR personal share</text>
+          <rect x="580" y="376" width="270" height="118" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/>
+          <text class="t-title" x="715" y="403" text-anchor="middle" fill="var(--d-data-tx)">Azure AI Search</text>
+          <text class="t-line" x="715" y="426" text-anchor="middle">OData pre-filter on every</text>
+          <text class="t-line" x="715" y="443" text-anchor="middle">search, facet and listing</text>
+          <text class="t-line" x="715" y="460" text-anchor="middle">entitled chunks only</text>
+          <rect x="880" y="376" width="280" height="118" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/>
+          <text class="t-title" x="1020" y="403" text-anchor="middle" fill="var(--d-query-tx)">Cited answer</text>
+          <text class="t-line" x="1020" y="426" text-anchor="middle">label badge on each citation</text>
+          <text class="t-line" x="1020" y="443" text-anchor="middle">answer shows the highest</text>
+          <text class="t-line" x="1020" y="460" text-anchor="middle">source label (inherited)</text>
+          <text class="t-line" x="1020" y="477" text-anchor="middle">recorded in the trace</text>
+          <path class="edge" d="M240 435 L270 435" marker-end="url(#arr-pv)"/>
+          <path class="edge" d="M550 435 L580 435" marker-end="url(#arr-pv)"/>
+          <path class="edge" d="M850 435 L880 435" marker-end="url(#arr-pv)"/>
+          <path class="edge-dash" d="M1020 216 L1020 356 L715 356 L715 376" marker-end="url(#arr-pv)"/>
+          <text class="t-edge" x="1030" y="290">indexed with</text>
+          <text class="t-edge" x="1030" y="306">each chunk</text>
+        </svg></div>
+        <figcaption><b>Figure 2. Recommended shape (option B, plus D).</b> The label reader is one more tagging layer. Its output goes through an explicit mapping table into the same <code>acl_*</code> and <code>f_*</code> fields the policy already filters on. Encrypted files take the dashed branch: the label is recorded, the content isn't indexed, and the admin console shows why. Labels say how sensitive; ABAC says who. The mapping turns one into the other at ingestion, so the query path doesn't change and there is no second engine to keep in sync. Native AI Search Purview enforcement (Preview, indexer-only) is deferred: it can't see content that RAG-OS parses and pushes itself.</figcaption>
+      </div></figure>
+
+      <h3 id="s-pv-options">9.2 Options</h3>
+      <div class="table-wrap"><table class="wide">
+        <thead><tr><th style="width:13%">Option</th><th style="width:20%">What it is</th><th style="width:16%">Value</th><th style="width:6%">Effort</th><th style="width:19%">Risk</th><th style="width:14%">Customer signal that triggers it</th><th style="width:12%">Verdict</th></tr></thead>
+        <tbody>
+          <tr><td><strong>A · Ignore labels</strong></td><td>Keep setting clearance only from path rules, sidecars, the manifest and the classifier.</td><td>No work.</td><td><span class="ie">S</span></td><td>RAG-OS runs a parallel sensitivity scheme that drifts from the customer's labels. A file labelled "Highly Confidential" but tagged low by a path rule is served to lower clearances.</td><td>None. This is the status quo.</td><td><span class="badge drop">Remove</span> Reject it. Procurement will ask "do you honour Purview?"</td></tr>
+          <tr><td><strong>B · Labels as classification input</strong> ★ recommended</td><td>A new tagging layer reads the label at ingestion and maps it through a reviewed table to <code>acl_clearance</code> and <code>f_<wbr>confidentiality</code>, with provenance <code>purview:&lt;label&gt;</code>.</td><td>Reuses the customer's labelling investment. Works for our own-parser push pipeline and every source. One enforcement point, explainable with <code>rag-os explain</code>, and independent of the identity provider.</td><td><span class="ie">M</span></td><td>Low to medium. It doesn't reproduce per-user RMS usage rights. The mapping table needs an owner. The metadata-location quirk (below) must be handled.</td><td>Any Microsoft 365 customer with published labels; "Purview" in an RFP or security questionnaire.</td><td><span class="badge add">Add</span> Next</td></tr>
+          <tr><td><strong>C · Native AI Search Purview enforcement</strong>, ANDed with ABAC</td><td>A <code>purviewEnabled</code> index. The indexer ingests the label; the user token goes in <code>x-ms-query-source-authorization</code>; Search trims by usage rights (EXTRACT per the query docs); our <code>$filter</code> is ANDed.</td><td>Real per-user Purview usage-rights enforcement. Indexes encrypted content using <code>Content.<wbr>SuperUser</code>. Fails closed (5xx) if Purview is unreachable.</td><td><span class="ie">L</span></td><td>High. <span class="badge pv">Preview</span> (REST <code>2026-08-01-preview</code>). Indexer (pull) only, for Blob, ADLS Gen2, SharePoint and OneLake, so it doesn't cover content pushed by our own parser. Labelled documents are skipped when the pipeline uses a Custom Web API skill, enrichment cache, knowledge store or debug sessions. Same Entra tenant only, no guests. A Global Administrator or Privileged Role Administrator grants <code>Content.<wbr>SuperUser</code> and <code>Unified<wbr>Policy.<wbr>Tenant.<wbr>Read</code> to the search service's system-assigned identity. The index becomes permanently RBAC-only, with no autocomplete or suggest. Results carry only the label GUID.</td><td>A customer must enforce encryption usage rights per user, not just clearance bands, on sources indexed natively.</td><td><span class="badge drop">Defer</span> GA is targeted for October 2026 (roadmap RM534610). Revisit after GA, for indexer-based sources only, ANDed with ABAC and never replacing it.</td></tr>
+          <tr><td><strong>D · Answer and citation label inheritance</strong></td><td>Show the label as a badge on each citation, and label the answer with the highest-priority source label (Graph v1.0 <code>computeInheritance</code>, or our own max-priority). Record both in the trace and audit trail.</td><td>Matches the M365 Copilot behaviour users already know. Cheap. Makes sensitivity visible at the point of use.</td><td><span class="ie">S</span></td><td>Low. Users may read the badge as protection applied to the answer. It's display only, with no encryption, so the UI must say so.</td><td>Copilot users who expect the same UX; reviewers asking "how sensitive was this answer?"</td><td><span class="badge add">Add</span> Next</td></tr>
+          <tr><td><strong>E · "Never send to LLM" label rule</strong> (DLP-style)</td><td>A configurable list of labels whose chunks may be retrieved and cited but are never placed in the prompt, or are excluded entirely. Mirrors Purview DLP for Copilot, where matched items still appear as citations but aren't processed.</td><td>Answers "our Highly Confidential content must never reach a model" without a second access model.</td><td><span class="ie">S–M</span></td><td>Medium. More abstentions, which must carry a reason code and show in the trace. It isn't a replacement for the customer's own Purview DLP.</td><td>The customer already runs a DLP policy for Copilot on labelled items, or a security review asks about LLM exposure.</td><td><span class="badge add">Add</span> Later, configurable (off by default)</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="s-pv-impl">9.3 Implementation notes for option B</h3>
+      <ul>
+        <li><strong>Parse both metadata locations.</strong> Office stores the label either as custom document properties (<code>docProps/custom.xml</code>, keys <code>MSIP_Label_&lt;GUID&gt;_Enabled</code>, <code>_SetDate</code>, <code>_Method</code>, <code>_SiteId</code> and so on) or in the LabelInfo part (in practice <code>docMetadata/LabelInfo.xml</code>). When a tenant enables co-authoring for labelled files, new labels go only to LabelInfo, existing files migrate on next save, and <code>custom.xml</code> isn't kept in sync. Reading only the custom properties reports those files as unlabelled, which is the failure mode Microsoft documents. Follow MS-OFFCRYPTO 2.6.3: prefer LabelInfo when it holds a label for the tenant's <code>siteId</code>, and honour <code>removed="1"</code>. Only Word, Excel and PowerPoint are affected.</li>
+        <li><strong>PDF labels are out of scope for v1.</strong> We haven't verified where the label sits inside a PDF. Until a spike confirms it, PDFs fall through to the other layers and the docs must not claim PDF label support.</li>
+        <li><strong>SharePoint, when the connector lands:</strong> Graph v1.0 <code>driveItem: extractSensitivityLabels</code> (least privilege <code>Files.Read.All</code>, not metered). It returns <code>423</code> for double-key-encrypted files and some edge cases.</li>
+        <li><strong>An explicit mapping table in config, never automatic.</strong> Key it on <code>(tenantId, labelId)</code>. Use Graph v1.0 <code>GET /security/dataSecurityAndGovernance/sensitivityLabels/{id}</code> (<code>SensitivityLabel.Read</code>) to fetch names and priorities and to <em>propose</em> rows, which a compliance admin and an SME then approve. Microsoft says a higher priority number "usually" means higher sensitivity, which isn't a guarantee. Sublabels share their parent's priority for justification, and a parent with sublabels can't be applied directly. Unknown, deleted or other-tenant GUIDs get a configurable fail-closed default. When the label catalogue is refreshed, flag priority reorders for review rather than silently re-stamping.</li>
+        <li><strong>Layer position: after the sidecar, before the manifest.</strong> The order becomes source defaults → path rules → sidecar → <strong>Purview label</strong> → manifest → upload form → classifiers. SME review still overrides everything, with provenance. Proposed guard: a label-derived <code>acl_clearance</code> is a floor that later automatic layers can raise but only an SME review can lower.</li>
+        <li><strong>No MIP SDK needed for unencrypted files.</strong> There is no Python binding (the SDK ships for C++, .NET and Java in preview), and labels are stored in clear text in file metadata, so a Python parse of the metadata is enough. A label change alters the file but not the extracted text, so it should take the existing RETAG path (merge, no re-embed). Confirm this in the spike.</li>
+      </ul>
+
+      <h3 id="s-pv-encrypted">9.4 Encrypted (rights-protected) files</h3>
+      <p>Generic parsers can't read the content of a rights-protected file. The label is still readable: in an encrypted Office file the LabelInfo copy sits in the encrypted container's <code>\x06DataSpaces</code> storage and the legacy label in Doc SummaryInfo. (Our ability to read it reliably with an OLE library is untested.) The default should therefore be: <strong>skip the content, record the label, and show a <code>protected_content</code> status in the admin console</strong>, so the gap is visible rather than silent.</p>
+      <p>Indexing the content would need an opt-in .NET or C++ MIP SDK sidecar running with Azure RMS super-user or <code>Content.SuperUser</code> rights. That identity can read <em>all</em> encrypted content in the tenant, so it needs the customer's formal governance approval, and it can't open double-key-encrypted content at all. Distributing a product built on the MIP SDK outside our own organisation needs an Information Protection Integration Agreement (IPIA) with Microsoft. Treat the sidecar as a paid, per-customer option, not a default.</p>
+
+      <h3 id="s-pv-avoid">9.5 Complications to avoid</h3>
+      <ul>
+        <li><strong>Labels as a parallel access model.</strong> A second "can this user see this label?" check next to ABAC means two engines to explain, test and keep in sync. Labels set attributes; ABAC decides.</li>
+        <li><strong>Re-implementing Purview policy logic.</strong> We don't evaluate usage rights, DLP rules or label policies ourselves. If a customer needs that, option C (after GA) or their own Purview DLP is the place.</li>
+        <li><strong>Making native enforcement mandatory.</strong> It's Preview, indexer-only, same-tenant and admin-heavy. Requiring it would block every deployment that uses our push pipeline or portal users.</li>
+        <li><strong>Deriving clearance from priority numbers without a reviewed table.</strong> Priority is an admin ordering, not a sensitivity scale, and label reorders would silently change who sees what.</li>
+      </ul>
+
+      <h3 id="s-pv-refs">9.6 References</h3>
+      <p><strong>Reading labels:</strong> <a href="https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-offcrypto/13939de6-c833-44ab-b213-e0088bf02341">MS-OFFCRYPTO 2.6.3 LabelInfo vs custom properties</a> · <a href="https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-offcrypto/0c4ec12d-aba0-4dd4-8fd1-710da6735219">2.6.2 LabelInfo stream locations</a> · <a href="https://learn.microsoft.com/en-us/purview/sensitivity-labels-coauthoring">Co-authoring: metadata changes</a> · <a href="https://learn.microsoft.com/en-us/information-protection/develop/faq">MIP SDK FAQ</a> · <a href="https://learn.microsoft.com/en-us/purview/sensitivity-labels">Learn about sensitivity labels (priority, scopes)</a> · <a href="https://learn.microsoft.com/en-us/graph/api/driveitem-extractsensitivitylabels?view=graph-rest-1.0">Graph: extractSensitivityLabels (v1.0)</a> · <a href="https://learn.microsoft.com/en-us/graph/api/sensitivitylabel-get?view=graph-rest-1.0">Graph: get sensitivityLabel (v1.0)</a> · <a href="https://learn.microsoft.com/en-us/graph/api/sensitivitylabel-computeinheritance?view=graph-rest-1.0">Graph: computeInheritance (v1.0)</a></p>
+      <p><strong>MIP SDK and encryption:</strong> <a href="https://learn.microsoft.com/en-us/information-protection/develop/overview">MIP SDK overview (platforms)</a> · <a href="https://learn.microsoft.com/en-us/information-protection/develop/concept-supported-filetypes">Supported file types</a> · <a href="https://learn.microsoft.com/en-us/information-protection/develop/setup-configure-mip">Setup and configuration (IPIA)</a> · <a href="https://learn.microsoft.com/en-us/purview/encryption-super-users">Azure RMS super users</a></p>
+      <p><strong>Native AI Search enforcement:</strong> <a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels">Ingest Purview labels (preview)</a> · <a href="https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels">Query-time label enforcement (preview)</a> · <a href="https://mc.merill.net/message/RM534610">Roadmap RM534610</a> (roadmap mirror; GA target October 2026)</p>
+      <p><strong>Copilot baseline:</strong> <a href="https://learn.microsoft.com/en-us/purview/ai-m365-copilot">Purview for Microsoft 365 Copilot</a> · <a href="https://learn.microsoft.com/en-us/purview/ai-m365-copilot-considerations">Copilot considerations</a> · <a href="https://learn.microsoft.com/en-us/purview/dlp-microsoft365-copilot-location-learn-about">DLP for Microsoft 365 Copilot</a></p>
+      <p><strong>GitHub:</strong> <a href="https://github.com/Azure-Samples/azure-search-openai-demo-purviewdatasecurity">Azure-Samples/azure-search-openai-demo-purviewdatasecurity</a>. It uses the native preview feature on the integrated-vectorization Blob indexer path only, passes the user token on every search, and resolves label names through Graph v1.0 with a max-priority banner. It doesn't use the MIP SDK, parse labels itself or decrypt anything, so it shows option C, not option B.</p>
+    </section>
+
+    <!-- ===================================================================== 10 -->
+    <section class="chapter" id="s-usecases">
+      <h2><span class="n">10</span>Use-case fit and market reality</h2>
+      <div class="table-wrap"><table class="wide">
+        <thead><tr><th style="width:15%">Use case (Overview §10)</th><th style="width:20%">Fit today</th><th style="width:22%">Gap to close</th><th style="width:28%">Incumbents</th><th style="width:15%">Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Governed enterprise knowledge base</strong> (dedicated deployments)</td><td>High. ABAC, classification, citations, abstention and tracing all work.</td><td>SharePoint source-ACL mode, OCR, eval gates, MCP, private networking.</td><td>M365 Copilot / Foundry IQ, Glean, Gemini Enterprise, Amazon Quick, Rovo, Onyx. All sell ACL sync.</td><td><span class="badge keep">Lead</span> with regulated organisations whose documents lack trustworthy source ACLs.</td></tr>
+          <tr><td><strong>10.1 SMB KB SaaS</strong></td><td>Medium. The core works; the SaaS layer doesn't exist (single-tenant, no metering, no External ID, YAML editors).</td><td>Multi-tenant control plane, External ID, quotas, UI editors, self-serve onboarding.</td><td>Copilot Business $21, Gemini Business $21, Quick Plus $20, Onyx $20 (free open-source edition), Rovo bundled.</td><td><span class="badge fix">Reposition</span> Don't compete per seat. Sell governance, or go through partners and verticals.</td></tr>
+          <tr><td><strong>10.2 Questionnaire generation + grading</strong></td><td>Low. Roadmap only.</td><td>Generation, grading, eval, SME approval flow (reuse the review queue).</td><td>Vanta (AI Agent 2.0), Loopio, Responsive for questionnaires and RFPs; Copilot in Microsoft Forms for quizzes.</td><td><span class="badge fix">Reposition</span> as assessments grounded in your governed corpus (compliance, training attestation). Drop fun quizzes.</td></tr>
+          <tr><td><strong>10.3 Citation-backed form filling</strong></td><td>Low. No OCR or field extraction.</td><td>Content Understanding extraction with confidence, form templates, per-field citations.</td><td>ONLYOFFICE AI form fill, Nanonets, Adobe Acrobat AI Assistant; Hebbia for cited finance grids.</td><td><span class="badge add">Pursue</span> only inside vertical packs, after OCR. Not standalone.</td></tr>
+          <tr><td><strong>10.4 Personal assistant</strong></td><td>Low and off-strategy.</td><td>Consumer identity, pricing, support model.</td><td>ChatGPT/Claude projects, Copilot Notebooks, NotebookLM (not individually verified).</td><td><span class="badge drop">Defer</span></td></tr>
+          <tr><td><strong>10.5 Regulated verticals</strong>: mortgage loss-mit → prior-auth → KYC/SoW</td><td>Medium. Governed retrieval and classification are ready. The ontology exists only as the UC1 prototype (Phase 1 of 5, untracked <code>usecase1/</code>); no completeness agent in the product.</td><td>Wire the ontology into the product, OCR, golden sets, completeness agent, audit trail, multi-label.</td><td>Mortgage: generic servicing automation; no ontology-driven completeness product found (absence not proven). Prior-auth: PrescriberPoint, Optum Digital Auth Complete, Abridge × Availity. KYC: Deutsche Bank's in-house agentic SoW. Finance: Hebbia.</td><td><span class="badge keep">Lead</span> with mortgage loss-mit (least crowded), then reuse the engine for prior-auth and KYC.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout"><p><strong>Recommendation:</strong> lead with <strong>regulated-vertical completeness</strong> (mortgage loss-mit, then prior-auth and KYC) plus the <strong>governed enterprise knowledge base</strong>. Both use the moat (policy plus SME-governed classification), both justify outcome pricing, and neither is a seat-price fight.</p></div>
+    </section>
+
+    <!-- ===================================================================== 11 -->
+    <section class="chapter" id="s-trends">
+      <h2><span class="n">11</span>Market trends and risks</h2>
+      <h3 id="s-trend-table">11.1 Trend signals, 2025–2026</h3>
+      <div class="table-wrap"><table class="mid">
+        <thead><tr><th style="width:5%">#</th><th style="width:40%">Trend and signal</th><th style="width:55%">Implication for RAG-OS</th></tr></thead>
+        <tbody>
+          <tr><td>T1</td><td><strong>Agentic and deep-research retrieval is the default.</strong> Foundry IQ, Onyx Deep Research, Amazon Quick Research, Glean Assistant 3.0.</td><td>Single-shot top-k looks dated. Add Foundry IQ behind the Retriever port, and extend the trace to show plan → sub-query → filter → rerank.</td></tr>
+          <tr><td>T2</td><td><strong>MCP is the integration standard.</strong> Donated to the Linux Foundation Agentic AI Foundation on 9 Dec 2025; Copilot Studio MCP GA on 15 Jul 2026; Glean, Quick, Rovo, Vectara and Onyx all support it.</td><td>Ship a governed MCP server and be the policy gateway. Otherwise we become just another tool behind someone else's agent.</td></tr>
+          <tr><td>T3</td><td><strong>Source-permission-aware retrieval is table stakes.</strong> AI Search ingests SharePoint and ADLS ACLs plus Purview labels (preview).</td><td>"We respect ACLs" no longer differentiates. Pitch policy where ACLs are missing or untrustworthy, plus explainable denials.</td></tr>
+          <tr><td>T4</td><td><strong>Purview label and DLP awareness is expected</strong> in Microsoft shops.</td><td>Map labels to clearance instead of running a parallel scheme: labels as a classification input, ABAC as the only enforcement point (<a href="#s-purview">section 9</a>).</td></tr>
+          <tr><td>T5</td><td><strong>Knowledge graphs and ontologies are resurging</strong> (Fabric IQ GA Jun 2026, Glean Enterprise Graph, Atlassian Teamwork Graph, Palantir ontology).</td><td>Pitch the SHACL work as "validated business rules over documents" (completeness), not as a relationship graph.</td></tr>
+          <tr><td>T6</td><td><strong>Evaluation and guardrails are release gates</strong> (Copilot Studio Agent Evaluation GA Mar 2026; Vectara per-answer hallucination scoring).</td><td>Abstention without numbers won't pass procurement. Add eval gates and a faithfulness score.</td></tr>
+          <tr><td>T7</td><td><strong>Pricing has split</strong>: about $20–21 per SMB seat, Rovo bundled, consumption credits for agents.</td><td>Avoid seat pricing in SMB. Use per-answer token data for outcome and volume pricing.</td></tr>
+          <tr><td>T8</td><td><strong>Vertical agents capture value</strong> (prior-auth, KYC, mortgage loss-mit document checks).</td><td>Lead with loss-mit completeness, then reuse the engine.</td></tr>
+          <tr><td>T9</td><td><strong>Document AI and OCR are commodity inputs</strong> (Content Understanding GA; 2.0 preview Aug 2026).</td><td>Adopt; don't build. Consider CU 2.0 classification as one classifier layer.</td></tr>
+          <tr><td>T10</td><td><strong>Sovereignty and in-tenant deployment matter</strong> (Glean customer hosting only on GCP and AWS).</td><td>A real edge against Glean, Quick, Gemini and Rovo, but not against Microsoft or Vectara. It needs TEI working to be fully credible.</td></tr>
+          <tr><td>T11</td><td><strong>Agent governance control planes</strong> (Microsoft Agent 365 GA May 2026 at $15/user; Google Agent Registry and Gateway).</td><td>Plan for RAG-OS agents and MCP endpoints to appear as governed agents. The integration path is unverified.</td></tr>
+          <tr><td>T12</td><td><strong>Planned use cases have incumbents</strong> (Vanta/Loopio/Responsive, Copilot in Forms, ONLYOFFICE/Nanonets, Hebbia).</td><td>Reposition questionnaires, keep form filling inside verticals, and defer the personal edition.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 id="s-risks">11.2 Risk register</h3>
+      <div class="table-wrap"><table class="mid">
+        <thead><tr><th style="width:26%">Risk</th><th style="width:10%">Likelihood</th><th style="width:10%">Impact</th><th style="width:54%">Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Microsoft bundling: Foundry IQ closes the gap</strong> (native ACL, Purview, MCP, Copilot Business at $21)</td><td>High</td><td>High</td><td>Sit on top: adopt native ACLs and expose MCP, and differentiate on policy, classification, explainability and verticals. Re-run this comparison every quarter against the Azure AI Search "What's new" page.</td></tr>
+          <tr><td><strong>Preview-API churn</strong> (five preview versions with breaking renames in about 15 months; <code>ingestion<wbr>Permission<wbr>Options</code> removed from GA)</td><td>High</td><td>Medium</td><td>Adapter ports, pinned API versions, contract tests, a feature flag per preview capability, and no preview dependency on the default path.</td></tr>
+          <tr><td><strong>Price collapse</strong> (about $20 seats; free open-source Onyx)</td><td>High</td><td>High (SMB) / Medium (enterprise)</td><td>Outcome and vertical pricing; dedicated deployments for regulated buyers; no seat war.</td></tr>
+          <tr><td><strong>Single-cloud dependency</strong> (Azure AI Search, Foundry, Entra)</td><td>Medium</td><td>Medium</td><td>Clean-architecture ports already isolate search, LLM and identity. Accept Azure as a deliberate ICP choice, and keep the local index for tests.</td></tr>
+          <tr><td><strong>TEI reliability</strong> (CPU and T4 CUDA out-of-memory; parked since 27 Sep 2026)</td><td>High (already happened)</td><td>Medium</td><td>Size a GPU pool or officially make Azure OpenAI the default, and fix the messaging now. The profile guard makes switching safe.</td></tr>
+          <tr><td><strong>Fail-open in Foundry agent paths</strong> if Foundry IQ is adopted carelessly (knowledge-base retrieve or MCP without a user token returns unfiltered results; the built-in Agent SDK search tool can't pass the token, <a href="https://github.com/azure/azure-sdk-for-python/issues/44454">sdk issue #44454</a>)</td><td>Medium</td><td>High</td><td>Always pass the user token plus the RAG-OS filter. Refuse in RAG-OS when the token is missing. Access-leak tests in CI for every retriever.</td></tr>
+          <tr><td><strong>Credibility loss from overstated claims</strong> (section 5)</td><td>Medium</td><td>High</td><td>Fix the Overview before external distribution; add a claims checklist to the release process.</td></tr>
+          <tr><td><strong>Stale native ACLs</strong> (no live sync; parent changes need <code>/resync</code>)</td><td>Medium</td><td>Medium</td><td>Schedule resyncs, surface ACL age in the admin console, and keep ABAC as a second gate.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== 12 -->
+    <section class="chapter" id="s-plan">
+      <h2><span class="n">12</span>Recommended 90-day plan</h2>
+      <div class="phases">
+        <div class="phase"><h4>Days 0–30</h4><p class="when">Tell the truth, decide, de-risk</p>
+          <ul>
+            <li>Correct the Overview: TEI wording, tracing → Available, hosting wording, "external portal users", Python 3.12+, Bicep decision, clearance levels.</li>
+            <li>Align <code>RAG-OS-Overview.html</code> with the external comparison before sharing either: TEI default wording, external-portal claim, "Platform: Microsoft Foundry", Purview roadmap phase (Overview §11 says Later; comparison says Next), add admin query tracing.</li>
+            <li>Fix the <code>dev.psd1</code> comment; add a deploy-time check that prints the active embedding profile.</li>
+            <li>TEI decision: GPU sizing spike, or officially make Azure OpenAI 3-small the default.</li>
+            <li>SharePoint source-ACL spike on <code>2026-08-01-preview</code>: native indexer + user token + ABAC <code>$filter</code>; test whether merged RAG-OS fields survive.</li>
+            <li>MCP server design: tools, OBO identity flow, fail-closed contract.</li>
+            <li>Golden set v0 per lead use case, plus access-leak tests.</li>
+            <li>Purview label reader spike: sample files from a co-authoring tenant (<code>LabelInfo.xml</code>) and a legacy one (<code>MSIP_Label_*</code>); draft the label → clearance table with the customer's compliance admin.</li>
+            <li>Write ADRs (section 13).</li>
+          </ul></div>
+        <div class="phase"><h4>Days 31–60</h4><p class="when">Ship the integration layer</p>
+          <ul>
+            <li>Governed MCP server (search, ask), ABAC enforced, traced.</li>
+            <li>Eval gates in CI (RAGAS, DeepEval, Azure AI Evaluation) and a per-answer faithfulness score in the API and UI.</li>
+            <li>OCR through Content Understanding in the ingestion pipeline.</li>
+            <li>SharePoint source-ACL mode behind an adapter and preview flag.</li>
+            <li>Signed portal-context contract; External ID feasibility in <code>composition.py</code>.</li>
+            <li>Purview label layer (option B): reviewed mapping table, provenance <code>purview:&lt;label&gt;</code>, <code>protected_content</code> status for encrypted files.</li>
+          </ul></div>
+        <div class="phase"><h4>Days 61–90</h4><p class="when">Distribution and the first vertical</p>
+          <ul>
+            <li>Publish a Foundry agent for Teams and Copilot Studio (preview link).</li>
+            <li>Citation label badges and an inherited answer label (option D), with the Graph permissions documented; design the configurable "never send to LLM" rule (option E).</li>
+            <li>Exportable answer audit trail from the trace store.</li>
+            <li>Experimental Foundry IQ retriever behind the port (token and filter always passed).</li>
+            <li>APIM per-user token budgets.</li>
+            <li>Mortgage loss-mit pilot: UC1 ontology Phase 2 wired into the product; multi-label classification.</li>
+          </ul></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 13 -->
+    <section class="chapter" id="s-next">
+      <h2><span class="n">13</span>Appendix: further analyses, decision log and glossary</h2>
+      <div class="cards">
+        <div class="card"><h4>TCO and pricing model</h4><p>Monthly Azure cost per deployment size (Container Apps, Search tier, PostgreSQL, Service Bus, GPU pool vs Azure OpenAI embeddings), set against Foundry IQ (50M free agentic tokens, Azure OpenAI billed separately) and $20–30 seat alternatives. Needs the per-1M agentic rate, which is unpublished today.</p></div>
+        <div class="card"><h4>Threat model (STRIDE) for the access path</h4><p>Token → claims mapper → policy → OData → Search → LLM. Cover filter injection (allow-list), admin bypass abuse, fail-open in agent paths, stale ACLs, prompt injection in retrieved passages, and cross-tenant leakage once multi-tenant ships.</p></div>
+        <div class="card"><h4>Evaluation benchmark plan</h4><p>A golden set per use case (the UC1 prototype has 11 cases), access-leak tests (users who must get <code>no_access</code>), abstention-rate and faithfulness targets, and release-gate thresholds.</p></div>
+        <div class="card"><h4>Demo script vs Foundry IQ</h4><p>Same corpus, two users: (1) a clearance and region rule Foundry IQ can't express natively; (2) explain why access was denied; (3) the trace after an MCP call (Foundry IQ's MCP returns no activity); (4) the review queue and provenance; (5) honestly showing where Foundry IQ wins (M365 reach, agentic planning).</p></div>
+        <div class="card"><h4>Decision log (ADRs)</h4><ul><li>ADR: az CLI PS7 over Bicep</li><li>ADR: ABAC is the authority over native ACLs</li><li>ADR: default embedding profile (TEI vs Azure OpenAI)</li><li>ADR: preview-adoption policy (adapter, flag, contract test)</li><li>ADR: MCP tool contract and identity flow</li><li>ADR: Retriever port and the Foundry IQ fail-closed rule</li><li>ADR: SharePoint ingestion option (merge vs push)</li><li>ADR: Purview labels are a classification input, not a second enforcement point</li></ul></div>
+        <div class="card"><h4>ICP and positioning statement (draft)</h4><p>"For regulated organisations on Azure whose documents carry rules that file permissions can't express (department, region, clearance), RAG-OS is the governed knowledge layer that enforces those rules inside every search, proves every answer, and plugs into Copilot, Claude and Foundry agents. Unlike ACL-sync assistants, policy is the customer's, explainable and default-deny."</p></div>
+      </div>
+      <h3>Glossary</h3>
+      <div class="table-wrap"><table class="mid">
+        <tbody>
+          <tr><td class="nowrap"><strong>ABAC / ACL</strong></td><td>Attribute-based access (rules over user and document attributes) vs access control lists (named principals per item).</td></tr>
+          <tr><td class="nowrap"><strong>Security filter</strong></td><td>The GA Azure AI Search pattern: a string-collection field plus a <code>search.in</code> filter supplied by the app on every query. RAG-OS extends it with ABAC.</td></tr>
+          <tr><td class="nowrap"><strong>permissionFilter</strong></td><td>Preview index attribute marking <code>userIds</code>, <code>groupIds</code> or <code>rbacScope</code> fields for native trimming.</td></tr>
+          <tr><td><strong>x-ms-query-source-authorization</strong></td><td>Request header that carries the end user's Entra token, so Search can trim results natively.</td></tr>
+          <tr><td class="nowrap"><strong>Knowledge base / source</strong></td><td>Foundry IQ objects: a knowledge base orchestrates agentic retrieval over up to 10 knowledge sources (indexed or remote).</td></tr>
+          <tr><td class="nowrap"><strong>Elevated read</strong></td><td>Preview header that bypasses ACL trimming for debugging (Search POST only).</td></tr>
+          <tr><td class="nowrap"><strong>Fail-open / fail-closed</strong></td><td>Whether a missing or failed security check returns everything (open) or nothing (closed).</td></tr>
+          <tr><td class="nowrap"><strong>OBO</strong></td><td>On-behalf-of token exchange, used to carry a user's identity through a service.</td></tr>
+          <tr><td class="nowrap"><strong>MCP</strong></td><td>Model Context Protocol, the open standard for connecting agents to tools and data.</td></tr>
+          <tr><td class="nowrap"><strong>Sensitivity label</strong></td><td>A Microsoft Purview label that marks how sensitive an item is (and may apply encryption). RAG-OS reads it as an input to clearance (section 9).</td></tr>
+          <tr><td class="nowrap"><strong>TEI</strong></td><td>Hugging Face Text Embeddings Inference, the self-hosted embedding server.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================================================================== 14 -->
+    <section class="chapter" id="s-refs">
+      <h2><span class="n">14</span>References</h2>
+      <p>All sources were checked on 9 October 2026. Page dates and the detailed evidence are in the research notes behind the facts file.</p>
+      <h3>Microsoft Learn: Azure AI Search document-level access</h3>
+      <ul>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-document-level-access-overview">Document-level access overview</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-access-control-lists-and-role-based-access">ACL and RBAC indexer ingestion (ADLS Gen2 / Blob)</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/tutorial-adls-gen2-indexer-acls">Tutorial: ADLS Gen2 indexer ACLs</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-index-access-control-lists-and-rbac-push-api">Push API with ACL and RBAC</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-query-access-control-rbac-enforcement">Query-time ACL and RBAC enforcement</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-sharepoint-access-control-lists">SharePoint ACL ingestion</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-indexer-sensitivity-labels">Purview sensitivity labels (indexing)</a> · <a href="https://learn.microsoft.com/en-us/azure/search/search-query-sensitivity-labels">(query)</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-security-trimming-for-azure-search">Security trimming with filters (GA)</a> · <a href="https://learn.microsoft.com/en-us/azure/search/search-query-odata-search-in-function">search.in function</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/search-blob-indexer-role-based-access">Blob indexer RBAC</a> · <a href="https://learn.microsoft.com/en-us/azure/search/search-limits-quotas-capacity">Limits and quotas</a> · <a href="https://learn.microsoft.com/en-us/azure/search/whats-new">What's new</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-access-control-model">ADLS Gen2 access control model</a></li>
+      </ul>
+      <h3>Microsoft Learn and blogs: Foundry IQ and agentic retrieval</h3>
+      <ul>
+        <li><a href="https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-foundry-iq">What is Foundry IQ</a> · <a href="https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/foundry-iq-connect">Connect Foundry IQ to Foundry Agent Service</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-overview">Agentic retrieval overview</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-retrieve">Retrieve (permissions, MCP)</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-migrate">Migrate (API versions)</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-knowledge-base">Create a knowledge base</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-create-index">Create an index for agentic retrieval</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-answer-synthesis">Answer synthesis</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-retrieval-how-to-set-retrieval-reasoning-effort">Reasoning effort</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-overview">Knowledge sources</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-blob">Blob source</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-sharepoint-remote">Remote SharePoint</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-work-iq">Work IQ</a> · <a href="https://learn.microsoft.com/en-us/azure/search/agentic-knowledge-source-how-to-mcp-server">MCP server source</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/rest/api/searchservice/knowledge-sources/create-or-update?view=rest-searchservice-2026-08-01-preview">REST: knowledge sources (2026-08-01-preview)</a> · <a href="https://learn.microsoft.com/en-us/azure/search/monitor-azure-cognitive-search-data-reference">Monitoring data reference</a> · <a href="https://azure.microsoft.com/en-us/pricing/details/search/">Azure AI Search pricing</a></li>
+        <li><a href="https://devblogs.microsoft.com/foundry/build-smarter-agents-faster-with-foundry-iq/">Foundry blog: Foundry IQ GA (2 June 2026)</a> · <a href="https://azure.microsoft.com/en-us/products/foundry/IQ">Foundry IQ product page</a></li>
+      </ul>
+      <h3>GitHub</h3>
+      <ul>
+        <li><a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/docs/login_and_acl.md">azure-search-openai-demo: login_and_acl.md</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/adlsgen2setup.py">adlsgen2setup.py</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/manageacl.py">manageacl.py</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/scripts/verify_search_index_acls.py">verify_search_index_acls.py</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo/blob/main/docs/agentic_retrieval.md">agentic_retrieval.md</a></li>
+        <li><a href="https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Pull-API">azure-search-python-samples: Document Permissions Pull API</a> · <a href="https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Document-Permissions-Push-API">Push API</a> · <a href="https://github.com/Azure-Samples/azure-search-python-samples/tree/main/Quickstart-Agentic-Retrieval">Quickstart Agentic Retrieval</a> · <a href="https://github.com/Azure-Samples/azure-search-python-samples/tree/main/agentic-retrieval-pipeline-example">agentic-retrieval-pipeline-example</a></li>
+        <li><a href="https://github.com/Azure-Samples/azure-search-rest-samples/tree/main/acl">azure-search-rest-samples: acl (acl.http)</a> · <a href="https://github.com/Azure-Samples/azure-search-openai-demo-purviewdatasecurity">Purview data security demo</a> (native preview label feature on the Blob indexer path; see section 9)</li>
+        <li><a href="https://github.com/azure/azure-sdk-for-python/issues/44454">azure-sdk-for-python #44454</a> (Agent SDK search tool can't pass the user token; open) · <a href="https://github.com/microsoft/agent-framework/issues/6864">agent-framework #6864</a> (token forwarding for knowledge-base retrieval; closed)</li>
+      </ul>
+      <h3>Market</h3>
+      <ul>
+        <li>Microsoft: <a href="https://blogs.microsoft.com/blog/2025/11/18/from-idea-to-deployment-the-complete-lifecycle-of-ai-on-display-at-ignite-2025/">Ignite 2025 (Work IQ, Foundry IQ, Fabric IQ)</a> · <a href="https://techcommunity.microsoft.com/blog/copilot-studio-blog/agent-evaluation-in-microsoft-copilot-studio-is-now-generally-available/4507392">Copilot Studio Agent Evaluation GA</a> · <a href="https://devblogs.microsoft.com/foundry/azure-content-understanding-is-now-generally-available/">Content Understanding GA</a> · <a href="https://devblogs.microsoft.com/foundry/azure-content-understanding-updates-august-2026">CU August 2026</a> · <a href="https://www.computerworld.com/article/4093224/">Copilot Business pricing</a> (secondary)</li>
+        <li>MCP: <a href="https://anthropic.com/news/donating-the-model-context-protocol-and-establishing-of-the-agentic-ai-foundation">Anthropic: MCP to the Agentic AI Foundation</a> · <a href="https://blog.modelcontextprotocol.io/posts/2025-12-09-mcp-joins-agentic-ai-foundation/">MCP blog</a></li>
+        <li>Competitors: <a href="https://docs.glean.com/get-started/prepare/about-deployment">Glean deployment options</a> · <a href="https://docs.glean.com/release-notes/releases/2026-09-08-september-release">Glean Sep 2026 release</a> · <a href="https://aws.amazon.com/quick/">Amazon Quick</a> · <a href="https://docs.aws.amazon.com/amazonq/latest/qbusiness-ug/qbusiness-availability-change.html">Q Business availability change</a> · <a href="https://blog.google/products/google-cloud/gemini-enterprise-sundar-pichai/">Gemini Enterprise</a> · <a href="https://support.atlassian.com/subscriptions-and-billing/docs/managing-your-bill-for-rovo/">Rovo billing</a> · <a href="https://www.vectara.com/">Vectara</a> · <a href="https://www.onyx.app/pricing">Onyx pricing</a></li>
+        <li>Use-case incumbents: <a href="https://www.vanta.com/resources/vanta-2025-year-in-review">Vanta 2025 review</a> · <a href="https://www.businesswire.com/news/home/20251001716775/en">Loopio</a> · <a href="https://www.businesswire.com/news/home/20250610126271/en">Responsive</a> · <a href="https://m365admin.handsontek.net/microsoft-copilot-microsoft-365-copilot-in-forms-can-generate-quizzes-from-provided-materials/">Copilot in Forms quizzes</a> (secondary) · <a href="https://helpcenter.onlyoffice.com/ai/userguides/pdf-forms/ai-filling-forms.aspx">ONLYOFFICE AI form fill</a> · <a href="https://nanonets.com/pdf-form-filling/">Nanonets</a> · <a href="https://www.businesswire.com/news/home/20251216371604/en/Hebbia-Empowers-Platform-Users-with-Preqin-Data-Transforming-Private-Markets-Workflows">Hebbia × Preqin</a></li>
+        <li>Verticals: <a href="https://business.prescriberpoint.com/news/ai-powered-prior-authorization-validated-94.5-clinician-acceptance-rate">PrescriberPoint prior-auth</a> · <a href="https://abridge.com/press-release/abridge-availity-collaboration-announcement">Abridge × Availity</a> · <a href="https://www.beckershospitalreview.com/healthcare-information-technology/optum-rolls-out-ai-powered-prior-authorization-tools-for-payers-providers/">Optum prior-auth</a> (secondary) · <a href="https://fstech.co.uk/fst/Deutsche_Bank_Rolls_Out_Agentic_AI_To_Streamline_KYC_Onboarding_In_Private_Banking.php">Deutsche Bank KYC</a> (secondary) · <a href="https://themortgagepoint.com/2026/01/16/responsible-use-of-ai-in-mortgage-servicing-part-2/">AI in mortgage servicing</a> (secondary)</li>
+      </ul>
+      <h3>Repository evidence (read-only)</h3>
+      <ul>
+        <li><code>src/rag_os/infrastructure/sources/stubs.py</code> · <code>src/rag_os/infrastructure/parsers/pdf.py</code> · <code>src/rag_os/infrastructure/search/retrievers.py</code> · <code>src/rag_os/api/schemas.py</code> · <code>src/rag_os/composition.py</code> · <code>src/rag_os/infrastructure/registry.py</code></li>
+        <li><code>src/rag_os/application/services/profile_guard.py</code> · <code>src/rag_os/application/services/query_trace.py</code> · <code>src/rag_os/api/routers/admin_traces.py</code> · <code>chat-ui/src/admin/traces.ts</code> · <code>migrations/versions/d4e7a1c9b302_query_traces.py</code></li>
+        <li><code>config/access-policy/access-policy.yaml</code> · <code>config/classification/facets.yaml</code> · <code>config/embedding/profiles.yaml</code> · <code>infra/env/dev.psd1</code> · <code>infra/env/dev.sample.psd1</code> · <code>infra/scripts/*.ps1</code> · <code>pyproject.toml</code></li>
+      </ul>
+      <footer class="doc-end"><strong>Internal — statuses as of 9 Oct 2026.</strong> RAG-OS Strategy Review v1.0 · Not for distribution. RAG-OS statuses reflect the code on this date; Azure statuses reflect Microsoft Learn on this date and change often. Market figures marked secondary come from trade press and should be re-checked before external use.</footer>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var params = new URLSearchParams(location.search);
+  var printMode = params.get("print") === "1";
+
+  // ---- theme -------------------------------------------------------------
+  function stored(){ try { return localStorage.getItem("ragos-comparison-internal-theme"); } catch(e){ return null; } }
+  function apply(v){ if(v==="light"||v==="dark"){ root.setAttribute("data-theme", v); } else { root.removeAttribute("data-theme"); } }
+  apply(printMode ? "light" : stored());
+  document.getElementById("themeBtn").addEventListener("click", function(){
+    var cur = root.getAttribute("data-theme");
+    var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = cur ? (cur === "dark" ? "light" : "dark") : (dark ? "light" : "dark");
+    apply(next);
+    try { localStorage.setItem("ragos-comparison-internal-theme", next); } catch(e){}
+  });
+
+  // ---- printable table of contents, built from the sidebar -----------------
+  var toc = document.getElementById("toc");
+  var pt = document.querySelector(".print-toc ol");
+  // The number comes from the sidebar link (its .num span, or a leading "4.1" on sub-items); the label comes
+  // from the target heading so the printed contents use the full chapter titles.
+  function entry(a){
+    var numEl = a.querySelector(".num"), num, label;
+    if (numEl) {
+      num = numEl.textContent.trim();
+      label = Array.prototype.filter.call(a.childNodes, function(n){ return n !== numEl; })
+        .map(function(n){ return n.textContent; }).join("").trim();
+    } else {
+      var m = a.textContent.trim().match(/^(\d+(?:\.\d+)*)\s+([\s\S]*)$/);
+      num = m ? m[1] : ""; label = m ? m[2].trim() : a.textContent.trim();
+    }
+    var h = document.getElementById(a.getAttribute("href").slice(1));
+    if (h && h.tagName === "SECTION") h = h.querySelector("h2");
+    if (h) {
+      var c = h.cloneNode(true), n = c.querySelector(".n"); if (n) n.remove();
+      var full = c.textContent.trim().replace(/^\d+(?:\.\d+)*\s+/, "");
+      if (full) label = full;
+    }
+    if (!num) return label;
+    return num + (num.indexOf(".") < 0 ? ". " : " ") + label;
+  }
+  toc.querySelectorAll(":scope > ol > li").forEach(function(li){
+    var a = li.querySelector(":scope > a");
+    add("l1", a.getAttribute("href"), entry(a));
+    li.querySelectorAll(":scope ol a").forEach(function(s){ add("l2", s.getAttribute("href"), entry(s)); });
+  });
+  function add(cls, href, text){
+    var item = document.createElement("li"); item.className = cls;
+    var link = document.createElement("a"); link.href = href;
+    var t = document.createElement("span"); t.className = "tt"; t.textContent = text;
+    link.appendChild(t); item.appendChild(link); pt.appendChild(item);
+  }
+
+  // ---- print / PDF ---------------------------------------------------------
+  document.getElementById("printBtn").addEventListener("click", function(){
+    var u = new URL(location.href); u.searchParams.set("print", "1"); location.href = u.toString();
+  });
+  // Repeats a table's <thead> on every page the table continues onto. Paged.js has no built-in for this:
+  // afterPageLayout records which source tables the page broke inside; the layout hook (which runs before
+  // overflow is measured) then puts a copy of the header at the top of the continued table on the next page.
+  function registerRepeatingTableHeaders(){
+    if (!window.Paged || !Paged.Handler || !Paged.registerHandlers) return;
+    class RepeatTableHeaders extends Paged.Handler {
+      constructor(chunker, polisher, caller){ super(chunker, polisher, caller); this.splitRefs = []; }
+      afterPageLayout(pageElement, page, breakToken){
+        this.splitRefs = [];
+        for (var el = breakToken && breakToken.node; el; el = el.parentNode) {
+          if (el.nodeType === 1 && el.tagName === "TABLE" && el.dataset.ref) this.splitRefs.push(el.dataset.ref);
+        }
+      }
+      layout(rendered){
+        var chunker = this.chunker;
+        this.splitRefs.forEach(function(ref){
+          var t = rendered.querySelector('table[data-ref="' + ref + '"]');
+          if (!t || t.hasAttribute("data-thead-repeated") || t.querySelector(":scope > thead")) return;
+          var head = chunker.source.querySelector('table[data-ref="' + ref + '"] > thead');
+          if (!head) return;
+          t.insertBefore(head.cloneNode(true), t.firstChild);
+          t.setAttribute("data-thead-repeated", "");
+        });
+      }
+    }
+    Paged.registerHandlers(RepeatTableHeaders);
+  }
+
+  if (printMode) {
+    // The web chrome (sidebar, theme and contents buttons, skip link) is hidden by CSS, not removed, so the
+    // page still works if the layout engine never arrives.
+    root.classList.add("print-mode");
+    window.PagedConfig = { auto: true, before: registerRepeatingTableHeaders, after: function(){
+      document.querySelectorAll(".pagedjs_pages #toc, .pagedjs_pages .theme, .pagedjs_pages .toc-toggle, .pagedjs_pages .skip")
+        .forEach(function(el){ el.remove(); });
+      root.setAttribute("data-paged", "done");
+      var bar = document.createElement("div"); bar.className = "print-bar";
+      bar.innerHTML = '<span>' + document.querySelectorAll(".pagedjs_page").length + ' pages</span>' +
+        '<button class="btn primary" type="button" id="doPrint">Print / Save as PDF</button>' +
+        '<button class="btn" type="button" id="back">Back to web view</button>';
+      document.body.appendChild(bar);
+      // Paged.js applies the @media print rules on screen (which hide .print-bar) and drops @media screen
+      // blocks, so the toolbar is re-shown by a screen-only style added after it has run.
+      var st = document.createElement("style"); st.media = "screen";
+      st.textContent = "html .print-bar{display:flex !important}";
+      document.head.appendChild(st);
+      document.getElementById("doPrint").onclick = function(){ window.print(); };
+      document.getElementById("back").onclick = function(){
+        var u = new URL(location.href); u.searchParams.delete("print"); location.href = u.toString();
+      };
+    }};
+    var s = document.createElement("script");
+    s.src = "https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.min.js";
+    s.onerror = function(){
+      // Offline or blocked: go back to the normal web view; the browser's own Print still works from there.
+      root.classList.remove("print-mode");
+      var u = new URL(location.href); u.searchParams.delete("print"); location.replace(u.toString());
+    };
+    document.head.appendChild(s);
+    return;
+  }
+
+  // ---- sidebar on small screens -------------------------------------------
+  var toggle = document.getElementById("tocToggle");
+  toggle.addEventListener("click", function(){
+    var open = toc.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  toc.addEventListener("click", function(e){
+    if (e.target.closest("a") && window.innerWidth <= 1100) { toc.classList.remove("open"); toggle.setAttribute("aria-expanded","false"); }
+  });
+
+  // ---- scroll spy ----------------------------------------------------------
+  var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute("href").slice(1)] = a; });
+  // Targets in document order. The active entry is the last one whose top has passed 120px from the top of
+  // the viewport (anchors land at 24px via scroll-margin-top, so a clicked subsection always wins).
+  var targets = links.map(function(a){ return document.getElementById(a.getAttribute("href").slice(1)); })
+    .filter(Boolean)
+    .sort(function(x, y){ return x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1; });
+  var current = null, ticking = false;
+  function spy(){
+    ticking = false;
+    var hit = null;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].getBoundingClientRect().top <= 120) hit = targets[i]; else break;
+    }
+    var link = hit ? byId[hit.id] : null;
+    if (link === current) return;
+    if (current) current.classList.remove("active");
+    if (link) link.classList.add("active");
+    current = link;
+  }
+  function onScroll(){ if (!ticking) { ticking = true; requestAnimationFrame(spy); } }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  spy();
+})();
+</script>
+</body>
+</html>

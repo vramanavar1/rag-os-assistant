@@ -1,0 +1,82 @@
+# =====================================================================================================================
+# Use Case 1: the completeness template (SHACL-SPARQL). Written once by an engineer; SMEs never edit it.
+#
+# One shape checks EVERY document requirement of the governing guide version. Requirements are data (one file per
+# guide version, investor-a-<version>.ttl); this template only reads their parameters:
+#   uc1:documentType                      the taxonomy concept that satisfies it (narrower concepts count too)
+#   uc1:condition  onProperty/expectedValue  when it applies (tested on the application or any of its parties)
+#   uc1:recency    maxAgeDays             each satisfying document is at most this old at receipt
+#                  signatureRequired      each satisfying document is signed
+#                  minCount               at least this many satisfying documents (default 1)
+#                  mostRecentMonths       a window of N whole months before the month of receipt (1 = the month
+#                                         before) in which periods must end; with minCount, that many DISTINCT
+#                                         months must be covered. A period ending in the month of receipt does not count.
+# Each violation is one missing item; its message is the requirement's own label (which cites its guide section).
+#
+# Inputs the bridge must provide per application: uc1:governingVersion, uc1:ageAtReceiptDays and
+# uc1:monthsBeforeReceipt (all derived, never stored). Data shape problems are reported separately by
+# uc1-dataquality.shapes.ttl, so a data defect is never presented to a borrower as a missing document.
+# SYNTHETIC MVP. Verified by usecase1/checks/run_golden.py.
+# =====================================================================================================================
+
+@prefix uc1:      <https://rag-os.example/uc1#> .
+@prefix uc1shape: <https://rag-os.example/uc1/shapes#> .
+@prefix owl:      <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:       <http://www.w3.org/ns/shacl#> .
+@prefix skos:     <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+
+<https://rag-os.example/uc1/shapes>
+    a owl:Ontology ;
+    rdfs:label "Use Case 1 completeness template (SHACL)"@en ;
+    sh:declare
+        [ sh:prefix "uc1" ;  sh:namespace "https://rag-os.example/uc1#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
+        [ sh:prefix "skos" ; sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ] .
+
+uc1shape:DocumentRequirement
+    a sh:NodeShape ;
+    rdfs:label "Every applicable requirement of the governing guide version is satisfied"@en ;
+    sh:targetClass uc1:Application ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:prefixes <https://rag-os.example/uc1/shapes> ;
+        sh:message "{?label}" ;
+        sh:select """
+            SELECT $this ?req ?label
+            WHERE {
+                $this uc1:governingVersion ?gv .
+                ?req uc1:guidelineVersion ?gv ;
+                     uc1:documentType ?type ;
+                     rdfs:label ?label .
+
+                # Applies only if every condition holds on the application or on one of its parties.
+                FILTER NOT EXISTS {
+                    ?req uc1:condition ?c .
+                    ?c uc1:onProperty ?p ;
+                       uc1:expectedValue ?v .
+                    FILTER NOT EXISTS { { $this ?p ?v } UNION { $this uc1:parties ?pt . ?pt ?p ?v } }
+                }
+
+                OPTIONAL { ?req uc1:recency/uc1:maxAgeDays ?max }
+                OPTIONAL { ?req uc1:recency/uc1:signatureRequired ?sig }
+                OPTIONAL { ?req uc1:recency/uc1:minCount ?minCount }
+                OPTIONAL { ?req uc1:recency/uc1:mostRecentMonths ?months }
+
+                # Each satisfying document contributes one key: itself, or its month when months are counted.
+                OPTIONAL {
+                    $this uc1:documents ?d .
+                    ?d uc1:classification/uc1:docType/skos:broader* ?type .
+                    OPTIONAL { ?d uc1:ageAtReceiptDays ?age }
+                    OPTIONAL { ?d uc1:monthsBeforeReceipt ?m }
+                    FILTER (!BOUND(?max) || (BOUND(?age) && ?age <= ?max))
+                    FILTER (!BOUND(?sig) || !?sig || EXISTS { ?d uc1:signature/uc1:signed true })
+                    FILTER (!BOUND(?months) || (BOUND(?m) && ?m >= 1 && ?m <= ?months))
+                    BIND (IF(BOUND(?months), STR(?m), STR(?d)) AS ?key)
+                }
+            }
+            GROUP BY $this ?req ?label
+            HAVING (COUNT(DISTINCT ?key) < MAX(COALESCE(?minCount, 1)))
+            """ ;
+    ] .

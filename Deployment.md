@@ -37,6 +37,7 @@ References to **section** N mean a numbered section of this guide.
     * [Registry size and retention](#registry-size-and-retention)
     * [Step 07 — `07-container-apps.ps1`](#step-07--07-container-appsps1)
     * [When a TEI pool never becomes ready](#when-a-tei-pool-never-becomes-ready)
+    * [Dedicated or Consumption plan](#dedicated-or-consumption-plan)
     * [Step 08 — `08-bootstrap.ps1`](#step-08--08-bootstrapps1)
     * [Diagnosing a 503 from `/api/readyz`](#diagnosing-a-503-from-apireadyz)
     * [`rag-os doctor` - the read-only diagnostic](#rag-os-doctor---the-read-only-diagnostic)
@@ -70,6 +71,7 @@ References to **section** N mean a numbered section of this guide.
     * [Ingestion from a local folder (admin machine)](#ingestion-from-a-local-folder-admin-machine)
     * [Status, retries, throttling](#status-retries-throttling)
     * [Backfill playbook](#backfill-playbook)
+    * [Cost saving: scale down, hibernate, resume](#cost-saving-scale-down-hibernate-resume)
     * [Smoke test](#smoke-test)
     * [Load test](#load-test)
     * [KQL (Log Analytics / Application Insights)](#kql-log-analytics--application-insights)
@@ -415,6 +417,7 @@ Every message below comes from `Import-RagOsConfig` in `infra/scripts/common.ps1
 | `EmbedderMaxInputTokens` | `2048` | TEI `MAX_INPUT_LENGTH`. Must exceed the profile's `max_chunk_tokens`; unset, TEI warms up for the model's 32768 and runs out of memory. |
 | `EmbedderMaxBatchTokensCpu/Gpu` | `2048` / `32768` | TEI `MAX_BATCH_TOKENS` per pool. The GPU value is **not validated against a T4's 16 GB of VRAM** — see [When a TEI pool never becomes ready](#when-a-tei-pool-never-becomes-ready). |
 | **Workload profiles** | | |
+| `QueryPlan` / `IngestPlan` | `Dedicated` / `Dedicated` | `Consumption` moves that tier off its Dedicated profile. See [Dedicated or Consumption plan](#dedicated-or-consumption-plan). |
 | `QueryProfileType` / `QueryMinNodes` / `QueryMaxNodes` | `D4` / `2` / `6` | Query-path nodes (chat-ui, api, embed-query). |
 | `IngestProfileType` / `IngestMinNodes` / `IngestMaxNodes` | `D8` / `1` / `10` | Worker and job nodes. |
 | `EnableGpu` | `$true` | `$false` runs the ingestion embedder on CPU. |
@@ -751,6 +754,70 @@ Liveness and Readiness stay tight, so a *warm* replica that stops answering is s
 `EmbedQueryMinReplicas = 1` means the query pool pays this only on deploy or restart, but `rag-embed-ingest`
 scales to zero, so its first batch after an idle period waits for it. If that is unacceptable, Azure OpenAI has
 no cold start — see [Switching to Azure OpenAI embeddings](#switching-to-azure-openai-embeddings).
+
+### Dedicated or Consumption plan
+By default each tier runs on its own Dedicated workload profile: `query` (D4) and `ingest` (D8). Their nodes bill
+around the clock from `QueryMinNodes` / `IngestMinNodes` upwards, whatever the load, plus the Dedicated plan
+management fee. Every workload-profiles environment also has a built-in **Consumption** profile. It bills per
+replica-second, at a reduced *idle* rate while a replica sits at its minimum and does no work, and not at all at 0
+replicas. Two psd1 settings choose the plan for each tier:
+
+| Setting | Moves | Stays where it is |
+|---|---|---|
+| `QueryPlan = 'Consumption'` | `rag-chat-ui`, `rag-api`, `rag-embed-query` | – |
+| `IngestPlan = 'Consumption'` | `rag-ingest-worker`, `rag-scheduler`, `rag-bootstrap`, and `rag-embed-ingest` when `EnableGpu = $false` | `rag-embed-ingest` on the serverless T4 `gpu-t4` profile |
+
+**What it saves, roughly.** These are estimates from illustrative list prices. Check them for your region in the
+[pricing calculator](https://azure.microsoft.com/en-us/pricing/details/container-apps/), and see
+[how idle billing works](https://learn.microsoft.com/en-us/azure/container-apps/billing).
+* **Dedicated, sample sizing:** 2 × D4 + 1 × D8 + the management fee is about $0.0571/vCPU-h and $0.005/GiB-h over
+  16 vCPU / 64 GiB, plus $0.10/h, which comes to **about $970 a month**.
+* **Consumption, same minimums:** api 2 × 1 vCPU, chat-ui 0.5 and embed-query 2 make 4.5 vCPU / 9 GiB held
+  around the clock. That is **about $110 a month** at the idle rate, and about $355 even if they were busy every
+  second. Ingestion is billed only while it runs.
+
+**Why per-request performance should not change, and how that is proven.**
+* On both plans a replica gets exactly the CPU and memory its template requests. Every workload fits the
+  Consumption limits (at most 4 vCPU / 8 GiB per replica, memory = 2 × CPU): api 1/2Gi, chat-ui 0.5/1Gi,
+  embed-query 2/4Gi, worker `WorkerCpu`/`WorkerMemory` (default 2/4Gi; every step refuses to load a pair the
+  Consumption profile cannot run), jobs 1/2Gi, and the CPU embed-ingest pool 4/8Gi.
+* Scale-out gets *faster*: a new replica no longer waits several minutes for a Dedicated node to be provisioned.
+  The query and ingestion pools also stay separate apps, each with reserved per-replica resources.
+* What cannot be promised in advance is how the underlying shared hardware behaves. So measure it, on the same
+  data and at the same load:
+  ```powershell
+  ./infra/scripts/10-loadtest.ps1 -Env dev -SaveBaseline         # 1. on Dedicated, before the change
+  # 2. in infra/env/dev.psd1:  QueryPlan = 'Consumption'   (and/or IngestPlan = 'Consumption')
+  ./infra/scripts/07-container-apps.ps1 -Env dev                 # 3. moves the apps, deletes the emptied profiles
+  ./infra/scripts/09-smoke.ps1 -Env dev                          # 4. functional check
+  ./infra/scripts/10-loadtest.ps1 -Env dev -CompareToBaseline    # 5. PASS/FAIL against step 1
+  ```
+  Step 5 fails when retrieval p95 (embed-query plus search, the part the plan can affect) is more than
+  `-MaxRegression` (default 1.10) times the baseline in either phase, or the error rate rose. It also refuses to
+  compare two runs made with different `-ExtraArgs`. End-to-end p95 is printed but not gated, because the hosted
+  LLM dominates it.
+
+**What step 07 does on a switch.**
+1. It checks capacity: it prints the peak vCPU the Consumption tiers could reach at their max replicas, and warns if
+   that exceeds the environment's Consumption core quota (`az containerapp env list-usages`). Exceeding the quota
+   does not fail anything. Scale-out simply stops at the quota, under load.
+2. It redeploys each app with the new `workloadProfileName` (`az containerapp update` accepts a profile change). This
+   is expected to roll like any other revision change, with the old revision serving until the new one is ready.
+   That has **not yet been verified on this deployment**, so make the first switch outside working hours. If Azure
+   refuses an in-place move, step 07 stops and names the fix: delete that one app and re-run 07, which recreates
+   it on the new profile with the same FQDN. The app is down while that happens.
+3. It deletes the old Dedicated profile once nothing runs on it. If something still does, for example after a
+   `-Only` run, the profile is kept and the remaining apps are named with the delete command. When no Dedicated
+   profile remains, the management fee stops too.
+
+**Going back** is the same path in reverse. Set the value to `'Dedicated'` and run step 07: it re-adds the
+profile with `*ProfileType` / `*MinNodes` / `*MaxNodes` before redeploying the apps onto it. Expect a few minutes
+for the nodes.
+
+With a tier on Consumption, [Set-CostSavingMode.ps1](#cost-saving-scale-down-hibernate-resume) finds no node floor
+to lower for it. ScaleDown and Hibernate still remove its minimum replicas, which is the remaining idle-rate charge.
+If you only need the fee gone while nobody uses the environment, you don't have to switch plans: Hibernate deletes
+the Dedicated profiles temporarily, and Resume puts them back.
 
 ### Step 08 — `08-bootstrap.ps1`
 ```powershell
@@ -1464,7 +1531,7 @@ correct. Throughout this document:
 
 **Container apps and jobs.** Five of the seven are deployed on a remote profile; step 07 skips the other two:
 
-| Workload | Kind | Workload profile | Size | Replicas | Applies to |
+| Workload | Kind | Workload profile (Dedicated plan; `Consumption` when the tier's plan is) | Size | Replicas | Applies to |
 |---|---|---|---|---|---|
 | `rag-chat-ui` | app | `query` | 0.5 vCPU / 1Gi, **external** ingress | 1-3 | **both** |
 | `rag-api` | app | `query` | 1.0 / 2Gi, internal | 2-10 | **both** |
@@ -2086,6 +2153,103 @@ in the PostgreSQL firewall (`AllowClientIp`).
 4. Watch `/admin` and the dead-letter count; `Set-IngestionControls.ps1 -MaxConcurrency 2` if Search starts throttling (503/207).
 5. Afterwards: scale replicas back down and restore the psd1 values.
 
+### Cost saving: scale down, hibernate, resume
+An idle environment still bills around the clock, mostly for compute that is kept warm on purpose. With the
+sample settings that is 2 × D4 `query` nodes, 1 × D8 `ingest` node, 2 AI Search S1 replicas and the PostgreSQL
+B2s server. `Set-CostSavingMode.ps1` removes that warm capacity when nobody needs it, and puts it back with one
+command.
+
+```powershell
+./infra/scripts/Set-CostSavingMode.ps1 -Env dev                           # Status: read-only, nothing changes
+./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode ScaleDown           # e.g. evenings: reachable, cold starts
+./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode Hibernate -WhatIf   # list what would change
+./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode Hibernate           # e.g. weekends: everything stopped
+./infra/scripts/Set-CostSavingMode.ps1 -Env dev -Mode Resume              # back to exactly what it was
+```
+
+| Component | `ScaleDown` | `Hibernate` | Bills while idle because |
+|---|---|---|---|
+| Workload profiles `query` (D4), `ingest` (D8) | min nodes → 0 (max unchanged) | **deleted**, so the nodes *and* the Dedicated plan management fee stop; Resume re-adds them (`-KeepDedicatedProfiles`: min nodes → 0 only) | nodes bill per node-hour from min nodes up, and the management fee (~$0.10/h, ~$73/month list price in westus) bills while *any* Dedicated profile exists |
+| Container apps (all five) | min replicas → 0 | **stopped** (ARM `stop`): traffic and KEDA cannot wake them | replicas hold nodes up |
+| Scheduled jobs (`rag-scheduler`) | cron → hourly (`-ScaleDownCron`) | cron → `0 0 1 1 *` (a job cannot be stopped, only re-scheduled) | every tick wakes an `ingest` node |
+| AI Search S1 | 1 replica | 1 replica | billed per replica, minimum 1; the index is kept |
+| PostgreSQL Flexible Server | running | **stopped** | compute bills while Ready |
+| `gpu-t4` profile, Foundry model deployments | untouched | untouched | none: billed per replica-second / per token |
+
+`-KeepSearchReplicas` leaves Search alone (for example, to avoid the several minutes that scaling takes each way),
+`-KeepPostgres` keeps the database running during Hibernate, and `-KeepDedicatedProfiles` keeps the profiles
+(see below). `-Force` skips the confirmation prompt, which is what a scheduled run needs.
+
+**How Hibernate gets the Dedicated plan management fee to zero.** The fee is charged once per environment for as
+long as any Dedicated profile exists, whatever its node count, so lowering the minimum nodes was never enough.
+Azure only deletes a profile nothing is assigned to, stopped apps and manual jobs (`rag-bootstrap`) included. So,
+for each Dedicated profile, Hibernate:
+1. moves its stopped apps and its jobs to the environment's built-in Consumption profile. Each must have a size
+   the Consumption profile accepts (≤ 4 vCPU, memory = 2 × CPU); every default workload qualifies.
+2. stops again any app the move started.
+3. deletes the profile once it is provably empty.
+
+The serverless `gpu-t4` profile carries no fee and is never touched. A workload that cannot move, because it is too
+large or Azure refused the move, keeps **its** profile, and therefore the fee. Hibernate names it with the reason,
+and still removes the other profile. Resume re-adds each deleted profile with the exact type and node counts it
+recorded, moves every app and job back, and only then starts them. Allow **5-10 minutes more** than a Resume
+that kept the profiles, mostly for the nodes to come up.
+
+**What keeps billing in every mode:** Service Bus Standard, the registry, Key Vault, Storage (including
+PostgreSQL's storage) and Log Analytics retention. Add the Dedicated plan management fee if any Dedicated profile
+remains: under ScaleDown, with `-KeepDedicatedProfiles`, or when a workload could not move. None of these can be
+paused short of [teardown](#teardown). Log ingestion falls by itself once the apps stop. At the end of each run the
+script prints exactly which of these still apply.
+
+**Choosing a mode.**
+* **ScaleDown** keeps the URL working. The first request after an idle spell waits several minutes while a node
+  starts and the TEI query pool warms up, and may time out once. That deliberately breaks the
+  `EmbedQueryMinReplicas` "never 0" rule, which is why it is a mode you switch on, not a psd1 default.
+* **Hibernate** makes RAG-OS unavailable until Resume. Before stopping anything it refuses to run while a
+  `rag-bootstrap` execution (a database migration) is in progress. Only `-AllowDuringBootstrap` overrides that, so
+  a scheduled run with `-Force` still never stops PostgreSQL under a migration. It also reports how many messages are
+  waiting on `ingest-priority` / `ingest-bulk`; they stay queued and are processed after Resume.
+
+**How Resume restores "exactly what it was".** Before its first change, the script writes the *actual* state to
+`infra/env/<env>.costsaver.json` (git-ignored), not the psd1 values. The snapshot holds:
+* for each app, its running status, min/max replicas and workload profile;
+* for each job, its workload profile, plus the cron of each scheduled job;
+* each profile's type and min/max nodes;
+* the Search replica count and the PostgreSQL state.
+
+A snapshot written by an earlier version of the script lacks the profile assignments. The next run fills them in
+from the current state, which is exact because nothing before this feature moved a workload between profiles. A temporary state such as 3 Search replicas during a backfill therefore comes back as well. The
+snapshot is **never overwritten while cost saving is on**: re-running a mode, or switching from ScaleDown to
+Hibernate and back, keeps the original.
+
+Resume works in the reverse order: PostgreSQL, Search, profiles (re-added if Hibernate deleted them) and their node
+floors, moving every app and job back to its recorded profile, app replicas, starting the apps that were running,
+then the cron. It then waits for `rag-embed-query`, `rag-api` and `GET /api/readyz` (`-NoWait` skips
+this), and archives the snapshot as `<env>.costsaver.<timestamp>.resumed.json`. If the snapshot differs from the
+psd1, each difference is named in a `[warn]` line and the snapshot value is restored. Run step 07 afterwards if you
+want the psd1 values instead. If the snapshot has been lost, `-Mode Resume -UseConfigDefaults` restores the psd1
+values and starts every app.
+
+**Things that undo cost saving behind your back.** `-Mode Status` names each of them in a `[warn]` line.
+* **Azure starts a stopped PostgreSQL server again after 7 days.** Re-run `-Mode Hibernate`; it is idempotent
+  and keeps the snapshot.
+* **A deploy.** `07-container-apps.ps1` re-applies the psd1 replicas, node floors and cron, re-adds any Dedicated
+  profile Hibernate deleted, and moves the apps back onto it, so the management fee resumes. After deploying during
+  cost saving, run the same mode again.
+* **1 January.** The hibernate cron fires once a year. That run wakes an `ingest` node briefly and, with
+  PostgreSQL stopped, is expected to fail without changing anything.
+
+**Scheduling it.** The script runs non-interactively with `-Force`. The account running it needs an `az login`
+session (or a service principal) with Contributor on the resource group. With Windows Task Scheduler:
+```powershell
+$script = (Resolve-Path ./infra/scripts/Set-CostSavingMode.ps1).Path
+$down = New-ScheduledTaskAction -Execute pwsh -Argument "-NoProfile -File `"$script`" -Env dev -Mode Hibernate -Force"
+$up   = New-ScheduledTaskAction -Execute pwsh -Argument "-NoProfile -File `"$script`" -Env dev -Mode Resume"
+Register-ScheduledTask -TaskName 'RAG-OS hibernate' -Action $down -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Friday -At 8pm)
+Register-ScheduledTask -TaskName 'RAG-OS resume'    -Action $up   -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 7am)
+```
+A pipeline on a cron trigger works the same way: run the two commands from an `AzureCLI@2` (PowerShell Core) step.
+
 ### Smoke test
 ```powershell
 ./infra/scripts/09-smoke.ps1 -Env dev
@@ -2112,10 +2276,13 @@ tokens are passed as arguments and cleared afterwards.
 
 ### Load test
 ```powershell
-./infra/scripts/10-loadtest.ps1 -Env dev -ExtraArgs '--docs','10000','--qps','5','--duration','300'
+uv run python scripts/loadtest.py generate --docs 10000                     # once: the synthetic corpus
+./infra/scripts/10-loadtest.ps1 -Env dev -ExtraArgs '--rps','5','--baseline-s','120','--during-s','300'
 ```
 Measures query p50/p95 as a baseline, starts the bulk backfill and measures again.
 **Pass: p95 during ingestion <= 1.25 x baseline.** Record documents/minute and chunks/second per GPU for the capacity model.
+To compare two deployments, for example a [plan switch](#dedicated-or-consumption-plan), add `-SaveBaseline` to the
+first run and `-CompareToBaseline` to the second.
 
 ### KQL (Log Analytics / Application Insights)
 ```kusto
@@ -2177,6 +2344,11 @@ git pull
 
 Configuration-only changes (psd1 app settings): run step 07 alone. Domain configuration: upload + reload ([section 6](#6-domain-configuration)).
 
+Deploying while [cost saving](#cost-saving-scale-down-hibernate-resume) is on: step 07 puts the psd1 replicas, node
+floors and cron back, so re-run `Set-CostSavingMode.ps1 -Mode ScaleDown` (or `Hibernate`) afterwards, and use
+`-Mode Status` to confirm which apps are running. Step 09 cannot pass against a hibernated environment; run
+`-Mode Resume` first.
+
 ### Rollback
 > **Rolling back past a migration is the case nothing here protects you from.** There are no down-migrations,
 > and step 07's pre-flight only catches a schema that is *behind* the code — not code that is behind the schema.
@@ -2220,6 +2392,10 @@ Whether a workload is deployed depends on the embedding profile's provider — m
 | `rag-bootstrap` | job | `ingest` | – | manual | `rag-os bootstrap` | **both** |
 | `rag-embed-query` | app | `query` | internal | 1-4 | TEI (CPU image) | **tei only** |
 | `rag-embed-ingest` | app | `gpu-t4` (or `ingest`) | internal | 0-N | TEI (turing image, or CPU fallback) | **tei only** |
+
+The profiles shown are for the default Dedicated plan. With `QueryPlan` or `IngestPlan` set to `'Consumption'`, that
+tier's `query` / `ingest` entries read `Consumption` instead; `gpu-t4` never changes
+([Dedicated or Consumption plan](#dedicated-or-consumption-plan)).
 
 Generated files (do not commit): `infra/env/<env>.psd1`, `infra/env/<env>.outputs.json` (ids and endpoints discovered by
 the scripts), `infra/env/<env>.images.json` (image digests + the embedding image record).

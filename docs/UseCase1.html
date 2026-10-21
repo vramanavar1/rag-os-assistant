@@ -1,0 +1,1169 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Use Case 1: Loss-Mitigation Document Chase</title>
+<meta name="description" content="Design for review: how relational data, a taxonomy and an ontology combine with RAG-OS to decide whether a loss-mitigation application is complete against a specific investor guide version, within the Regulation X clock.">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{
+    --bg:#ffffff; --bg-soft:#f8fafc; --panel:#ffffff; --fg:#0f172a; --muted:#475569; --faint:#64748b;
+    --line:#e2e8f0; --line-strong:#cbd5e1; --accent:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+    --code-bg:#f8fafc; --code-fg:#0f172a; --mark:#fef3c7; --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+    --ok:#047857; --ok-bg:#ecfdf5; --warn:#b45309; --warn-bg:#fffbeb;
+    --d-bg:#ffffff; --d-lane:#f8fafc; --d-lane-br:#e2e8f0; --d-lane-tx:#475569;
+    --d-query-bg:#eef2ff; --d-query-br:#6366f1; --d-query-tx:#312e81;
+    --d-ingest-bg:#fff7ed; --d-ingest-br:#f59e0b; --d-ingest-tx:#92400e;
+    --d-data-bg:#f1f5f9; --d-data-br:#64748b; --d-data-tx:#1e293b;
+    --d-ai-bg:#f5f3ff; --d-ai-br:#8b5cf6; --d-ai-tx:#5b21b6;
+    --d-sec-bg:#ecfdf5; --d-sec-br:#10b981; --d-sec-tx:#065f46;
+    --d-obs-bg:#f8fafc; --d-obs-br:#94a3b8; --d-obs-tx:#334155;
+    --d-ext-bg:#ffffff; --d-ext-br:#0f172a; --d-ext-tx:#0f172a;
+    --d-state-bg:#ffffff; --d-state-br:#334155; --d-state-tx:#0f172a;
+    --d-bad-bg:#fef2f2; --d-bad-br:#ef4444; --d-bad-tx:#991b1b;
+    --d-text:#0f172a; --d-muted:#475569; --d-edge:#64748b; --d-edge-tx:#334155;
+    --d-chip:#ffffff; --d-badge:#0f172a; --d-badge-tx:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0b1220; --bg-soft:#0f172a; --panel:#111c33; --fg:#e2e8f0; --muted:#94a3b8; --faint:#8296b0;
+      --line:#233149; --line-strong:#334155; --accent:#a5b4fc; --accent-soft:#1e1b4b; --accent-line:#3730a3;
+      --code-bg:#0f172a; --code-fg:#e2e8f0; --mark:#3f3410; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+      --ok:#6ee7b7; --ok-bg:#052e26; --warn:#fcd34d; --warn-bg:#3b2a0c;
+      --d-bg:#0f172a; --d-lane:#111c33; --d-lane-br:#2a3a56; --d-lane-tx:#94a3b8;
+      --d-query-bg:#1e1b4b; --d-query-br:#818cf8; --d-query-tx:#c7d2fe;
+      --d-ingest-bg:#3b2a0c; --d-ingest-br:#fbbf24; --d-ingest-tx:#fde68a;
+      --d-data-bg:#1c2942; --d-data-br:#94a3b8; --d-data-tx:#e2e8f0;
+      --d-ai-bg:#2e1065; --d-ai-br:#a78bfa; --d-ai-tx:#ddd6fe;
+      --d-sec-bg:#052e26; --d-sec-br:#34d399; --d-sec-tx:#a7f3d0;
+      --d-obs-bg:#172033; --d-obs-br:#94a3b8; --d-obs-tx:#cbd5e1;
+      --d-ext-bg:#0b1220; --d-ext-br:#cbd5e1; --d-ext-tx:#e2e8f0;
+      --d-state-bg:#111c33; --d-state-br:#94a3b8; --d-state-tx:#e2e8f0;
+      --d-bad-bg:#3f1d1d; --d-bad-br:#f87171; --d-bad-tx:#fecaca;
+      --d-text:#e2e8f0; --d-muted:#94a3b8; --d-edge:#94a3b8; --d-edge-tx:#cbd5e1;
+      --d-chip:#0f172a; --d-badge:#e2e8f0; --d-badge-tx:#0f172a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1220; --bg-soft:#0f172a; --panel:#111c33; --fg:#e2e8f0; --muted:#94a3b8; --faint:#8296b0;
+    --line:#233149; --line-strong:#334155; --accent:#a5b4fc; --accent-soft:#1e1b4b; --accent-line:#3730a3;
+    --code-bg:#0f172a; --code-fg:#e2e8f0; --mark:#3f3410; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    --ok:#6ee7b7; --ok-bg:#052e26; --warn:#fcd34d; --warn-bg:#3b2a0c;
+    --d-bg:#0f172a; --d-lane:#111c33; --d-lane-br:#2a3a56; --d-lane-tx:#94a3b8;
+    --d-query-bg:#1e1b4b; --d-query-br:#818cf8; --d-query-tx:#c7d2fe;
+    --d-ingest-bg:#3b2a0c; --d-ingest-br:#fbbf24; --d-ingest-tx:#fde68a;
+    --d-data-bg:#1c2942; --d-data-br:#94a3b8; --d-data-tx:#e2e8f0;
+    --d-ai-bg:#2e1065; --d-ai-br:#a78bfa; --d-ai-tx:#ddd6fe;
+    --d-sec-bg:#052e26; --d-sec-br:#34d399; --d-sec-tx:#a7f3d0;
+    --d-obs-bg:#172033; --d-obs-br:#94a3b8; --d-obs-tx:#cbd5e1;
+    --d-ext-bg:#0b1220; --d-ext-br:#cbd5e1; --d-ext-tx:#e2e8f0;
+    --d-state-bg:#111c33; --d-state-br:#94a3b8; --d-state-tx:#e2e8f0;
+    --d-bad-bg:#3f1d1d; --d-bad-br:#f87171; --d-bad-tx:#fecaca;
+    --d-text:#e2e8f0; --d-muted:#94a3b8; --d-edge:#94a3b8; --d-edge-tx:#cbd5e1;
+    --d-chip:#0f172a; --d-badge:#e2e8f0; --d-badge-tx:#0f172a;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth; scroll-padding-top:24px}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:16px/1.65 "Segoe UI",Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd,pre{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace}
+  code{font-size:.88em;background:var(--code-bg);border:1px solid var(--line);border-radius:5px;padding:.08em .34em;
+    overflow-wrap:anywhere}
+  pre code{border:0;padding:0;background:none;font-size:13px;line-height:1.55}
+  .skip{position:absolute;left:-9999px;top:0;background:var(--accent-soft);padding:10px 16px;border-radius:0 0 8px 0;z-index:100}
+  .skip:focus{left:0}
+
+  .layout{display:grid;grid-template-columns:302px minmax(0,1fr);gap:0;max-width:1680px;margin:0 auto}
+  /* ---------- sidebar ---------- */
+  #toc{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--line);
+    background:var(--bg-soft);padding:22px 18px 40px}
+  #toc .brand{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  #toc .brand b{font-size:15px;letter-spacing:.01em}
+  #toc .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+  #toc .sub{color:var(--faint);font-size:12px;margin:0 0 16px}
+  #toc h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:20px 0 8px}
+  #toc ol{list-style:none;margin:0;padding:0}
+  #toc li{margin:1px 0}
+  #toc a{display:block;padding:6px 10px;border-radius:7px;color:var(--muted);font-size:13.5px;
+    border-left:2px solid transparent}
+  #toc a:hover{background:var(--panel);color:var(--fg);text-decoration:none}
+  #toc a.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+  #toc .num{display:inline-block;width:20px;color:var(--faint);font-variant-numeric:tabular-nums}
+  #toc ol.sub a{padding:4px 10px 4px 32px;font-size:12.5px}
+  .toc-toggle{display:none}
+
+  /* ---------- content ---------- */
+  main{padding:34px 40px 90px;min-width:0}
+  .wrap{max-width:1040px}
+  .wide{max-width:1320px}
+  header.hero{max-width:1040px;margin-bottom:8px}
+  h1{font-size:34px;line-height:1.2;margin:0 0 10px;letter-spacing:-.01em}
+  .lede{font-size:17.5px;color:var(--muted);margin:0 0 18px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 22px;padding:0;list-style:none}
+  .chips li{font-size:12.5px;color:var(--muted);background:var(--bg-soft);border:1px solid var(--line);
+    border-radius:999px;padding:4px 12px}
+  .quick{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 28px}
+  .quick a{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:9px;font-size:14px;
+    border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .quick a.plain{background:var(--panel);border-color:var(--line);color:var(--muted);font-weight:500}
+  .quick a:hover{text-decoration:none;border-color:var(--accent)}
+
+  h2{font-size:24px;margin:52px 0 6px;letter-spacing:-.01em;scroll-margin-top:18px;
+     padding-top:18px;border-top:1px solid var(--line)}
+  h2 .n{color:var(--faint);font-weight:600;margin-right:8px}
+  h3{font-size:17.5px;margin:30px 0 4px}
+  h4{font-size:15px;margin:22px 0 2px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  p{margin:12px 0}
+  ul,ol{margin:12px 0;padding-left:24px}
+  li{margin:6px 0}
+  li > ul, li > ol{margin:6px 0}
+  strong{font-weight:650}
+  hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+  .anchor{opacity:0;margin-left:8px;font-size:.7em;color:var(--faint);text-decoration:none}
+  h2:hover .anchor,h3:hover .anchor{opacity:1}
+
+  table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14.5px;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:11px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+  th{background:var(--bg-soft);font-weight:650;font-size:13px;letter-spacing:.02em;color:var(--muted);
+     position:sticky;top:0;z-index:2}
+  tbody tr:nth-child(even){background:var(--bg-soft)}
+  tbody tr:last-child td{border-bottom:0}
+  td ul{margin:4px 0;padding-left:18px}
+  td code{white-space:nowrap}
+  .table-wrap{overflow-x:auto;margin:16px 0}
+  .table-wrap table{margin:0}
+
+  .code{position:relative;margin:16px 0;border:1px solid var(--line);border-radius:10px;background:var(--code-bg);
+    box-shadow:var(--shadow)}
+  .code pre{margin:0;padding:16px 18px;overflow-x:auto}
+  .code .lang{position:absolute;top:8px;right:86px;font-size:11px;color:var(--faint);letter-spacing:.06em;
+    text-transform:uppercase}
+  .copy{position:absolute;top:6px;right:8px;font:600 12px/1 inherit;color:var(--muted);background:var(--panel);
+    border:1px solid var(--line);border-radius:7px;padding:6px 10px;cursor:pointer}
+  .copy:hover{color:var(--accent);border-color:var(--accent-line)}
+  .tree{font-size:13px;line-height:1.5}
+
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 10px 10px 0;
+    padding:12px 18px;margin:18px 0;color:var(--fg)}
+  .callout.note{border-color:var(--line-strong);background:var(--bg-soft);color:var(--muted)}
+  .callout.warn{border-color:var(--warn);background:var(--warn-bg)}
+  .callout p{margin:6px 0}
+
+  /* ---------- inline diagrams (SVG inherits the page's --d-* variables above) ---------- */
+  svg.ragos-diagram text{font-family:"Segoe UI",Inter,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif}
+  svg.ragos-diagram .t-title{font-size:15px;font-weight:650}
+  svg.ragos-diagram .t-line{font-size:12.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .t-small{font-size:11.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .t-lane{font-size:12.5px;font-weight:700;letter-spacing:.06em;fill:var(--d-lane-tx)}
+  svg.ragos-diagram .t-edge{font-size:12px;fill:var(--d-edge-tx)}
+  svg.ragos-diagram .t-badge{font-size:11.5px;font-weight:700;fill:var(--d-badge-tx)}
+  svg.ragos-diagram .t-head{font-size:17px;font-weight:700;fill:var(--d-text)}
+  svg.ragos-diagram .t-code{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:12.5px;fill:var(--d-text)}
+  svg.ragos-diagram .t-codesm{font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:11.5px;fill:var(--d-muted)}
+  svg.ragos-diagram .edge{fill:none;stroke:var(--d-edge);stroke-width:1.7}
+  svg.ragos-diagram .edge-dash{fill:none;stroke:var(--d-edge);stroke-width:1.5;stroke-dasharray:6 5}
+  svg.ragos-diagram .lane{fill:var(--d-lane);stroke:var(--d-lane-br);stroke-width:1.5}
+  svg.ragos-diagram .chip{fill:var(--d-chip);stroke:var(--d-lane-br);stroke-width:1}
+  svg.ragos-diagram .lifeline{stroke:var(--d-edge);stroke-width:1.6;stroke-dasharray:5 5}
+
+  figure{margin:22px 0 30px}
+  .fig-frame{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:14px;
+    box-shadow:var(--shadow);overflow:hidden}
+  .fig-frame svg{display:block;width:100%;height:auto}
+  figcaption{margin-top:10px;font-size:13.5px;color:var(--muted)}
+  figcaption b{color:var(--fg)}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:18px 0}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:var(--panel)}
+  .card h4{margin:0 0 6px;color:var(--accent);text-transform:none;letter-spacing:0;font-size:15px}
+  .card p{margin:4px 0;font-size:14px;color:var(--muted)}
+
+  footer{margin-top:60px;padding-top:20px;border-top:1px solid var(--line);color:var(--faint);font-size:13px}
+  .totop{position:fixed;right:22px;bottom:22px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:9px 13px;font-size:13px;color:var(--muted);box-shadow:var(--shadow);cursor:pointer;
+    opacity:0;pointer-events:none;transition:opacity .2s}
+  .totop.show{opacity:1;pointer-events:auto}
+  .theme{position:absolute;top:24px;right:40px;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:8px 12px;font-size:13px;color:var(--muted);cursor:pointer}
+  .theme:hover{color:var(--accent);border-color:var(--accent-line)}
+
+  @media (max-width:1100px){
+    .layout{grid-template-columns:1fr}
+    #toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);display:none}
+    #toc.open{display:block}
+    .toc-toggle{display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;background:var(--panel);
+      border:1px solid var(--line);border-radius:9px;padding:9px 14px;font:600 14px/1 inherit;color:var(--fg);cursor:pointer}
+    main{padding:24px 20px 70px}
+    .theme{position:static;margin-left:10px}
+    h1{font-size:27px}
+  }
+  @media print{
+    :root{--bg:#fff;--panel:#fff;--fg:#111;--muted:#333;--line:#bbb;--bg-soft:#fff;--code-bg:#fafafa;--shadow:none}
+    #toc{display:block;position:static;height:auto;border:0;page-break-after:always;background:#fff}
+    .layout{display:block;max-width:none}
+    main{padding:0}
+    .theme,.totop,.copy,.toc-toggle,.skip{display:none !important}
+    figure,table,.code,.callout{page-break-inside:avoid}
+    h2{page-break-after:avoid}
+    a{color:#111;text-decoration:none}
+    .fig-frame{border:1px solid #ccc}
+  }
+</style>
+<style>
+  .disclaimer{border-left:3px solid var(--warn);background:var(--warn-bg);border-radius:0 10px 10px 0;padding:12px 18px;margin:18px 0}
+  .disclaimer p{margin:4px 0}
+  table.req td:first-child, table.req th:first-child{white-space:nowrap}
+  table.links td:first-child{white-space:nowrap;font-weight:600}
+  .tag{display:inline-block;white-space:nowrap;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;border:1px solid var(--line-strong)}
+  .tag.miss{color:#991b1b;background:#fef2f2;border-color:#fca5a5}
+  .tag.ok{color:var(--ok);background:var(--ok-bg);border-color:var(--ok)}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tag.miss{color:#fecaca;background:#3f1d1d;border-color:#f87171}}
+  :root[data-theme="dark"] .tag.miss{color:#fecaca;background:#3f1d1d;border-color:#f87171}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="layout">
+<aside id="toc" aria-label="Table of contents">
+  <div class="brand"><span class="dot"></span><b>Use Case 1</b></div>
+  <p class="sub">Loss-mitigation document chase · design for review</p>
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#1-summary"><span class="num">1</span>Summary</a></li>
+    <li><a href="#2-problem"><span class="num">2</span>The business problem and the clock</a></li>
+    <li><a href="#3-vocabulary"><span class="num">3</span>Vocabulary and abbreviations</a></li>
+    <li><a href="#4-concept"><span class="num">4</span>Concept: three layers, one answer</a></li>
+    <li><a href="#5-relational"><span class="num">5</span>Relational design (semantic model)</a></li>
+    <li><a href="#6-taxonomy"><span class="num">6</span>Taxonomy: what, how, where</a></li>
+    <li><a href="#7-ontology"><span class="num">7</span>Ontology: construction</a></li>
+    <li><a href="#8-design"><span class="num">8</span>Ontology design: principles, patterns, anti-patterns</a><ol class="sub"><li><a href="#8-1-sources">8.1 Sources</a></li><li><a href="#8-2-structural">8.2 Structural guidance applied</a></li><li><a href="#8-3-principles">8.3 General principles</a></li><li><a href="#8-4-patterns">8.4 Patterns used</a></li><li><a href="#8-5-anti-patterns">8.5 Anti-patterns avoided</a></li><li><a href="#8-6-checklist">8.6 Review checklist</a></li></ol></li>
+    <li><a href="#9-tools"><span class="num">9</span>Tools: taxonomy, ontology, SHACL</a><ol class="sub"><li><a href="#9-1-glance">9.1 At a glance</a></li><li><a href="#9-2-vocbench">9.2 VocBench (taxonomy)</a></li><li><a href="#9-3-protege">9.3 Protégé (ontology)</a></li><li><a href="#9-4-pyshacl">9.4 pySHACL (SHACL)</a></li><li><a href="#9-5-new-version">9.5 A new guide version</a></li><li><a href="#9-6-links">9.6 Downloads &amp; learning</a></li></ol></li>
+    <li><a href="#10-together"><span class="num">10</span>How it comes together</a></li>
+    <li><a href="#11-agents"><span class="num">11</span>Multi-agent? Recommendation</a></li>
+    <li><a href="#12-testing"><span class="num">12</span>Testing and evaluation</a></li>
+    <li><a href="#13-architecture"><span class="num">13</span>Architecture fit</a></li>
+    <li><a href="#14-plan"><span class="num">14</span>Implementation plan</a><ol class="sub"><li><a href="#14-1-tools">14.1 Install now?</a></li><li><a href="#14-2-artifacts-first">14.2 Artifacts first</a></li><li><a href="#14-3-green-field">14.3 Green field</a></li><li><a href="#14-4-brown-field">14.4 Brown field</a></li><li><a href="#14-5-compare">14.5 Green vs brown</a></li></ol></li>
+    <li><a href="#15-risks"><span class="num">15</span>Risks and open questions</a></li>
+    <li><a href="#16-cleanup"><span class="num">16</span>Artifacts and cleanup</a></li>
+  </ol>
+  <h2>Related</h2>
+  <ol>
+    <li><a href="use-case-1.md">The brief</a></li>
+    <li><a href="UseCase1_DetailedImplementation.html">Implementation runbook</a></li>
+    <li><a href="../README.html">RAG-OS README</a></li>
+    <li><a href="classification-guide.md">Classification guide</a></li>
+  </ol>
+</aside>
+<main id="main">
+<button class="toc-toggle" id="tocToggle" aria-expanded="false" aria-controls="toc">Contents</button>
+<button class="theme" id="themeBtn" title="Switch between light and dark">Theme</button>
+
+<header class="hero">
+  <h1>Use Case 1: mortgage loss-mitigation document chase</h1>
+  <p class="lede">How <strong>relational data</strong>, a <strong>taxonomy</strong> and an <strong>ontology</strong> combine
+    with the RAG-OS corpus to decide whether a hardship application is <strong>complete against a specific version of a
+    specific investor guide</strong>, and to state precisely what is missing, inside the Regulation X clock.
+    Design for review. Phase 1, the artifacts (taxonomy, ontology, SHACL, golden cases, SQL and their checks), is built in
+    <code>usecase1/</code> and is what this page describes; no engine code has been written yet.</p>
+  <ul class="chips"><li>Design document · Phase 1 artifacts built</li><li>Synthetic investor guides</li><li>OWL/RDF + SHACL</li>
+    <li>uc1_* tables · SQLite / PostgreSQL</li><li>Palantir structural guidance</li><li>VocBench · Protégé · pySHACL</li><li>RAG-OS citations</li></ul>
+  <div class="disclaimer">
+    <p><strong>Not legal advice.</strong> Regulatory points are summarised from 12 CFR 1024.41 with links to the source;
+      interpretation must be confirmed by compliance before any of this is used on real applications.</p>
+    <p><strong>Synthetic guidelines.</strong> "Investor A Servicing Guide v2025.1 / v2026.1" are invented for this MVP. They
+      are shaped like real investor guides, but no requirement here is a real GSE, FHA or VA rule.</p>
+  </div>
+</header>
+
+<div class="wrap">
+<h2 id="1-summary"><span class="n">1</span>Summary<a class="anchor" href="#1-summary">#</a></h2>
+<p>A homeowner falls behind and applies for help. The servicer has <strong>five business days</strong> to tell them whether
+  the application is complete and, if not, <strong>exactly which documents are missing</strong>. Whether it is complete depends on
+  which investor owns the loan and <strong>which version of that investor's guide was in effect</strong>.</p>
+<p>The design separates three kinds of knowledge and lets software combine them deterministically:</p>
+<ul>
+  <li><strong>Relational tables hold the facts of this case:</strong> who the borrower is, when the application arrived, which documents
+    came in and how old they are.</li>
+  <li><strong>The taxonomy holds the agreed words:</strong> what a "profit and loss statement" is, and that a "P&amp;L" is the same thing.</li>
+  <li><strong>The ontology holds the rules:</strong> what each guide version requires, when it applies and how recent it must be. Each rule
+    points at the guide section it came from.</li>
+</ul>
+<p>A validation engine checks the facts against the rules of the right version, and every rule that fails becomes one
+  missing item, with the guide section and a page-level citation from RAG-OS. Language models are used only at the edges:
+  recognising which document is which, and drafting the letter from the list. They <strong>never decide</strong>
+  completeness.</p>
+<p>The model follows Palantir's ontology structural guidance plus classic ontology design principles and patterns,
+  and is checked against a catalogue of known anti-patterns (section 8).</p>
+
+<h2 id="2-problem"><span class="n">2</span>The business problem and the clock<a class="anchor" href="#2-problem">#</a></h2>
+<p><strong>The decision.</strong> Given an application and the documents received, is the package complete against the
+  investor guideline version that governs it, and if not, what precisely is missing?</p>
+<p><strong>The clock.</strong> Under <a href="https://www.ecfr.gov/current/title-12/chapter-X/part-1024/subpart-C/section-1024.41">12 CFR 1024.41(b)(2)(i)</a>, when a servicer receives a loss mitigation
+  application <strong>45 days or more before a foreclosure sale</strong>, it must notify the borrower in writing
+  <strong>within 5 days (excluding legal public holidays, Saturdays and Sundays)</strong>. The notice acknowledges receipt and
+  says whether the application is complete or incomplete. If it is incomplete, the notice must state the
+  <strong>additional documents and information</strong> needed and the date by which to send them.</p>
+<ul>
+  <li><strong>Reasonable diligence</strong> (<a href="https://www.ecfr.gov/current/title-12/chapter-X/part-1024/subpart-C/section-1024.41">§1024.41(b)(1)</a>): the servicer must exercise reasonable diligence in
+    obtaining what is needed to complete the application.</li>
+  <li><strong>Evaluation</strong> (<a href="https://www.ecfr.gov/current/title-12/chapter-X/part-1024/subpart-C/section-1024.41">§1024.41(c)</a>): a complete application received more than 37 days before a sale
+    must be evaluated for all available options within 30 days.</li>
+  <li><strong>Why an incorrect list is costly</strong> (<a href="https://www.ecfr.gov/current/title-12/chapter-X/part-1024/subpart-C/section-1024.41">§1024.41(c)(2)(iv)</a>): once the borrower sends everything the
+    notice listed, the application is <em>facially complete</em>. If the servicer later finds more is needed, it must ask
+    promptly and treat the application as complete for foreclosure protections until the borrower has a reasonable chance
+    to supply it. So a missing-items list that is wrong (too short <em>or</em> wrong items) has real consequences. The brief's
+    phrase "an incorrect list restarts the clock" is used here as the business premise; <strong>the exact effect must be
+    confirmed with compliance</strong>.</li>
+</ul>
+<p>Sources: <a href="https://www.ecfr.gov/current/title-12/chapter-X/part-1024/subpart-C/section-1024.41">eCFR §1024.41</a> · <a href="https://www.consumerfinance.gov/rules-policy/regulations/1024/41/">CFPB Regulation X §1024.41</a> ·
+  <a href="https://www.consumerfinance.gov/rules-policy/regulations/1024/interp-41/">CFPB official interpretations</a>.</p>
+
+<h2 id="3-vocabulary"><span class="n">3</span>Vocabulary and abbreviations<a class="anchor" href="#3-vocabulary">#</a></h2>
+<h3>Regulation, parties and status terms</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Term</th><th>Stands for / source</th><th>Meaning here</th></tr></thead><tbody><tr><td>RESPA</td><td>Real Estate Settlement Procedures Act (1974)</td><td>The federal statute behind the servicing rules.</td></tr><tr><td>Reg X</td><td>Regulation X, 12 CFR Part 1024</td><td>The CFPB's regulation implementing RESPA; §1024.41 governs loss mitigation procedures.</td></tr><tr><td>CFPB</td><td>Consumer Financial Protection Bureau</td><td>Issues and interprets Regulation X.</td></tr><tr><td>LMA</td><td>Loss mitigation application</td><td>A borrower's request for a loss mitigation option, with the information the servicer requires to evaluate it.</td></tr><tr><td>Complete application</td><td>§1024.41(b)(1)</td><td>An application for which the servicer has received all the information it requires from the borrower to evaluate the options available.</td></tr><tr><td>Facially complete</td><td>§1024.41(c)(2)(iv)</td><td>The borrower has sent everything the acknowledgement notice listed (or the notice listed nothing). Protections attach from that date even if the servicer later finds more is needed.</td></tr><tr><td>Acknowledgement notice</td><td>§1024.41(b)(2)(i)</td><td>Written notice within 5 days (excluding Saturdays, Sundays and legal public holidays) saying whether the application is complete or incomplete, and listing what is missing.</td></tr><tr><td>Business day (this rule)</td><td>§1024.41(b)(2)(i)</td><td>Any day except Saturday, Sunday or a legal public holiday.</td></tr><tr><td>Servicer</td><td></td><td>The company that collects payments and handles loss mitigation for the loan.</td></tr><tr><td>Investor</td><td>Owner or assignee of the loan</td><td>Sets the guideline the servicer must apply (e.g. a GSE, FHA, VA or a private investor).</td></tr><tr><td>GSE</td><td>Government-sponsored enterprise</td><td>Fannie Mae and Freddie Mac.</td></tr><tr><td>FHA / VA</td><td>Federal Housing Administration / Department of Veterans Affairs</td><td>Government loan programs with their own servicing guidelines.</td></tr></tbody></table></div>
+<h3>Documents and evaluation</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Term</th><th>Stands for</th><th>Meaning here</th></tr></thead><tbody><tr><td>MAA (Form 710)</td><td>Uniform Mortgage Assistance Application</td><td>The borrower's application form; signed and dated by every borrower.</td></tr><tr><td>BRP</td><td>Borrower response package</td><td>Industry term for the set of documents a borrower returns.</td></tr><tr><td>Hardship statement</td><td></td><td>The borrower's explanation of the hardship (job loss, illness, income reduction…).</td></tr><tr><td>4506-C</td><td>IRS Form 4506-C</td><td>Authorises the servicer to obtain IRS tax transcripts.</td></tr><tr><td>P&amp;L</td><td>Profit and loss statement</td><td>Income evidence for self-employed borrowers.</td></tr><tr><td>DTI</td><td>Debt-to-income ratio</td><td>Used in evaluating affordability of an option.</td></tr><tr><td>NPV</td><td>Net present value test</td><td>Compares the investor's expected value with and without a modification.</td></tr></tbody></table></div>
+<h3>Workout (loss mitigation) options</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Option</th><th>Meaning</th></tr></thead><tbody><tr><td>Forbearance</td><td>Payments paused or reduced for a period.</td></tr><tr><td>Repayment plan</td><td>Arrears repaid over time on top of the regular payment.</td></tr><tr><td>Modification</td><td>Permanent change to the loan terms; often preceded by a TPP.</td></tr><tr><td>TPP</td><td>Trial period plan: trial payments before a modification is made permanent.</td></tr><tr><td>Short sale</td><td>Sale of the property for less than the amount owed, with the investor's approval.</td></tr><tr><td>DIL</td><td>Deed-in-lieu of foreclosure: the borrower transfers the property to avoid foreclosure.</td></tr></tbody></table></div>
+<h3>Knowledge-modelling terms</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td>Semantic model</td><td>The relational tables that hold the facts of each case in business terms (loan, borrower, application, documents).</td></tr><tr><td>Taxonomy</td><td>A controlled vocabulary arranged in a hierarchy, with synonyms: the agreed words for things (document types, hardship reasons).</td></tr><tr><td>Ontology</td><td>A formal model of the domain's concepts and the relationships between them, precise enough for software to reason over (what a guideline version requires, when, and how recent).</td></tr><tr><td>OWL / RDF / Turtle</td><td>W3C standards for ontologies: RDF expresses facts as subject-predicate-object triples; OWL adds classes and properties; Turtle is the readable text syntax.</td></tr><tr><td>SKOS</td><td>W3C vocabulary for taxonomies (concepts, broader/narrower, alternative labels): how the taxonomy appears inside the ontology.</td></tr><tr><td>SHACL</td><td>W3C Shapes Constraint Language: rules a graph must satisfy. A validation report lists every violation, which here is the missing-items list.</td></tr><tr><td>Shape</td><td>A SHACL rule set that picks its focus nodes and checks them. Here one generic template (<code>uc1shape:DocumentRequirement</code>) checks every requirement of the governing version; separate data-quality shapes check the data itself.</td></tr><tr><td>Data-quality shape</td><td>A SHACL Core shape over the application <em>data</em> (<code>uc1-dataquality.shapes.ttl</code>), e.g. every application has one received date and every document one classified type. Kept separate from the requirement template, so a data defect goes to the servicer to fix and is never reported to a borrower as a missing document.</td></tr><tr><td>Requirements file (per version)</td><td>One Turtle data file per guide version (<code>investor-a-&lt;version&gt;.ttl</code>) holding its requirements, so versions sit side by side and never overwrite each other. The SHACL template is the same for every version.</td></tr><tr><td>Golden case</td><td>A hand-written synthetic application graph (<code>usecase1/golden/G01.ttl</code> … <code>G11.ttl</code>) with its expected missing requirement ids under each guide version (<code>expected.yaml</code>). Written from the requirements, never generated by the engine; the engine's acceptance test.</td></tr><tr><td>Competency question</td><td>A question the ontology must be able to answer; written first, it keeps the model small and purposeful.</td></tr><tr><td>Struct</td><td>One property made of semantically related fields, e.g. <code>signature</code> = signed + signature date, or <code>classification</code> = docType + confidence + method + reviewer.</td></tr><tr><td>Interface</td><td>A shared shape (properties, links) that several classes implement, e.g. <code>«Evidence»</code> for every kind of submitted document.</td></tr><tr><td>Object-backed link</td><td>A relationship that carries its own facts, so it becomes an object between the two ends (e.g. <code>ApplicationParty</code>: role and employment as of this application). In OWL terms, an n-ary relation.</td></tr><tr><td>Derived property</td><td>A value computed from stored facts when needed (document age, governing guide version) instead of being stored and going stale.</td></tr><tr><td>Functional property</td><td>An OWL property with at most one value per subject (<code>owl:FunctionalProperty</code>), e.g. <code>outcome</code>, <code>role</code>, <code>docType</code>, <code>issuedBy</code>. Multi-valued links (<code>satisfiedBy</code>, <code>documents</code>, <code>parties</code>, <code>condition</code>) are deliberately not functional.</td></tr><tr><td>Inverse pair, stored direction</td><td>Two properties that read the same link from each end (<code>parties</code> ↔ <code>partyTo</code>). Data states only the <em>stored</em> direction; the other is inferred, and the SHACL template reads the stored one.</td></tr><tr><td>Row- / column- / cell-level security</td><td>Which records a user may see / which fields of those records / the intersection of both.</td></tr><tr><td>ODP</td><td>Ontology design pattern: a reusable modelling solution to a recurring problem (e.g. the W3C n-ary relation pattern).</td></tr><tr><td>Open world / closed world</td><td>OWL assumes what is not stated may still be true (open world), so it cannot conclude a document is <em>missing</em>. SHACL validates the data as given (closed world), which is what a completeness check needs.</td></tr><tr><td>TBox / ABox</td><td>The schema (classes, properties, shapes) vs the data (this application, these documents). Kept in separate files.</td></tr><tr><td>PROV-O</td><td>W3C provenance ontology: records what an evaluation used (guide version, shapes) and what generated it.</td></tr><tr><td>VocBench 3</td><td>Web-based SKOS editor with roles and a validation workflow; where SMEs maintain the taxonomy.</td></tr><tr><td>Protégé</td><td>Desktop OWL ontology editor from Stanford; where the model and each guide version's requirements are authored.</td></tr><tr><td>pySHACL</td><td>Python library that validates an RDF graph against SHACL shapes and returns a validation report.</td></tr><tr><td>Reasoner</td><td>Software that derives what follows logically from an OWL model and detects contradictions (e.g. HermiT, available in Protégé and run by <code>check_ontology.py</code>).</td></tr><tr><td>ROBOT</td><td>A command-line OWL tool (OBO community); its <code>validate-profile</code> command confirmed the ontology and its whole import closure are OWL 2 DL.</td></tr><tr><td>Validation report</td><td>SHACL's standard output: <code>sh:conforms</code> plus one result per violation (focus node, message, source shape).</td></tr></tbody></table></div>
+
+<h2 id="4-concept"><span class="n">4</span>Concept: three layers, one answer<a class="anchor" href="#4-concept">#</a></h2>
+<p>Each layer answers a different question, and none of them can do the job alone:</p>
+<div class="table-wrap"><table class=""><thead><tr><th>Layer</th><th>Answers</th><th>Lives in</th><th>Changes when</th></tr></thead><tbody><tr><td><strong>Relational</strong> (semantic model)</td><td>What is true about <em>this</em> case?</td><td><code>uc1_*</code> tables</td><td>Every application, every document received</td></tr><tr><td><strong>Taxonomy</strong></td><td>What do we call things, and what is a kind of what?</td><td>VocBench → SKOS export <code>uc1-taxonomy.skos.ttl</code></td><td>Rarely; SMEs own it</td></tr><tr><td><strong>Ontology</strong> (+ SHACL shapes)</td><td>What does guide G version V require, when, how recent?</td><td><code>usecase1/ontology/*.ttl</code></td><td>When an investor publishes a new guide version</td></tr><tr><td><strong>RAG-OS corpus</strong></td><td>Where exactly does the guide say so?</td><td>The RAG-OS index (guide text, versioned)</td><td>When a guide document is ingested</td></tr></tbody></table></div>
+</div>
+<div class="wide"><figure id="fig-layers"><div class="fig-frame"><svg class="ragos-diagram" data-figure="uc1-layers" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 600" width="1440" height="600" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Use Case 1: how relational data, taxonomy, ontology and the guideline corpus combine into a completeness decision"><title>Use Case 1: how relational data, taxonomy, ontology and the guideline corpus combine into a completeness decision</title><defs><marker id="uc1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="40" text-anchor="start">Three layers, one answer</text><text class="t-small" x="36" y="62" text-anchor="start">Facts of this case + controlled words + rules and relationships + the guideline text itself → a deterministic completeness check with a cited missing-items list.</text><rect x="36" y="92" width="360" height="112" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="216.0" y="118" text-anchor="middle" fill="var(--d-data-tx)">Relational: the facts</text><text class="t-line" x="216.0" y="140" text-anchor="middle">uc1_* tables in PostgreSQL</text><text class="t-line" x="216.0" y="157" text-anchor="middle">loan · borrower · investor</text><text class="t-line" x="216.0" y="174" text-anchor="middle">application · received date</text><text class="t-line" x="216.0" y="191" text-anchor="middle">documents submitted + their dates</text><path class="edge" d="M396 148 L560 300" marker-end="url(#uc1-arrow)"/><rect x="36" y="220" width="360" height="112" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="216.0" y="246" text-anchor="middle" fill="var(--d-query-tx)">Taxonomy: the words</text><text class="t-line" x="216.0" y="268" text-anchor="middle">VocBench → SKOS export (git)</text><text class="t-line" x="216.0" y="285" text-anchor="middle">document types · income types</text><text class="t-line" x="216.0" y="302" text-anchor="middle">hardship reasons · workout options</text><text class="t-line" x="216.0" y="319" text-anchor="middle">hierarchy + synonyms</text><path class="edge" d="M396 276 L560 300" marker-end="url(#uc1-arrow)"/><rect x="36" y="348" width="360" height="112" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="216.0" y="374" text-anchor="middle" fill="var(--d-ai-tx)">Ontology: the rules</text><text class="t-line" x="216.0" y="396" text-anchor="middle">OWL classes + relations (Turtle)</text><text class="t-line" x="216.0" y="413" text-anchor="middle">requirements per version + SHACL</text><text class="t-line" x="216.0" y="430" text-anchor="middle">requirements · condition · recency</text><text class="t-line" x="216.0" y="447" text-anchor="middle">each rule cites its section</text><path class="edge" d="M396 404 L560 300" marker-end="url(#uc1-arrow)"/><rect x="36" y="476" width="360" height="112" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="216.0" y="502" text-anchor="middle" fill="var(--d-ingest-tx)">RAG-OS: the guide text</text><text class="t-line" x="216.0" y="524" text-anchor="middle">each guide version ingested</text><text class="t-line" x="216.0" y="541" text-anchor="middle">effective_date · doc_type=Guideline</text><text class="t-line" x="216.0" y="558" text-anchor="middle">page-level citations</text><text class="t-line" x="216.0" y="575" text-anchor="middle">access-tagged to servicing</text><path class="edge" d="M396 532 L560 300" marker-end="url(#uc1-arrow)"/><rect x="560" y="220" width="330" height="160" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="725.0" y="246" text-anchor="middle" fill="var(--d-sec-tx)">Completeness engine</text><text class="t-line" x="725.0" y="268" text-anchor="middle">1 resolve guide version by received date</text><text class="t-line" x="725.0" y="285" text-anchor="middle">2 relational rows → application graph</text><text class="t-line" x="725.0" y="302" text-anchor="middle">3 SHACL validation (pySHACL)</text><text class="t-line" x="725.0" y="319" text-anchor="middle">4 violations → missing items</text><text class="t-line" x="725.0" y="336" text-anchor="middle">5 + due date (5 business days)</text><rect x="1050" y="120" width="354" height="96" rx="10" fill="var(--d-bad-bg)" stroke="var(--d-bad-br)" stroke-width="1.6"/><text class="t-title" x="1227.0" y="146" text-anchor="middle" fill="var(--d-bad-tx)">Missing-items list</text><text class="t-line" x="1227.0" y="168" text-anchor="middle">each item: what · why (rule) ·</text><text class="t-line" x="1227.0" y="185" text-anchor="middle">guide section · RAG-OS citation</text><path class="edge" d="M890 300 L1050 168" marker-end="url(#uc1-arrow)"/><rect x="1050" y="270" width="354" height="96" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="1227.0" y="296" text-anchor="middle" fill="var(--d-state-tx)">Due date</text><text class="t-line" x="1227.0" y="318" text-anchor="middle">received + 5 days excl. Sat, Sun</text><text class="t-line" x="1227.0" y="335" text-anchor="middle">and legal public holidays</text><path class="edge" d="M890 300 L1050 318" marker-end="url(#uc1-arrow)"/><rect x="1050" y="420" width="354" height="96" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="1227.0" y="446" text-anchor="middle" fill="var(--d-ext-tx)">Acknowledgement letter</text><text class="t-line" x="1227.0" y="468" text-anchor="middle">drafted from the list only;</text><text class="t-line" x="1227.0" y="485" text-anchor="middle">verifier: same items, no more</text><path class="edge" d="M890 300 L1050 468" marker-end="url(#uc1-arrow)"/><text class="t-small" x="560" y="412" text-anchor="start">Deterministic: same inputs + same guide version → same answer, every time.</text><text class="t-small" x="560" y="430" text-anchor="start">LLMs work only at the edges: classifying documents and drafting prose.</text></svg></div><figcaption><b>Figure 1 — Three layers, one answer.</b> The completeness engine is the only place they meet, and it is deterministic.</figcaption></figure></div>
+<div class="wrap">
+
+<h2 id="5-relational"><span class="n">5</span>Relational design (semantic model)<a class="anchor" href="#5-relational">#</a></h2>
+<p>The tables hold <strong>facts only, each stored once</strong>. They contain no rules: "self-employed borrowers need a P&amp;L"
+  is not a row, it is part of the ontology, so a new guide version never needs a schema change. Anything that can be
+  computed (the governing guide version, a document's age, completeness) is <strong>derived, not stored</strong>; section 8
+  explains why.</p>
+</div>
+<div class="wide"><figure id="fig-er"><div class="fig-frame"><svg class="ragos-diagram" data-figure="uc1-er" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 636" width="1440" height="636" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Use Case 1 semantic model: uc1 tables and their relations"><title>Use Case 1 semantic model: uc1 tables and their relations</title><defs><marker id="uc1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="40" text-anchor="start">The semantic model: uc1_* tables (facts only, each stored once; no rules live here)</text><rect x="36" y="70" width="300" height="93" rx="8" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-code" x="48" y="92" font-weight="700">uc1_investor</text><line x1="36" y1="102" x2="336" y2="102" stroke="var(--d-data-br)"/><text class="t-codesm" x="48" y="120">PK investor_id</text><text class="t-codesm" x="48" y="137">name</text><text class="t-codesm" x="48" y="154">short_code</text><rect x="36" y="200" width="300" height="144" rx="8" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-code" x="48" y="222" font-weight="700">uc1_guideline_version</text><line x1="36" y1="232" x2="336" y2="232" stroke="var(--d-data-br)"/><text class="t-codesm" x="48" y="250">PK guideline_version_id</text><text class="t-codesm" x="48" y="267">FK investor_id</text><text class="t-codesm" x="48" y="284">version_label  (2026.1)</text><text class="t-codesm" x="48" y="301">effective_from_date · effective_to_date</text><text class="t-codesm" x="48" y="318">requirements_file</text><text class="t-codesm" x="48" y="335">source_doc_id  → RAG-OS doc</text><rect x="36" y="400" width="300" height="76" rx="8" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.6"/><text class="t-code" x="48" y="422" font-weight="700">uc1_holiday</text><line x1="36" y1="432" x2="336" y2="432" stroke="var(--d-obs-br)"/><text class="t-codesm" x="48" y="450">PK holiday_date</text><text class="t-codesm" x="48" y="467">name</text><rect x="390" y="70" width="300" height="110" rx="8" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-code" x="402" y="92" font-weight="700">uc1_loan</text><line x1="390" y1="102" x2="690" y2="102" stroke="var(--d-data-br)"/><text class="t-codesm" x="402" y="120">PK loan_id</text><text class="t-codesm" x="402" y="137">FK investor_id</text><text class="t-codesm" x="402" y="154">lien_position</text><text class="t-codesm" x="402" y="171">property_state</text><rect x="390" y="230" width="300" height="76" rx="8" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-code" x="402" y="252" font-weight="700">uc1_borrower</text><line x1="390" y1="262" x2="690" y2="262" stroke="var(--d-data-br)"/><text class="t-codesm" x="402" y="280">PK borrower_id</text><text class="t-codesm" x="402" y="297">display_name  (PII · column-restricted)</text><rect x="390" y="370" width="300" height="144" rx="8" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-code" x="402" y="392" font-weight="700">uc1_application_party</text><line x1="390" y1="402" x2="690" y2="402" stroke="var(--d-query-br)"/><text class="t-codesm" x="402" y="420">PK application_party_id</text><text class="t-codesm" x="402" y="437">FK application_id</text><text class="t-codesm" x="402" y="454">FK borrower_id</text><text class="t-codesm" x="402" y="471">role  (primary · co_borrower)</text><text class="t-codesm" x="402" y="488">employment_type  (taxonomy)</text><text class="t-codesm" x="402" y="505">has_rental_income</text><rect x="744" y="70" width="300" height="127" rx="8" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-code" x="756" y="92" font-weight="700">uc1_application</text><line x1="744" y1="102" x2="1044" y2="102" stroke="var(--d-data-br)"/><text class="t-codesm" x="756" y="120">PK application_id</text><text class="t-codesm" x="756" y="137">FK loan_id</text><text class="t-codesm" x="756" y="154">received_at</text><text class="t-codesm" x="756" y="171">foreclosure_sale_date</text><text class="t-codesm" x="756" y="188">hardship_reason  (taxonomy)</text><rect x="744" y="250" width="300" height="195" rx="8" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-code" x="756" y="272" font-weight="700">uc1_submitted_document</text><line x1="744" y1="282" x2="1044" y2="282" stroke="var(--d-data-br)"/><text class="t-codesm" x="756" y="300">PK submitted_document_id</text><text class="t-codesm" x="756" y="317">FK application_id</text><text class="t-codesm" x="756" y="334">received_at · document_date</text><text class="t-codesm" x="756" y="351">period_start_date · period_end_date</text><text class="t-codesm" x="756" y="368">signature_signed · signature_date</text><text class="t-codesm" x="756" y="385">classification_doc_type  (taxonomy)</text><text class="t-codesm" x="756" y="402">classification_confidence · _method</text><text class="t-codesm" x="756" y="419">classification_reviewed_by</text><text class="t-codesm" x="756" y="436">rag_doc_id  → RAG-OS doc</text><rect x="1098" y="70" width="300" height="127" rx="8" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-code" x="1110" y="92" font-weight="700">uc1_evaluation</text><line x1="1098" y1="102" x2="1398" y2="102" stroke="var(--d-sec-br)"/><text class="t-codesm" x="1110" y="120">PK evaluation_id</text><text class="t-codesm" x="1110" y="137">FK application_id</text><text class="t-codesm" x="1110" y="154">FK guideline_version_id  (used)</text><text class="t-codesm" x="1110" y="171">due_date</text><text class="t-codesm" x="1110" y="188">engine_version · evaluated_at</text><rect x="1098" y="250" width="300" height="127" rx="8" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-code" x="1110" y="272" font-weight="700">uc1_evaluation_item</text><line x1="1098" y1="282" x2="1398" y2="282" stroke="var(--d-query-br)"/><text class="t-codesm" x="1110" y="300">PK evaluation_item_id</text><text class="t-codesm" x="1110" y="317">FK evaluation_id</text><text class="t-codesm" x="1110" y="334">requirement_id  (&#x27;R4&#x27;, within the version)</text><text class="t-codesm" x="1110" y="351">outcome  (met · missing · not_applicable)</text><text class="t-codesm" x="1110" y="368">reason  (no PII)</text><rect x="1098" y="412" width="300" height="76" rx="8" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-code" x="1110" y="434" font-weight="700">uc1_evaluation_item_document</text><line x1="1098" y1="444" x2="1398" y2="444" stroke="var(--d-query-br)"/><text class="t-codesm" x="1110" y="462">PK · FK evaluation_item_id</text><text class="t-codesm" x="1110" y="479">PK · FK submitted_document_id</text><path class="edge" d="M186 163 L186 200" marker-end="url(#uc1-arrow)"/><path class="edge" d="M336 110 L390 110" marker-end="url(#uc1-arrow)"/><path class="edge" d="M690 110 L744 110" marker-end="url(#uc1-arrow)"/><path class="edge" d="M540 306 L540 370" marker-end="url(#uc1-arrow)"/><path class="edge" d="M744 180 L717 180 L717 440 L690 440" marker-end="url(#uc1-arrow)"/><path class="edge" d="M894 197 L894 250" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1044 110 L1098 110" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1248 197 L1248 250" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1248 377 L1248 412" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1044 430 L1098 430" marker-end="url(#uc1-arrow)"/><path class="edge-dash" d="M336 320 L362 320 L362 535 L1414 535 L1414 130 L1398 130" marker-end="url(#uc1-arrow)"/><rect class="chip" x="691.0" y="525" width="378.0" height="20" rx="7"/><text class="t-edge" x="880" y="539" text-anchor="middle">guide version used: the one in effect on received_at</text><text class="t-small" x="36" y="580" text-anchor="start">Each fact once: the application stores no resolved version and no completeness status. Both are derived, then frozen per evaluation as an audit snapshot.</text><text class="t-small" x="36" y="598" text-anchor="start">Object-backed links: uc1_application_party (role and employment as of this application), uc1_evaluation_item (one outcome per requirement) and uc1_evaluation_item_document (the documents that met it).</text><text class="t-small" x="36" y="616" text-anchor="start">Names: dates end _date, timestamps end _at. The signature_*, period_* and classification_* column groups each become one struct in the ontology.</text></svg></div><figcaption><b>Figure 2 — The uc1 semantic model.</b> uc1_application_party, uc1_evaluation_item and uc1_evaluation_item_document are object-backed links. Created by standalone scripts, not product migrations, so it can be removed in one step.</figcaption></figure></div>
+<div class="wrap">
+<p>The tables below are cut from <code>usecase1/sql/uc1_create.sql</code> when this page is built, so they always match the
+  script. <code>uc1_application_party</code>, <code>uc1_evaluation_item</code> and <code>uc1_evaluation_item_document</code>
+  are object-backed links: the last one lists the documents that satisfied an item, because one item can need several
+  (two bank statements satisfy R5).</p>
+<div class="code"><span class="lang">sql</span><button class="copy">Copy</button><pre><code>-- Excerpt of usecase1/sql/uc1_create.sql, read when this page is built (the file is the source of truth).
+-- 5 of its 11 tables; indexes and the other tables are omitted.
+-- One loss-mitigation application.
+CREATE TABLE uc1_application (
+    application_id          TEXT NOT NULL PRIMARY KEY,
+    loan_id                 TEXT NOT NULL REFERENCES uc1_loan (loan_id),
+    received_at             TIMESTAMP NOT NULL,
+    foreclosure_sale_date   DATE,
+    hardship_reason         TEXT NOT NULL           -- taxonomy id (uc1_hardship_reason): a fact of this application
+        CHECK (length(hardship_reason) &gt; 0)
+    -- deliberately absent: resolved guide version, completeness status (both derived; see header)
+);
+
+-- Object-backed link: Application x Borrower. Role and circumstances as of this application.
+-- Exactly one 'primary' per application: at most one is enforced by ux_uc1_application_party_primary below;
+-- at least one is an invariant tested by check_sql.py (a row-level constraint cannot see other rows).
+CREATE TABLE uc1_application_party (
+    application_party_id    TEXT NOT NULL PRIMARY KEY,
+    application_id          TEXT NOT NULL REFERENCES uc1_application (application_id),
+    borrower_id             TEXT NOT NULL REFERENCES uc1_borrower (borrower_id),
+    role                    TEXT NOT NULL CHECK (role IN ('primary', 'co_borrower')),
+    employment_type         TEXT NOT NULL           -- taxonomy id (uc1_employment_type), as of this application
+        CHECK (length(employment_type) &gt; 0),
+    has_rental_income       BOOLEAN NOT NULL CHECK (has_rental_income IN (TRUE, FALSE)),
+    UNIQUE (application_id, borrower_id)
+);
+
+-- A document received for an application (an Evidence in the ontology).
+-- Structs, as prefixed column groups (the bridge maps each group to one struct):
+--   period_*          -&gt; Period         (start + end; a start needs an end, end &gt;= start)
+--   signature_*       -&gt; Signature      (signed + date; NULL signed = not applicable; a date only when signed)
+--   classification_*  -&gt; Classification (doc type + confidence + method + reviewer; method always known;
+--                                        'human' needs a reviewer, a machine method needs a confidence)
+CREATE TABLE uc1_submitted_document (
+    submitted_document_id       TEXT NOT NULL PRIMARY KEY,
+    application_id              TEXT NOT NULL REFERENCES uc1_application (application_id),
+    received_at                 TIMESTAMP NOT NULL,
+    document_date               DATE,
+    -- struct: period
+    period_start_date           DATE,
+    period_end_date             DATE,
+    -- struct: signature
+    signature_signed            BOOLEAN CHECK (signature_signed IN (TRUE, FALSE)),
+    signature_date              DATE,
+    -- struct: classification (taxonomy id + how it was decided)
+    classification_doc_type     TEXT NOT NULL       -- taxonomy id (uc1_doc_type)
+        CHECK (length(classification_doc_type) &gt; 0),
+    classification_confidence   DOUBLE PRECISION CHECK (classification_confidence BETWEEN 0 AND 1),
+    classification_method       TEXT NOT NULL CHECK (classification_method IN ('classifier', 'llm', 'human')),
+    classification_reviewed_by  TEXT,
+    rag_doc_id                  TEXT,               -- the uploaded file in RAG-OS
+    CHECK (period_start_date IS NULL OR period_end_date IS NOT NULL),
+    CHECK (period_end_date IS NULL OR period_start_date IS NULL OR period_end_date &gt;= period_start_date),
+    CHECK (signature_date IS NULL OR signature_signed = TRUE),
+    CHECK (classification_method &lt;&gt; 'human' OR classification_reviewed_by IS NOT NULL),
+    CHECK (classification_method = 'human' OR classification_confidence IS NOT NULL)
+);
+
+-- Object-backed link: Evaluation x Requirement. One outcome per requirement per evaluation.
+CREATE TABLE uc1_evaluation_item (
+    evaluation_item_id          TEXT NOT NULL PRIMARY KEY,
+    evaluation_id               TEXT NOT NULL REFERENCES uc1_evaluation (evaluation_id),
+    requirement_id              TEXT NOT NULL,      -- requirement id within the evaluation's guide version, e.g. 'R4'
+    outcome                     TEXT NOT NULL CHECK (outcome IN ('met', 'missing', 'not_applicable')),
+    reason                      TEXT,               -- engine explanation; must not contain PII (no names, ids)
+    UNIQUE (evaluation_id, requirement_id)
+);
+
+-- Which documents satisfied an item. Many-to-many: 'two most recent bank statements' is met by two documents.
+CREATE TABLE uc1_evaluation_item_document (
+    evaluation_item_id          TEXT NOT NULL REFERENCES uc1_evaluation_item (evaluation_item_id),
+    submitted_document_id       TEXT NOT NULL REFERENCES uc1_submitted_document (submitted_document_id),
+    PRIMARY KEY (evaluation_item_id, submitted_document_id)
+);</code></pre></div>
+<p><strong>Where:</strong> the <code>uc1_*</code> tables live in their own SQLite file, <code>.data/uc1.db</code> (git-ignored),
+  never in the product state database; the same scripts are proven on PostgreSQL 16 in a dedicated <code>uc1</code> schema.
+  They are created by <code>usecase1/sql/uc1_create.sql</code> (which expects an empty schema), seeded by
+  <code>uc1_seed.sql</code> and removed by <code>uc1_drop.sql</code>. These are not Alembic migrations, so the product schema
+  is never touched.</p>
+<p><strong>Version resolution:</strong> the governing guide version is derived, never stored: the loan investor's version in
+  effect on the application's received date. The query below shows the rule; it is illustrative and not part of the
+  script. The version is recorded only on <code>uc1_evaluation</code>, which freezes it together with the outcome. If an
+  investor's own policy says otherwise, that becomes a column, not code.</p>
+<div class="code"><span class="lang">sql</span><button class="copy">Copy</button><pre><code>-- Illustrative only: this query is NOT in uc1_create.sql. The governing guide version is derived, never stored:
+-- the loan investor's version whose effective dates contain the application's received date
+-- (effective_to_date NULL = open-ended). PostgreSQL syntax; in SQLite write date(a.received_at).
+SELECT gv.guideline_version_id
+  FROM uc1_application a
+  JOIN uc1_loan l               ON l.loan_id = a.loan_id
+  JOIN uc1_guideline_version gv ON gv.investor_id = l.investor_id
+ WHERE a.application_id = :application_id
+   AND gv.effective_from_date &lt;= CAST(a.received_at AS DATE)
+   AND (gv.effective_to_date IS NULL OR gv.effective_to_date &gt;= CAST(a.received_at AS DATE));</code></pre></div>
+<p><strong>Naming:</strong> singular table names; dates end <code>_date</code> and timestamps <code>_at</code>; qualified names
+  (<code>outcome</code>, <code>classification_confidence</code>) instead of a generic <code>status</code> or <code>value</code>.
+  <strong>Simplification:</strong> <code>uc1_loan.investor_id</code> is a direct link; see 8.2.</p>
+
+<h2 id="6-taxonomy"><span class="n">6</span>Taxonomy: what, how, where<a class="anchor" href="#6-taxonomy">#</a></h2>
+<ul>
+  <li><strong>What:</strong> four controlled vocabularies.
+    <ul>
+      <li><code>uc1_doc_type</code> is hierarchical, with synonyms: Application › MAA, Income › Paystub · P&amp;L · Benefit
+        letter, Assets › Bank statement, Hardship › Hardship statement, Tax › 4506-C, Property › Lease.</li>
+      <li><code>uc1_employment_type</code>, <code>uc1_hardship_reason</code> and <code>uc1_workout_option</code>.</li>
+      <li><strong>Real words, synthetic rules:</strong> labels and synonyms use real industry document names (Form 710,
+        4506-C, RMA) so the classifier can recognise real documents; only the <em>requirements</em> (section 7) are
+        synthetic.</li>
+      <li><strong>Group concepts are not classification targets.</strong> Application, Income, Assets, Hardship, Tax and
+        Property only group the hierarchy: the converter keeps them out of the classifier, and a document matched only to
+        a parent means <em>needs-review</em>, never a valid type.</li>
+    </ul>
+  </li>
+  <li><strong>Edited in:</strong> <strong>VocBench 3</strong> (section 9.2), by the SMEs, with a validator approving each
+    change. VocBench holds the vocabulary as SKOS; its Turtle export is the single source of truth. It was bootstrapped
+    once from the seed <code>usecase1/taxonomy/uc1-taxonomy.seed.skos.ttl</code>.</li>
+  <li><strong>How RAG-OS uses it:</strong> a converter (Phase 2) generates the YAML below from the export, in exactly the
+    shape RAG-OS already uses for facets (<code>FacetDef</code>: id, label, parent, synonyms, description,
+    <code>classify</code>). The mapping is fixed: a concept's <code>skos:notation</code> (= its IRI local name) is the
+    value <code>id</code>, <code>skos:prefLabel</code> the <code>label</code>, <code>skos:altLabel</code> the
+    <code>synonyms</code>, <code>skos:broader</code> the <code>parent</code>, and <code>skos:definition</code> the value's
+    <code>description</code>; each scheme's IRI local name is the facet <code>name</code> and its <code>skos:prefLabel</code>
+    the facet <code>label</code>. The existing embedding classifier can then label incoming borrower documents, and
+    low-confidence labels go to the existing review queue, with no new mechanism.</li>
+  <li><strong>Where:</strong> the SKOS export <code>usecase1/taxonomy/uc1-taxonomy.skos.ttl</code> in git, imported by the
+    ontology (<code>skos:broader</code>, <code>skos:altLabel</code>), so rules and classifier use the <em>same</em> concepts. The
+    generated <code>usecase1/taxonomy/taxonomy.yaml</code> stays out of the product <code>facets.yaml</code> until the use
+    case is adopted.</li>
+  <li><strong>Who:</strong> loss-mitigation operations SMEs, the same ownership model as RAG-OS facets.</li>
+</ul>
+<p>The YAML below is <strong>abridged</strong> and built for this page from the seed, so its labels and synonyms are the
+  real ones; the converter itself is Phase 2 work.</p>
+<div class="code"><span class="lang">yaml</span><button class="copy">Copy</button><pre><code># usecase1/taxonomy/taxonomy.yaml: what the Phase 2 converter will GENERATE from the VocBench export; never edited.
+# ABRIDGED, built for this page from usecase1/taxonomy/uc1-taxonomy.seed.skos.ttl: one description shown; flat facets summarised.
+# Mapping: skos:notation -&gt; id · skos:prefLabel -&gt; label · skos:altLabel -&gt; synonyms · skos:broader -&gt; parent
+#          skos:definition -&gt; description · the scheme's skos:prefLabel -&gt; the facet's label.
+# Same shape as config/classification/facets.yaml (FacetDef), so the RAG-OS classifier reads it as-is.
+facets:
+  - name: uc1_doc_type
+    field: f_uc1_doc_type
+    label: Document type
+    hierarchical: true
+    classify: true          # the existing embedding classifier fills it; low confidence -&gt; review queue
+    owner: loss-mitigation-ops
+    values:
+      - { id: Application, label: Application }   # group concept: not a classification target
+      - { id: MAA, parent: Application, label: Mortgage assistance application, synonyms: [Form 710, RMA, request for mortgage assistance] }
+      - { id: Income, label: Income evidence }   # group concept: not a classification target
+      - { id: Paystub, parent: Income, label: Paystub, synonyms: [pay stub, payslip, earnings statement] }
+      - { id: ProfitAndLoss, parent: Income, label: Profit and loss statement, synonyms: [P&amp;L, income statement],
+          description: "A self-employed borrower's business statement for a period showing gross receipts, cost of goods sold, operating expenses and net profit, used to establish self-employment income." }
+      - { id: BenefitLetter, parent: Income, label: Unemployment benefit award letter, synonyms: [unemployment award letter, unemployment insurance award letter] }
+      - { id: Assets, label: Asset evidence }   # group concept: not a classification target
+      - { id: BankStatement, parent: Assets, label: Bank statement, synonyms: [bank account statement, checking account statement, savings account statement] }
+      - { id: Hardship, label: Hardship }   # group concept: not a classification target
+      - { id: HardshipStatement, parent: Hardship, label: Hardship statement, synonyms: [hardship letter, hardship affidavit] }
+      - { id: Tax, label: Tax }   # group concept: not a classification target
+      - { id: Form4506C, parent: Tax, label: IRS Form 4506-C, synonyms: [4506-C, tax transcript authorization] }
+      - { id: Property, label: Property }   # group concept: not a classification target
+      - { id: Lease, parent: Property, label: Lease agreement, synonyms: [rental agreement, tenancy agreement] }
+  - name: uc1_employment_type    # label: Employment type · values: Salaried, SelfEmployed, Retired, Unemployed
+  - name: uc1_hardship_reason    # label: Hardship reason · values: Unemployment, IncomeReduction, Medical, Divorce, Death, Disaster
+  - name: uc1_workout_option    # label: Workout option · values: Forbearance, RepaymentPlan, Modification, ShortSale, DeedInLieu</code></pre></div>
+
+<h2 id="7-ontology"><span class="n">7</span>Ontology: construction<a class="anchor" href="#7-ontology">#</a></h2>
+<p><strong>Approach: competency questions first.</strong> The ontology is only as big as the questions it must answer:</p>
+<ol>
+  <li>Which guide version governs application A?</li>
+  <li>Under that version, which requirements apply to A's borrower?</li>
+  <li>Which of those are not satisfied by a submitted document of the right type, signed and recent enough?</li>
+  <li>For each unmet requirement, which guide section says so, and where is it in the source text?</li>
+</ol>
+</div>
+<div class="wide"><figure id="fig-ontology"><div class="fig-frame"><svg class="ragos-diagram" data-figure="uc1-ontology" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 704" width="1440" height="704" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Use Case 1 ontology: classes, interfaces and relations"><title>Use Case 1 ontology: classes, interfaces and relations</title><defs><marker id="uc1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="40" text-anchor="start">The ontology: classes and relations (uc1:)</text><text class="t-small" x="36" y="62" text-anchor="start">Top: the rules (one requirements file per guide version). Right and bottom: the case. «Evidence» and «Citable» are interfaces; Requirement, ApplicationParty and EvaluationItem are object-backed links (n-ary relations).</text><rect x="30" y="100" width="250" height="80" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="155.0" y="126" text-anchor="middle" fill="var(--d-ext-tx)">Investor</text><text class="t-line" x="155.0" y="148" text-anchor="middle">Investor A</text><rect x="315" y="100" width="250" height="80" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="440.0" y="126" text-anchor="middle" fill="var(--d-ai-tx)">GuidelineVersion</text><text class="t-line" x="440.0" y="148" text-anchor="middle">versionLabel 2025.1 · 2026.1</text><text class="t-line" x="440.0" y="165" text-anchor="middle">effective dates · own data file</text><rect x="600" y="100" width="250" height="80" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="725.0" y="126" text-anchor="middle" fill="var(--d-query-tx)">Requirement</text><text class="t-line" x="725.0" y="148" text-anchor="middle">n-ary relation · «Citable»</text><text class="t-line" x="725.0" y="165" text-anchor="middle">R1 … R8 per version</text><rect x="885" y="100" width="250" height="80" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1010.0" y="126" text-anchor="middle" fill="var(--d-ai-tx)">DocumentType</text><text class="t-line" x="1010.0" y="148" text-anchor="middle">skos:Concept (taxonomy)</text><text class="t-line" x="1010.0" y="165" text-anchor="middle">Paystub · ProfitAndLoss · …</text><rect x="1170" y="100" width="250" height="80" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="1295.0" y="126" text-anchor="middle" fill="var(--d-data-tx)">SubmittedDocument</text><text class="t-line" x="1295.0" y="148" text-anchor="middle">«Evidence» documentDate</text><text class="t-line" x="1295.0" y="165" text-anchor="middle">signature · period · classification</text><rect x="315" y="250" width="250" height="80" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="440.0" y="276" text-anchor="middle" fill="var(--d-ingest-tx)">GuideSection</text><text class="t-line" x="440.0" y="298" text-anchor="middle">sectionNumber 4.3.2</text><text class="t-line" x="440.0" y="315" text-anchor="middle">rdfs:seeAlso → guide text</text><rect x="600" y="250" width="250" height="80" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="725.0" y="276" text-anchor="middle" fill="var(--d-ai-tx)">ApplicabilityCondition</text><text class="t-line" x="725.0" y="298" text-anchor="middle">onProperty employmentType</text><text class="t-line" x="725.0" y="315" text-anchor="middle">expectedValue SelfEmployed</text><rect x="885" y="250" width="250" height="80" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1010.0" y="276" text-anchor="middle" fill="var(--d-ai-tx)">RecencyRule</text><text class="t-line" x="1010.0" y="298" text-anchor="middle">maxAgeDays · signatureRequired</text><text class="t-line" x="1010.0" y="315" text-anchor="middle">minCount · mostRecentMonths</text><rect x="1170" y="250" width="250" height="80" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="1295.0" y="276" text-anchor="middle" fill="var(--d-data-tx)">Application</text><text class="t-line" x="1295.0" y="298" text-anchor="middle">receivedAt · hardshipReason</text><text class="t-line" x="1295.0" y="315" text-anchor="middle">loan → ownedBy → Investor</text><rect x="885" y="400" width="250" height="80" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="1010.0" y="426" text-anchor="middle" fill="var(--d-data-tx)">Borrower</text><text class="t-line" x="1010.0" y="448" text-anchor="middle">identity only</text><text class="t-line" x="1010.0" y="465" text-anchor="middle">PII: column-restricted</text><rect x="1170" y="400" width="250" height="80" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="1295.0" y="426" text-anchor="middle" fill="var(--d-query-tx)">ApplicationParty</text><text class="t-line" x="1295.0" y="448" text-anchor="middle">object-backed link</text><text class="t-line" x="1295.0" y="465" text-anchor="middle">role · employmentType (as of)</text><rect x="885" y="550" width="250" height="80" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="1010.0" y="576" text-anchor="middle" fill="var(--d-sec-tx)">Evaluation</text><text class="t-line" x="1010.0" y="598" text-anchor="middle">prov:used GuidelineVersion</text><text class="t-line" x="1010.0" y="615" text-anchor="middle">dueDate · evaluatedAt</text><rect x="600" y="550" width="250" height="80" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="725.0" y="576" text-anchor="middle" fill="var(--d-query-tx)">EvaluationItem</text><text class="t-line" x="725.0" y="598" text-anchor="middle">«Citable» · requirement · outcome</text><text class="t-line" x="725.0" y="615" text-anchor="middle">satisfiedBy → SubmittedDocument</text><path class="edge" d="M315 140.0 L280 140.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="262.0" y="78" width="70.0" height="20" rx="7"/><text class="t-edge" x="297" y="92" text-anchor="middle">issuedBy</text><path class="edge" d="M600 140.0 L565 140.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="519.0" y="78" width="126.0" height="20" rx="7"/><text class="t-edge" x="582" y="92" text-anchor="middle">guidelineVersion</text><path class="edge" d="M850 140.0 L885 140.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="818.0" y="78" width="98.0" height="20" rx="7"/><text class="t-edge" x="867" y="92" text-anchor="middle">documentType</text><path class="edge" d="M1170 140.0 L1135 140.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="1068.0" y="78" width="168.0" height="20" rx="7"/><text class="t-edge" x="1152" y="92" text-anchor="middle">classification/docType</text><path class="edge" d="M725 180 L725 250" marker-end="url(#uc1-arrow)"/><rect class="chip" x="686.5" y="208" width="77.0" height="20" rx="7"/><text class="t-edge" x="725" y="222" text-anchor="middle">condition</text><path class="edge" d="M805 180 L960 250" marker-end="url(#uc1-arrow)"/><rect class="chip" x="853.5" y="198" width="63.0" height="20" rx="7"/><text class="t-edge" x="885" y="212" text-anchor="middle">recency</text><path class="edge" d="M1295 250 L1295 180" marker-end="url(#uc1-arrow)"/><rect class="chip" x="1256.5" y="208" width="77.0" height="20" rx="7"/><text class="t-edge" x="1295" y="222" text-anchor="middle">documents</text><path class="edge" d="M1295 330 L1295 400" marker-end="url(#uc1-arrow)"/><rect class="chip" x="1263.5" y="358" width="63.0" height="20" rx="7"/><text class="t-edge" x="1295" y="372" text-anchor="middle">parties</text><path class="edge" d="M1170 440.0 L1135 440.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="1117.0" y="378" width="70.0" height="20" rx="7"/><text class="t-edge" x="1152" y="392" text-anchor="middle">borrower</text><path class="edge" d="M1420 290.0 L1432 290.0 L1432 590.0 L1135 590.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="1254.5" y="580.0" width="91.0" height="20" rx="7"/><text class="t-edge" x="1300" y="594.0" text-anchor="middle">evaluations</text><path class="edge" d="M885 590.0 L850 590.0" marker-end="url(#uc1-arrow)"/><rect class="chip" x="842.5" y="528" width="49.0" height="20" rx="7"/><text class="t-edge" x="867" y="542" text-anchor="middle">items</text><path class="edge-dash" d="M640 180 L520 250" marker-end="url(#uc1-arrow)"/><rect class="chip" x="526.0" y="208" width="98.0" height="20" rx="7"/><text class="t-edge" x="575" y="222" text-anchor="middle">guideSection</text><path class="edge-dash" d="M725 330 L725 510 L1295 510 L1295 480" marker-end="url(#uc1-arrow)"/><rect class="chip" x="873.5" y="500" width="273.0" height="20" rx="7"/><text class="t-edge" x="1010" y="514" text-anchor="middle">condition: onProperty / expectedValue</text><text class="t-small" x="36" y="668" text-anchor="start">Solid: asserted relations, each drawn in its stored direction; the inverse is named and inferred only (issuedBy ↔ guidelineVersions, guidelineVersion ↔ requirements, documents ↔ application).</text><text class="t-small" x="36" y="686" text-anchor="start">Dashed: provenance (every Citable cites its guide section) and what a condition tests, on the application or any of its parties. Structs: signature, period, classification (docType + confidence + method).</text></svg></div><figcaption><b>Figure 3 — The ontology.</b> Requirement, ApplicationParty and EvaluationItem are object-backed links; «Evidence» and «Citable» are interfaces; DocumentType is the taxonomy concept itself. Each arrow is drawn in its stored direction.</figcaption></figure></div>
+<div class="wrap">
+<h3>The synthetic guide: requirements by version</h3>
+<div class="table-wrap"><table class="req"><thead><tr><th>Id</th><th>Requirement</th><th>Applies when</th><th>Recency</th><th>Section</th><th>v2025.1</th><th>v2026.1</th></tr></thead><tbody><tr><td>R1</td><td>Mortgage assistance application (Form 710-style), signed and dated by every borrower</td><td>always</td><td>signed</td><td>§4.2.1</td><td>same</td><td>same</td></tr><tr><td>R2</td><td>Hardship statement</td><td>always</td><td>—</td><td>§4.2.2</td><td>same</td><td>same</td></tr><tr><td>R3</td><td>Two most recent paystubs</td><td>employment = salaried</td><td>2 paystubs, each dated ≤ 90 days before receipt</td><td>§4.3.1</td><td>same</td><td>same</td></tr><tr><td>R4</td><td>Profit and loss statement</td><td>employment = self-employed</td><td>v2025.1: ≤ 120 days · v2026.1: ≤ 90 days <strong>and signed</strong></td><td>§4.3.2</td><td>≤ 120 days</td><td><strong>≤ 90 days, signed</strong></td></tr><tr><td>R5</td><td>Two most recent monthly bank statements, all accounts</td><td>always</td><td>2 distinct months among the 2 months before the month of receipt</td><td>§4.4</td><td>same</td><td>same</td></tr><tr><td>R6</td><td>IRS Form 4506-C, signed</td><td>always</td><td>signed</td><td>§4.5</td><td>same</td><td>same</td></tr><tr><td>R7</td><td>Lease agreement for each rental property</td><td>has rental income</td><td>—</td><td>§4.3.4</td><td>same</td><td>same</td></tr><tr><td>R8</td><td>Unemployment benefit award letter</td><td>hardship = unemployment</td><td>dated ≤ 60 days before receipt</td><td>§4.3.5</td><td><em>not required</em></td><td><strong>new in v2026.1</strong></td></tr></tbody></table></div>
+<h3>Core vocabulary (Turtle)</h3>
+<p>Excerpts of <code>usecase1/ontology/uc1-core.ttl</code>, cut from the file when this page is built: the two interfaces,
+  classes that implement them, a struct, an inverse pair with its stored direction, and a date. The full naming contract
+  (every class and property, which are functional, which direction is stored) is <code>usecase1/README.md</code>.</p>
+<div class="code"><span class="lang">turtle</span><button class="copy">Copy</button><pre><code># Excerpt of usecase1/ontology/uc1-core.ttl, read when this page is built (the file is the source of truth).
+
+@prefix uc1:  &lt;https://rag-os.example/uc1#&gt; .
+@prefix owl:  &lt;http://www.w3.org/2002/07/owl#&gt; .
+@prefix prov: &lt;http://www.w3.org/ns/prov#&gt; .
+@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
+@prefix xsd:  &lt;http://www.w3.org/2001/XMLSchema#&gt; .
+
+# ... interfaces: shapes several classes implement
+
+uc1:Evidence
+    a owl:Class ;
+    rdfs:label "Evidence"@en ;
+    rdfs:comment "Interface: anything submitted as proof. Evidence has a document date, a signature, a period it covers and a classification of what kind of document it is."@en .
+
+uc1:Citable
+    a owl:Class ;
+    rdfs:label "Citable"@en ;
+    rdfs:comment "Interface: anything that cites the section of the servicing guide that justifies it."@en .
+
+# ... classes that implement them
+
+uc1:SubmittedDocument
+    a owl:Class ;
+    rdfs:subClassOf uc1:Evidence ;
+    rdfs:label "Submitted document"@en ;
+    rdfs:comment "A document actually received for an application: what arrived, as opposed to the kind of document (a taxonomy concept) or the rule that asks for it (a requirement). Personal data."@en .
+
+uc1:EvaluationItem
+    a owl:Class ;
+    rdfs:subClassOf uc1:Citable ;
+    rdfs:subClassOf prov:Entity ;
+    rdfs:subClassOf [ a owl:Restriction ; owl:onProperty prov:wasGeneratedBy ; owl:someValuesFrom uc1:Evaluation ] ;
+    rdfs:label "Evaluation item"@en ;
+    rdfs:comment "Object-backed link between an evaluation and a requirement: the outcome, the reason, and the documents that satisfied it (several when minCount &gt; 1), if any. Generated by its evaluation (prov:wasGeneratedBy)."@en .
+
+# ... a struct: one class plus the property that holds it
+
+uc1:Signature
+    a owl:Class ;
+    rdfs:label "Signature"@en ;
+    rdfs:comment "Struct: whether a document is signed, and the date it was signed."@en .
+
+uc1:signature
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range uc1:Signature ;
+    rdfs:label "signature"@en ;
+    rdfs:comment "Whether and when the evidence was signed."@en .
+
+# ... an inverse pair: only the stored direction (uc1:parties) is written in data
+
+uc1:parties
+    a owl:ObjectProperty ;
+    rdfs:domain uc1:Application ;
+    rdfs:range uc1:ApplicationParty ;
+    owl:inverseOf uc1:partyTo ;
+    rdfs:label "parties"@en ;
+    rdfs:comment "The borrowers on this application, each with their role and circumstances as of the application. Stored direction: uc1:parties; its inverse uc1:partyTo is inferred only."@en .
+
+uc1:partyTo
+    a owl:ObjectProperty , owl:FunctionalProperty ;
+    rdfs:domain uc1:ApplicationParty ;
+    rdfs:range uc1:Application ;
+    rdfs:label "party to"@en ;
+    rdfs:comment "The application this borrower takes part in. Stored direction: uc1:parties; its inverse uc1:partyTo is inferred only."@en .
+
+# ... a date: xsd:dateTime at midnight
+
+uc1:documentDate
+    a owl:DatatypeProperty ;
+    rdfs:domain uc1:Evidence ;
+    rdfs:range xsd:dateTime ;  # a calendar date, written at midnight (OWL 2 has no xsd:date)
+    rdfs:label "document date"@en ;
+    rdfs:comment "The date printed on the evidence, used to judge how recent it is."@en .</code></pre></div>
+<h3>One requirement, stated once as data</h3>
+<p>R4 from <code>investor-a-2026.1.ttl</code>. Its condition and recency rule are named individuals, so they can be edited in
+  Protégé; the condition's rule parameters are <code>uc1:onProperty</code> and <code>uc1:expectedValue</code>. In
+  <code>investor-a-2025.1.ttl</code> the same requirement has <code>maxAgeDays 120</code> and no
+  <code>signatureRequired</code>: a new file, not a new class.</p>
+<div class="code"><span class="lang">turtle</span><button class="copy">Copy</button><pre><code># Excerpt of usecase1/ontology/investor-a-2026.1.ttl (SYNTHETIC guide; one file per version), read when this page is built.
+
+@prefix uc1:   &lt;https://rag-os.example/uc1#&gt; .
+@prefix uc1tx: &lt;https://rag-os.example/uc1/taxonomy#&gt; .
+@prefix ia:    &lt;https://rag-os.example/uc1/investor-a#&gt; .
+@prefix ia26:  &lt;https://rag-os.example/uc1/investor-a/2026.1#&gt; .
+@prefix owl:   &lt;http://www.w3.org/2002/07/owl#&gt; .
+@prefix rdfs:  &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
+@prefix xsd:   &lt;http://www.w3.org/2001/XMLSchema#&gt; .
+
+ia:v2026.1
+    a uc1:GuidelineVersion , owl:NamedIndividual ;
+    rdfs:label "Investor A Servicing Guide v2026.1 (synthetic)"@en ;
+    uc1:issuedBy ia:InvestorA ;
+    uc1:versionLabel "2026.1" ;
+    uc1:effectiveFromDate "2026-01-01T00:00:00"^^xsd:dateTime ;
+    rdfs:seeAlso &lt;guide://investor-a/2026.1&gt; .
+
+ia26:s4.3.2
+    a uc1:GuideSection , owl:NamedIndividual ;
+    rdfs:label "§4.3.2 Self-employed income"@en ;
+    uc1:sectionNumber "4.3.2" ;
+    rdfs:seeAlso &lt;guide://investor-a/2026.1#section-4.3.2&gt; .
+
+ia26:R4
+    a uc1:Requirement , owl:NamedIndividual ;
+    rdfs:label "R4: Profit and loss statement, signed, dated within 90 days of receipt (§4.3.2)"@en ;
+    uc1:requirementId "R4" ;
+    uc1:guidelineVersion ia:v2026.1 ;
+    uc1:documentType uc1tx:ProfitAndLoss ;
+    uc1:condition ia26:R4-condition ;
+    uc1:recency ia26:R4-recency ;
+    uc1:guideSection ia26:s4.3.2 .
+
+ia26:R4-condition
+    a uc1:ApplicabilityCondition , owl:NamedIndividual ;
+    rdfs:label "R4 applies when employmentType = SelfEmployed"@en ;
+    uc1:onProperty uc1:employmentType ;
+    uc1:expectedValue uc1tx:SelfEmployed .
+
+ia26:R4-recency
+    a uc1:RecencyRule , owl:NamedIndividual ;
+    rdfs:label "R4 recency: maxAgeDays 90, signatureRequired true"@en ;
+    uc1:maxAgeDays 90 ;
+    uc1:signatureRequired true .</code></pre></div>
+<h3>One generic SHACL template checks every document requirement</h3>
+<p>The whole of <code>uc1-requirements.shapes.ttl</code>. It reads each requirement's parameters (document type, conditions,
+  <code>maxAgeDays</code>, <code>signatureRequired</code>, <code>minCount</code>, <code>mostRecentMonths</code>) and reports
+  one result per requirement that applies and is not met. Data defects are checked separately, by the data-quality shapes
+  in <code>uc1-dataquality.shapes.ttl</code>, so a defect is never presented to a borrower as a missing document.</p>
+<div class="code"><span class="lang">shacl</span><button class="copy">Copy</button><pre><code># usecase1/ontology/uc1-requirements.shapes.ttl: the whole file, read when this page is built.
+# =====================================================================================================================
+# Use Case 1: the completeness template (SHACL-SPARQL). Written once by an engineer; SMEs never edit it.
+#
+# One shape checks EVERY document requirement of the governing guide version. Requirements are data (one file per
+# guide version, investor-a-&lt;version&gt;.ttl); this template only reads their parameters:
+#   uc1:documentType                      the taxonomy concept that satisfies it (narrower concepts count too)
+#   uc1:condition  onProperty/expectedValue  when it applies (tested on the application or any of its parties)
+#   uc1:recency    maxAgeDays             each satisfying document is at most this old at receipt
+#                  signatureRequired      each satisfying document is signed
+#                  minCount               at least this many satisfying documents (default 1)
+#                  mostRecentMonths       a window of N whole months before the month of receipt (1 = the month
+#                                         before) in which periods must end; with minCount, that many DISTINCT
+#                                         months must be covered. A period ending in the month of receipt does not count.
+# Each violation is one missing item; its message is the requirement's own label (which cites its guide section).
+#
+# Inputs the bridge must provide per application: uc1:governingVersion, uc1:ageAtReceiptDays and
+# uc1:monthsBeforeReceipt (all derived, never stored). Data shape problems are reported separately by
+# uc1-dataquality.shapes.ttl, so a data defect is never presented to a borrower as a missing document.
+# SYNTHETIC MVP. Verified by usecase1/checks/run_golden.py.
+# =====================================================================================================================
+
+@prefix uc1:      &lt;https://rag-os.example/uc1#&gt; .
+@prefix uc1shape: &lt;https://rag-os.example/uc1/shapes#&gt; .
+@prefix owl:      &lt;http://www.w3.org/2002/07/owl#&gt; .
+@prefix rdfs:     &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
+@prefix sh:       &lt;http://www.w3.org/ns/shacl#&gt; .
+@prefix skos:     &lt;http://www.w3.org/2004/02/skos/core#&gt; .
+@prefix xsd:      &lt;http://www.w3.org/2001/XMLSchema#&gt; .
+
+&lt;https://rag-os.example/uc1/shapes&gt;
+    a owl:Ontology ;
+    rdfs:label "Use Case 1 completeness template (SHACL)"@en ;
+    sh:declare
+        [ sh:prefix "uc1" ;  sh:namespace "https://rag-os.example/uc1#"^^xsd:anyURI ] ,
+        [ sh:prefix "rdfs" ; sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ] ,
+        [ sh:prefix "skos" ; sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ] .
+
+uc1shape:DocumentRequirement
+    a sh:NodeShape ;
+    rdfs:label "Every applicable requirement of the governing guide version is satisfied"@en ;
+    sh:targetClass uc1:Application ;
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:prefixes &lt;https://rag-os.example/uc1/shapes&gt; ;
+        sh:message "{?label}" ;
+        sh:select """
+            SELECT $this ?req ?label
+            WHERE {
+                $this uc1:governingVersion ?gv .
+                ?req uc1:guidelineVersion ?gv ;
+                     uc1:documentType ?type ;
+                     rdfs:label ?label .
+
+                # Applies only if every condition holds on the application or on one of its parties.
+                FILTER NOT EXISTS {
+                    ?req uc1:condition ?c .
+                    ?c uc1:onProperty ?p ;
+                       uc1:expectedValue ?v .
+                    FILTER NOT EXISTS { { $this ?p ?v } UNION { $this uc1:parties ?pt . ?pt ?p ?v } }
+                }
+
+                OPTIONAL { ?req uc1:recency/uc1:maxAgeDays ?max }
+                OPTIONAL { ?req uc1:recency/uc1:signatureRequired ?sig }
+                OPTIONAL { ?req uc1:recency/uc1:minCount ?minCount }
+                OPTIONAL { ?req uc1:recency/uc1:mostRecentMonths ?months }
+
+                # Each satisfying document contributes one key: itself, or its month when months are counted.
+                OPTIONAL {
+                    $this uc1:documents ?d .
+                    ?d uc1:classification/uc1:docType/skos:broader* ?type .
+                    OPTIONAL { ?d uc1:ageAtReceiptDays ?age }
+                    OPTIONAL { ?d uc1:monthsBeforeReceipt ?m }
+                    FILTER (!BOUND(?max) || (BOUND(?age) &amp;&amp; ?age &lt;= ?max))
+                    FILTER (!BOUND(?sig) || !?sig || EXISTS { ?d uc1:signature/uc1:signed true })
+                    FILTER (!BOUND(?months) || (BOUND(?m) &amp;&amp; ?m &gt;= 1 &amp;&amp; ?m &lt;= ?months))
+                    BIND (IF(BOUND(?months), STR(?m), STR(?d)) AS ?key)
+                }
+            }
+            GROUP BY $this ?req ?label
+            HAVING (COUNT(DISTINCT ?key) &lt; MAX(COALESCE(?minCount, 1)))
+            """ ;
+    ] .</code></pre></div>
+<p><strong>Why SHACL:</strong> it is the W3C standard for "does this graph satisfy these constraints?". Its validation report
+  lists every violation with its message, which <em>is</em> the missing-items list. The message is the requirement's own
+  label, and the requirement cites its section, so every item is traceable. <strong>Why rules as data:</strong> "90 days" is
+  written once, in the requirement, and the template is the same for every version. So v2025.1 and v2026.1 differ only in
+  their data files (<code>investor-a-2025.1.ttl</code>, <code>investor-a-2026.1.ttl</code>). A new version is a new file, and
+  old ones stay for audit and for re-checking older applications. <strong>Date arithmetic</strong> is derived by the bridge
+  (<code>ageAtReceiptDays</code>, <code>monthsBeforeReceipt</code>), both because SPARQL date subtraction is not portable and
+  because a derived value must not be stored (8.2). <strong>Dates</strong> are written as <code>xsd:dateTime</code> at
+  midnight (<code>"2026-01-01T00:00:00"^^xsd:dateTime</code>), because OWL 2 has no date-only datatype and HermiT (also
+  inside Protégé) rejects one; the SQL tables keep real <code>DATE</code> columns and the bridge writes them at midnight.
+  The principles behind these choices are in section 8.</p>
+
+
+<h2 id="8-design"><span class="n">8</span>Ontology design: principles, patterns, anti-patterns<a class="anchor" href="#8-design">#</a></h2>
+<p>Sections 5–7 follow three sources of design guidance, and every decision can be traced to one of them. Where
+  the guidance exposed a flaw in the first draft of this design, the design was changed; those changes are marked
+  <span class="tag miss">changed</span> in 8.2.</p>
+
+<h3 id="8-1-sources">8.1 Sources and how they are used</h3>
+<ul>
+  <li><a href="https://www.palantir.com/docs/foundry/ontology/ontology-structural-guidance">Palantir Foundry: Ontology design, structural guidance</a>. Six areas: normalization and derived
+    properties, structs, interfaces, links and object-backed link types, naming conventions, and security design. It is
+    written for Foundry; Use Case 1 applies its <em>principles</em> to OWL/SHACL and PostgreSQL. Foundry is not a dependency.</li>
+  <li>Classic ontology engineering: <a href="https://tomgruber.org/writing/onto-design">Gruber's design criteria (1995)</a>, competency questions, and the W3C
+    <a href="https://www.w3.org/TR/swbp-n-aryRelations/">n-ary relations</a> pattern.</li>
+  <li>The <a href="https://oops.linkeddata.es/catalogue.jsp">OOPS! pitfall catalogue</a> of common ontology modelling mistakes, cited by pitfall number.</li>
+</ul>
+<p>How Foundry's terms translate to this design:</p>
+<div class="table-wrap"><table class=""><thead><tr><th>Foundry term</th><th>Meaning there</th><th>Use Case 1 equivalent</th></tr></thead><tbody><tr><td>Object type</td><td>A kind of real-world entity</td><td>OWL class + a <code>uc1_*</code> table (<code>Application</code>, <code>SubmittedDocument</code> …)</td></tr><tr><td>Property</td><td>A field of an object</td><td>Datatype property / table column</td></tr><tr><td>Struct</td><td>Related fields grouped as one property</td><td>Struct node (<code>Signature</code>, <code>Period</code>, <code>Classification</code>); in the table, the column groups <code>signature_*</code>, <code>period_*</code>, <code>classification_*</code></td></tr><tr><td>Interface</td><td>A shape shared by several object types</td><td>Abstract class + one shared SHACL shape (<code>«Evidence»</code>, <code>«Citable»</code>)</td></tr><tr><td>Link type</td><td>A relationship between objects</td><td>Object property, named so it reads from each end, with its inverse</td></tr><tr><td>Object-backed link</td><td>A relationship that carries its own facts</td><td>N-ary relation class + table (<code>ApplicationParty</code>, <code>Requirement</code>, <code>EvaluationItem</code>)</td></tr><tr><td>Derived property</td><td>Computed when read</td><td>Computed by the bridge for each evaluation (<code>ageAtReceiptDays</code>, <code>governingVersion</code>)</td></tr><tr><td>Row / column security</td><td>Which objects / which properties a user sees</td><td>RAG-OS access tags; PostgreSQL row-level security and column grants</td></tr></tbody></table></div>
+
+<h3 id="8-2-structural">8.2 Structural guidance applied</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Guidance</th><th>What it means here</th><th>Use Case 1 decision</th></tr></thead><tbody><tr><td><strong>Normalization and derived properties</strong><br>"Store each fact once. Use derived properties for convenience."</td><td>The governing guide version and the completeness verdict are consequences of other facts (received date, guide effective dates, documents).</td><td><span class="tag miss">changed</span> Removed <code>resolved_guideline_version_id</code> and <code>status</code> from <code>uc1_application</code>. The version is derived from <code>received_at</code>; completeness comes from the engine. <code>uc1_evaluation</code> freezes both as an append-only audit snapshot: the one deliberate, documented denormalization, because a decision must be reproducible exactly as it was made. Document age is never stored: it depends on the application's receipt date (another object), so the bridge derives it per evaluation. A requirement's limit (90 days) is written once, as data, not repeated in rule code.</td></tr><tr><td><strong>Structs</strong><br>"Group semantically related fields into structs."</td><td>Signature (signed + date), period (start + end), and the classifier's output with its confidence. That last one is the guidance's own example: model output with metadata.</td><td><span class="tag miss">changed</span> <code>signature</code>, <code>period</code> and <code>classification</code> are structs. <code>classification</code> = docType + confidence + method (classifier / llm / human) + reviewedBy, so the engine can refuse a low-confidence label nobody has reviewed. Tables stay flat with prefixed column groups, which is the relational norm; the bridge maps each group to one struct.</td></tr><tr><td><strong>Interfaces</strong><br>"Use interfaces to build reusable, future-proof abstractions."</td><td>Every kind of submitted document is evidence with the same shape. Requirements and evaluation items both cite guide sections.</td><td><span class="tag ok">added</span> <code>«Evidence»</code> (documentDate, signature, period, classification) and <code>«Citable»</code> (guideSection). One shape checks all evidence, so a new document kind needs no new rule. The taxonomy hierarchy supplies drilldown: "missing income evidence" counts every kind of income document.</td></tr><tr><td><strong>Links and object-backed link types</strong><br>"Links should represent semantically meaningful relationships."</td><td>Employment, rental income and role are true of a borrower <em>in this application</em> and change between applications. A requirement relates five things at once.</td><td><span class="tag miss">changed</span> <code>ApplicationParty</code> is an object-backed link (role, employmentType, hasRentalIncome as of this application), and the hardship reason moved to the application. <code>Requirement</code> and <code>EvaluationItem</code> are object-backed too. No link exists only because two tables share a column: a document relates to a requirement only through an evaluation item the engine produced.</td></tr><tr><td><strong>Naming conventions</strong><br>Readable by people and by agents.</td><td>People review these names, and the LLM drafting step reads them.</td><td><span class="tag miss">changed</span> Singular, concrete class names. <code>Condition</code> → <code>ApplicabilityCondition</code>, <code>ValidityRule</code> → <code>RecencyRule</code>, <code>validWithin</code> → <code>maxAgeDays</code>, <code>version</code> → <code>versionLabel</code>. The generic <code>status</code> is gone; <code>outcome</code> is qualified (met / missing / not_applicable). Dates end <code>_date</code>/<code>Date</code> and timestamps <code>_at</code>/<code>At</code>. Links read from each end: <code>requirements</code> ↔ <code>guidelineVersion</code>, <code>documents</code> ↔ <code>application</code>. Each inverse pair has one <em>stored</em> direction (<code>issuedBy</code>, <code>guidelineVersion</code>, <code>parties</code>, <code>documents</code>, <code>evaluations</code>, <code>items</code>); the other is inferred only.</td></tr><tr><td><strong>Security design</strong><br>"Design security semantically, following the principle of least privilege."</td><td>Borrower identity and documents are personal data.</td><td>One <code>Borrower</code> type and one <code>Application</code> type, never <code>PublicBorrower</code>/<code>RestrictedBorrower</code>. <strong>Row-level:</strong> RAG-OS access tags (servicing team, region) on documents, and (planned; not in the Phase 1 scripts) PostgreSQL row-level security on <code>uc1_*</code> by servicing team. <strong>Column-level:</strong> <code>display_name</code> is the only PII column and is restricted; no tax id or other identifier is kept (minimal PII). The hardship reason is sensitive (medical, divorce, death). <strong>Least privilege by construction:</strong> the bridge puts only the facts the rules need into the engine's graph (no names, no identifiers). <strong>Start restrictive:</strong> <code>uc1_*</code> is readable by the engine role only until opened deliberately.</td></tr></tbody></table></div>
+<p><strong>A known simplification:</strong> <code>uc1_loan.investor_id</code> stays a direct link for the MVP. Loans are sold, so
+  investor ownership changes over time. If that history matters, ownership becomes an object-backed link
+  (<code>LoanOwnership</code> with effective dates), exactly as the guidance recommends. It is listed in section 15.</p>
+
+<h3 id="8-3-principles">8.3 General ontology design principles</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Principle</th><th>Source</th><th>In Use Case 1</th></tr></thead><tbody><tr><td>Clarity</td><td><a href="https://tomgruber.org/writing/onto-design">Gruber</a></td><td>Every class and property has a definition (<code>rdfs:comment</code>) in business words; taxonomy labels are the words SMEs use.</td></tr><tr><td>Coherence</td><td><a href="https://tomgruber.org/writing/onto-design">Gruber</a></td><td>Disjoint classes (<code>owl:AllDisjointClasses</code>) and a domain and range on every property, so contradictions can be caught.</td></tr><tr><td>Extendibility</td><td><a href="https://tomgruber.org/writing/onto-design">Gruber</a></td><td>A new guide version is a new data file. Documents of a new kind are SubmittedDocuments (so «Evidence»), classified with a new taxonomy concept. Neither needs a class or code change.</td></tr><tr><td>Minimal encoding bias</td><td><a href="https://tomgruber.org/writing/onto-design">Gruber</a></td><td>The model is stated in business terms; SPARQL and SQL appear only in the bridge and the templates.</td></tr><tr><td>Minimal ontological commitment</td><td><a href="https://tomgruber.org/writing/onto-design">Gruber</a></td><td>Model only what the competency questions need: no payment history, no servicing transfers, no workout decision logic.</td></tr><tr><td>Competency questions first</td><td>Ontology engineering practice</td><td>The four questions in section 7 bound the model. Anything they don't need is left out.</td></tr><tr><td>Reuse standard vocabularies</td><td>W3C</td><td><a href="https://www.w3.org/TR/skos-reference/">SKOS</a> for the taxonomy, <a href="https://www.w3.org/TR/shacl/">SHACL</a> for validation, <a href="https://www.w3.org/TR/prov-o/">PROV-O</a> for evaluation provenance, OWL for versioning (<code>owl:versionIRI</code>).</td></tr><tr><td>Schema separate from data (TBox / ABox)</td><td>Description-logic practice</td><td><code>uc1-core.ttl</code> holds the classes; <code>investor-a-&lt;version&gt;.ttl</code> holds the requirements; per-application graphs are built by the bridge and never written back.</td></tr><tr><td>Closed-world validation</td><td><a href="https://www.w3.org/TR/shacl/">W3C SHACL</a></td><td>OWL is open-world: it cannot conclude a P&amp;L is <em>missing</em>, only that none is known. Completeness is a closed-world question, so it is SHACL's job.</td></tr></tbody></table></div>
+
+<h3 id="8-4-patterns">8.4 Patterns used</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Pattern</th><th>Problem it solves</th><th>Use Case 1 instance</th></tr></thead><tbody><tr><td><a href="https://www.w3.org/TR/swbp-n-aryRelations/">N-ary relation</a> (W3C)</td><td>A relationship among more than two things, or one that carries attributes</td><td><code>Requirement</code> (version × document type × condition × recency × section); <code>EvaluationItem</code>; <code>ApplicationParty</code></td></tr><tr><td>Value partition / concept scheme</td><td>A closed set of values with a hierarchy</td><td>SKOS concept schemes for document type, employment type, hardship reason and workout option</td></tr><tr><td>Rules as data + one generic template</td><td>Many similar rules that differ only in parameters</td><td>Each requirement is data; one SHACL-SPARQL template evaluates them all (section 7)</td></tr><tr><td>Versioned graph</td><td>Rules change by publication, and old ones must stay checkable</td><td>One file per guide version, <code>owl:versionIRI</code>; each evaluation records the version it used</td></tr><tr><td>Provenance (<a href="https://www.w3.org/TR/prov-o/">PROV-O</a>)</td><td>"Why did the engine say this?"</td><td><code>Evaluation</code> is a <code>prov:Activity</code> that used a guide version and its requirements, and generated the evaluation items</td></tr><tr><td>Qualified value (struct)</td><td>A value plus facts about the value</td><td><code>Classification</code>: value + confidence + method + reviewer</td></tr></tbody></table></div>
+
+<h3 id="8-5-anti-patterns">8.5 Anti-patterns avoided</h3>
+<div class="table-wrap"><table class=""><thead><tr><th>Anti-pattern</th><th>Source</th><th>Why it hurts</th><th>Use Case 1 instead</th><th>Checked by</th></tr></thead><tbody><tr><td>Same fact stored in several places</td><td>Palantir</td><td>Copies drift apart</td><td>Each fact in one column; version and status derived</td><td>Lint: no derived columns in uc1_*</td></tr><tr><td>Manually maintained or stale derived values</td><td>Palantir</td><td>Every action must remember to update them</td><td><code>ageAtReceiptDays</code> and <code>governingVersion</code> computed per evaluation</td><td>Lint + golden cases</td></tr><tr><td>Links created only because tables share a key</td><td>Palantir</td><td>Relationships with no domain meaning mislead readers and agents</td><td>A document relates to a requirement only through an EvaluationItem</td><td>Review checklist</td></tr><tr><td>A property where an object-backed link is needed</td><td>Palantir</td><td>The relationship's facts have nowhere to live; history is lost</td><td><code>ApplicationParty</code>, <code>EvaluationItem</code></td><td>Review checklist</td></tr><tr><td>Ambiguous multi-valued properties</td><td>Palantir</td><td>Which role belongs to which borrower?</td><td>One ApplicationParty per borrower, carrying its role</td><td><code>UNIQUE (application_id, borrower_id)</code></td></tr><tr><td>Duplicating types for security</td><td>Palantir</td><td>Schema drift; two versions of the truth</td><td>One type; row- and column-level rules</td><td>Review checklist</td></tr><tr><td>Security logic scattered in application code</td><td>Palantir</td><td>Gaps that cannot be audited</td><td>Access tags + database policies; a minimal engine graph</td><td>Engine tests (Phase 2)</td></tr><tr><td>Synonyms as classes</td><td><a href="https://oops.linkeddata.es/catalogue.jsp">OOPS! P02</a></td><td>"P&amp;L" and "Profit and loss statement" become two things</td><td>Synonyms are <code>skos:altLabel</code> on one concept</td><td>Lint: labels unique per scheme</td></tr><tr><td>Different concepts merged in one class</td><td><a href="https://oops.linkeddata.es/catalogue.jsp">OOPS! P07</a></td><td>"Document" meaning the file, the kind and the rule</td><td>SubmittedDocument (what arrived), DocumentType (the kind), Requirement (the rule)</td><td>Disjointness axioms</td></tr><tr><td>Missing disjointness</td><td><a href="https://oops.linkeddata.es/catalogue.jsp">OOPS! P10</a></td><td>A borrower typed as a document goes unnoticed</td><td><code>owl:AllDisjointClasses</code></td><td>Lint</td></tr><tr><td>Missing domain or range</td><td><a href="https://oops.linkeddata.es/catalogue.jsp">OOPS! P11</a></td><td>Properties attach to anything</td><td>Every property has both</td><td>Lint</td></tr><tr><td>A class per guide version</td><td>Common modelling error</td><td>Class explosion; a schema change every publication</td><td>Versions are instances; requirements are data</td><td>Lint: no version-specific classes</td></tr><tr><td>Rules in tables or engine code</td><td>Common modelling error</td><td>Rules become hidden, unversioned and uncited</td><td>Rules in versioned ontology files, each citing its section</td><td>Lint: every Requirement has a section</td></tr><tr><td><code>rdfs:subClassOf</code> where "is evidence of" is meant</td><td>Common modelling error</td><td>A P&amp;L is not a kind of income</td><td><code>skos:broader</code> in the taxonomy; subclass only for a true is-a</td><td>Review checklist</td></tr><tr><td>Taxonomy duplicated in the ontology</td><td>Common modelling error</td><td>Two vocabularies drift apart</td><td>The VocBench SKOS export is the single source; taxonomy.yaml is generated from it</td><td>Lint: rules reference only existing concept ids</td></tr><tr><td>OWL reasoning used to decide what is missing</td><td>Open-world semantics</td><td>Absence proves nothing in OWL</td><td>SHACL (closed world)</td><td>Design</td></tr><tr><td>A god class</td><td>Common modelling error</td><td>Hard to change, hard to secure</td><td>Facts split by what they describe</td><td>Review checklist</td></tr><tr><td>An LLM deciding completeness</td><td>This design</td><td>Not reproducible, not auditable</td><td>Deterministic engine; LLMs only at the edges (section 11)</td><td>Letter-faithfulness test</td></tr></tbody></table></div>
+
+<h3 id="8-6-checklist">8.6 Design-review checklist</h3>
+<p>Run this before every new guide version, new document kind or model change. Every answer must be <strong>yes</strong>.</p>
+<ol><li>Is each new fact stored exactly once, and is everything computable derived rather than stored?</li><li>If a value is deliberately denormalized (like the evaluation snapshot), is the reason written down?</li><li>Are related fields grouped into a struct rather than loose properties?</li><li>Is a new document kind only a new taxonomy concept (its documents are SubmittedDocuments, so «Evidence»), with no new class or rule?</li><li>Does every new link answer a domain question, and does a link with its own facts have its own object?</li><li>Are names singular, concrete, qualified and readable from both ends? Do dates and timestamps follow the suffix rule?</li><li>Is a new guide version only a new data file, with no new class and no code change?</li><li>Does every requirement cite its guide section, and does that section exist in the ingested guide?</li><li>Is every new term in the VocBench taxonomy (not invented in the ontology), with its synonyms as labels?</li><li>Is there still one type per entity, with row- and column-level rules instead of copies?</li><li>Do the golden cases still pass, with no loss of precision?</li></ol>
+
+
+
+<h2 id="9-tools"><span class="n">9</span>Tools: taxonomy, ontology, SHACL<a class="anchor" href="#9-tools">#</a></h2>
+<p>Three things are needed, and only three: <strong>one tool for the taxonomy</strong>, <strong>one tool for the
+  ontology</strong>, and <strong>one library that runs SHACL</strong> inside the completeness engine. Both tools save
+  plain Turtle files into git, so neither becomes a runtime dependency of RAG-OS.</p>
+
+<h3 id="9-1-glance">9.1 At a glance</h3>
+<div class="table-wrap"><table><thead><tr><th>Job</th><th>Tool</th><th>Purpose</th><th>Who uses it</th><th>Why this one</th><th>Version (verified 2026-10-05)</th></tr></thead><tbody><tr><td><strong>Taxonomy</strong></td><td><a href="https://vocbench.uniroma2.it/"><strong>VocBench 3</strong></a></td><td>Subject-matter experts maintain the controlled words (document types, hardship reasons…), their hierarchy and synonyms, with review before anything is published.</td><td>SMEs (edit), a validator (approve)</td><td>Free, web-based SKOS editor. Used to maintain AGROVOC (FAO), EuroVoc (EU Publications Office) and GEMET.</td><td>15.1.2 · needs Java 17+</td></tr><tr><td><strong>Ontology</strong></td><td><a href="https://protege.stanford.edu/"><strong>Protégé Desktop</strong></a></td><td>Define the classes and relationships, and enter each guide version's requirements; the built-in reasoner checks the model is consistent.</td><td>Knowledge engineer (edit), SME (review)</td><td>The most widely used ontology editor (Stanford; 300,000+ registered users); used for WHO ICD-11 and the NCI Thesaurus.</td><td>5.6.9 · Java bundled</td></tr><tr><td><strong>SHACL</strong></td><td><a href="https://pypi.org/project/pyshacl/"><strong>pySHACL</strong></a> (a library, not an application)</td><td>Runs the completeness check inside the engine: data graph + SHACL template → validation report → missing items.</td><td>Nobody opens it; the engine calls it</td><td>The Python SHACL validator from the RDFLib project; supports SHACL-SPARQL constraints. Apache-2.0.</td><td>0.40.1 (+ rdflib 7.6.0) · Python ≥ 3.9</td></tr></tbody></table></div>
+</div>
+<div class="wide"><figure id="fig-toolchain"><div class="fig-frame"><svg class="ragos-diagram" data-figure="uc1-toolchain" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 530" width="1440" height="530" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Use Case 1 toolchain: VocBench for the taxonomy, Protégé for the ontology, pySHACL in the completeness engine"><title>Use Case 1 toolchain: VocBench for the taxonomy, Protégé for the ontology, pySHACL in the completeness engine</title><defs><marker id="uc1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="40" text-anchor="start">Toolchain: one tool for the taxonomy, one for the ontology, one library for SHACL</text><text class="t-small" x="36" y="62" text-anchor="start">People work in VocBench and Protégé; both save plain Turtle files into git. The completeness engine loads those files and runs pySHACL. Nothing else is needed.</text><text class="t-small" x="36" y="100" text-anchor="start" font-weight="700">Taxonomy · subject-matter experts</text><text class="t-small" x="36" y="245" text-anchor="start" font-weight="700">Ontology · knowledge engineer</text><text class="t-small" x="36" y="390" text-anchor="start" font-weight="700">Completeness engine · automatic, per application</text><rect x="36" y="110" width="250" height="80" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="161.0" y="136" text-anchor="middle" fill="var(--d-ext-tx)">SME in a browser</text><text class="t-line" x="161.0" y="158" text-anchor="middle">adds terms, synonyms,</text><text class="t-line" x="161.0" y="175" text-anchor="middle">hierarchy</text><rect x="316" y="110" width="250" height="80" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="441.0" y="136" text-anchor="middle" fill="var(--d-query-tx)">VocBench 3</text><text class="t-line" x="441.0" y="158" text-anchor="middle">propose → validate</text><text class="t-line" x="441.0" y="175" text-anchor="middle">roles · history</text><rect x="596" y="110" width="250" height="80" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="721.0" y="136" text-anchor="middle" fill="var(--d-data-tx)">uc1-taxonomy.skos.ttl</text><text class="t-line" x="721.0" y="158" text-anchor="middle">SKOS export, in git</text><text class="t-line" x="721.0" y="175" text-anchor="middle">single source of words</text><rect x="876" y="110" width="250" height="80" rx="10" fill="var(--d-obs-bg)" stroke="var(--d-obs-br)" stroke-width="1.6"/><text class="t-title" x="1001.0" y="136" text-anchor="middle" fill="var(--d-obs-tx)">Converter (script)</text><text class="t-line" x="1001.0" y="158" text-anchor="middle">SKOS → FacetDef YAML</text><text class="t-line" x="1001.0" y="175" text-anchor="middle">generated, never edited</text><rect x="1156" y="110" width="250" height="80" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="1281.0" y="136" text-anchor="middle" fill="var(--d-ingest-tx)">taxonomy.yaml</text><text class="t-line" x="1281.0" y="158" text-anchor="middle">read by the RAG-OS</text><text class="t-line" x="1281.0" y="175" text-anchor="middle">classifier</text><rect x="36" y="255" width="250" height="80" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="161.0" y="281" text-anchor="middle" fill="var(--d-ext-tx)">Knowledge engineer</text><text class="t-line" x="161.0" y="303" text-anchor="middle">models classes; enters</text><text class="t-line" x="161.0" y="320" text-anchor="middle">requirements per version</text><rect x="316" y="255" width="250" height="80" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="441.0" y="281" text-anchor="middle" fill="var(--d-ai-tx)">Protégé Desktop</text><text class="t-line" x="441.0" y="303" text-anchor="middle">OWL editor + reasoner</text><text class="t-line" x="441.0" y="320" text-anchor="middle">checks the model</text><rect x="596" y="255" width="250" height="80" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="721.0" y="281" text-anchor="middle" fill="var(--d-data-tx)">Ontology files (git)</text><text class="t-line" x="721.0" y="303" text-anchor="middle">uc1-core.ttl</text><text class="t-line" x="721.0" y="320" text-anchor="middle">investor-a-&lt;version&gt;.ttl</text><rect x="36" y="400" width="250" height="80" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="161.0" y="426" text-anchor="middle" fill="var(--d-data-tx)">uc1_* tables</text><text class="t-line" x="161.0" y="448" text-anchor="middle">the facts of</text><text class="t-line" x="161.0" y="465" text-anchor="middle">this application</text><rect x="316" y="400" width="250" height="80" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="441.0" y="426" text-anchor="middle" fill="var(--d-sec-tx)">Bridge (rdflib)</text><text class="t-line" x="441.0" y="448" text-anchor="middle">rows → graph; merges</text><text class="t-line" x="441.0" y="465" text-anchor="middle">core + version file</text><rect x="596" y="400" width="250" height="80" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="721.0" y="426" text-anchor="middle" fill="var(--d-sec-tx)">pySHACL</text><text class="t-line" x="721.0" y="448" text-anchor="middle">one SPARQL template</text><text class="t-line" x="721.0" y="465" text-anchor="middle">over all requirements</text><rect x="876" y="400" width="250" height="80" rx="10" fill="var(--d-bad-bg)" stroke="var(--d-bad-br)" stroke-width="1.6"/><text class="t-title" x="1001.0" y="426" text-anchor="middle" fill="var(--d-bad-tx)">Validation report</text><text class="t-line" x="1001.0" y="448" text-anchor="middle">one result per</text><text class="t-line" x="1001.0" y="465" text-anchor="middle">unmet requirement</text><rect x="1156" y="400" width="250" height="80" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="1281.0" y="426" text-anchor="middle" fill="var(--d-state-tx)">Missing items</text><text class="t-line" x="1281.0" y="448" text-anchor="middle">+ guide section</text><text class="t-line" x="1281.0" y="465" text-anchor="middle">+ RAG-OS citation</text><path class="edge" d="M286 150.0 L316 150.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M566 150.0 L596 150.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M846 150.0 L876 150.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1126 150.0 L1156 150.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M286 295.0 L316 295.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M566 295.0 L596 295.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M286 440.0 L316 440.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M566 440.0 L596 440.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M846 440.0 L876 440.0" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1126 440.0 L1156 440.0" marker-end="url(#uc1-arrow)"/><path class="edge-dash" d="M721.0 190 L721.0 255" marker-end="url(#uc1-arrow)"/><rect class="chip" x="675.5" y="219" width="91.0" height="20" rx="7"/><text class="t-edge" x="721.0" y="233" text-anchor="middle">owl:imports</text><path class="edge-dash" d="M636 335 L526 400" marker-end="url(#uc1-arrow)"/><rect class="chip" x="576.0" y="360" width="56.0" height="20" rx="7"/><text class="t-edge" x="604" y="374" text-anchor="middle">loaded</text><text class="t-small" x="36" y="512" text-anchor="start">Versions verified 2026-10-05: VocBench 3 15.1.2 (Java 17+) · Protégé 5.6.9 (Java bundled) · pySHACL 0.40.1 with rdflib 7.6.0 (Python ≥ 3.9).</text></svg></div>
+<figcaption><b>Figure 4 — The toolchain.</b> People edit in VocBench and Protégé; files in git are the hand-off; the engine
+  does the rest automatically.</figcaption></figure></div>
+<div class="wrap">
+
+<h3 id="9-2-vocbench">9.2 VocBench 3: the taxonomy</h3>
+<p><strong>Purpose.</strong> Lets subject-matter experts maintain the controlled vocabulary themselves, in a browser, without
+  editing files. It is the <strong>source of truth for the taxonomy</strong> (section 6).</p>
+<p><strong>How it works.</strong> VocBench is a web application running on the Semantic Turkey server, which keeps each
+  vocabulary in an RDF store (an embedded RDF4J store by default). Each vocabulary is a <em>project</em> using the SKOS
+  model: concepts, broader/narrower links, preferred and alternative labels. Users get roles, and a project can require
+  validation, so a change is first <em>proposed</em> and becomes visible only when a validator approves it. The full
+  history of changes is kept. The finished vocabulary is exported as a Turtle file.</p>
+<p><strong>Example.</strong></p>
+<ol>
+  <li>In project <code>uc1-loss-mitigation</code>, add the concept <em>Profit and loss statement</em> narrower than
+    <em>Income evidence</em>, with alternative labels "P&amp;L" and "income statement".</li>
+  <li>A validator reviews and approves it.</li>
+  <li>The project's export (Global Data Management → Export Data → Turtle) writes
+    <code>usecase1/taxonomy/uc1-taxonomy.skos.ttl</code>, which is committed to git.</li>
+  <li>The converter regenerates <code>taxonomy.yaml</code>, so the RAG-OS classifier can label incoming documents as this
+    type.</li>
+</ol>
+<p><strong>Project settings</strong> for <code>uc1-loss-mitigation</code>. History and validation can only be switched on
+  when the project is created, so set them then:</p>
+<div class="table-wrap"><table><thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead><tbody><tr><td>Model</td><td>SKOS</td><td>A taxonomy, not an OWL ontology.</td></tr><tr><td>Lexicalization model</td><td>SKOS (<strong>not</strong> SKOS-XL)</td><td>Labels stay plain <code>skos:prefLabel</code> / <code>skos:altLabel</code> literals, as the naming contract and the converter expect.</td></tr><tr><td>Base URI</td><td><code>https://rag-os.example/uc1/taxonomy</code> (default namespace <code>https://rag-os.example/uc1/taxonomy#</code>)</td><td>The <code>uc1tx:</code> namespace, so IRIs match the seed and the ontology's references.</td></tr><tr><td>Language</td><td><code>en</code></td><td>Every label is <code>@en</code>.</td></tr><tr><td>History</td><td>ON (creation time only)</td><td>Every change is kept, with who and when.</td></tr><tr><td>Validation</td><td>ON (creation time only)</td><td>A change is a proposal until a validator approves it.</td></tr><tr><td>Reified notes</td><td>OFF</td><td>Definitions stay plain <code>skos:definition</code> literals, which become the facet value's <code>description</code>.</td></tr></tbody></table></div>
+<p><strong>Bootstrap, once:</strong> Global Data Management → Load Data → <code>usecase1/taxonomy/uc1-taxonomy.seed.skos.ttl</code>,
+  format Turtle, with <strong>Implicit Validation</strong> ticked for this one load, so the seed arrives as accepted
+  content rather than as a queue of proposals. From then on every change goes through validation.</p>
+<p><strong>Adding a concept:</strong> choose to specify the IRI yourself and use the concept's notation as its local name
+  (e.g. <code>https://rag-os.example/uc1/taxonomy#BankStatement</code> with <code>skos:notation "BankStatement"</code>).
+  VocBench's default generator makes random <code>c_…</code> IRIs, which <code>check_taxonomy.py</code> rejects: the local
+  name must equal the notation, which is the RAG-OS facet value <code>id</code>.</p>
+<p><strong>Export:</strong> Global Data Management → Export Data → Turtle → save as
+  <code>usecase1/taxonomy/uc1-taxonomy.skos.ttl</code>. After the first export, switch the taxonomy entry in
+  <code>usecase1/ontology/catalog-v001.xml</code> from the seed to the export, then run the round-trip check
+  (<code>check_taxonomy.py --roundtrip</code>), which compares the export with the seed. From then on the export is the
+  source of truth.</p>
+<p><strong>Download and install</strong> (Windows, PowerShell 7; macOS and Linux use <code>semanticturkey.sh</code>). A Docker
+  distribution is also available. Full instructions: <a href="https://vocbench.uniroma2.it/doc/">VocBench documentation</a>. More links (documentation, community, learning): <a href="#9-6-links">9.6</a>.</p>
+<div class="code"><span class="lang">powershell</span><button class="copy">Copy</button><pre><code># 1. Java 17 or later (VocBench is tested on 21)
+winget install EclipseAdoptium.Temurin.21.JDK
+
+# 2. Download vocbench3-15.1.2-full.zip from
+#    https://bitbucket.org/art-uniroma2/vocbench3/downloads/  and unzip it, e.g. to C:\Tools\vocbench3
+
+# 3. Start it (Semantic Turkey server + VocBench web app, bundled in the zip)
+C:\Tools\vocbench3\bin\semanticturkey.bat
+
+# 4. Wait until the console shows "Started Application in ... seconds" (an earlier request can log a harmless
+#    NoSuchSettingsManager error), then open http://localhost:1979/vocbench3 and create the administrator
+#    account on first run.</code></pre></div>
+
+<h3 id="9-3-protege">9.3 Protégé: the ontology</h3>
+<p><strong>Purpose.</strong> Author the ontology: the classes, properties, interfaces, disjointness, domains and ranges of
+  section 7. Then enter each guide version's requirements as individuals, one file per version.</p>
+<p><strong>How it works.</strong> Protégé is a desktop OWL editor. It opens Turtle or OWL files and follows
+  <code>owl:imports</code>, so <code>investor-a-2026.1.ttl</code> brings in <code>uc1-core.ttl</code> and the SKOS export, and
+  document types appear as pick-lists. Tabs show classes, object and data properties, and individuals. The reasoner
+  (Reasoner menu) classifies the model and flags anything inconsistent, such as an individual typed as two disjoint
+  classes. The reasoner is <strong>open-world</strong>: it checks that the <em>model</em> is sound, never whether an
+  application is complete. That is SHACL's job (9.4).</p>
+<p><strong>Example.</strong></p>
+<ol>
+  <li>Open <code>investor-a-2026.1.ttl</code>.</li>
+  <li>Create individual <code>ia26:R4</code> of class <em>Requirement</em>, with these assertions:
+    <ul>
+      <li><code>guidelineVersion</code> = v2026.1;</li>
+      <li><code>documentType</code> = ProfitAndLoss (from the taxonomy);</li>
+      <li><code>condition</code> = <code>ia26:R4-condition</code> (employmentType = SelfEmployed);</li>
+      <li><code>recency</code> = <code>ia26:R4-recency</code> (maxAgeDays 90, signatureRequired true);</li>
+      <li><code>guideSection</code> = §4.3.2;</li>
+      <li>label: the requirement's wording.</li>
+    </ul>
+  </li>
+  <li>Run the reasoner, then save as Turtle. The result is the snippet in section 7.</li>
+</ol>
+<p><strong>Download and install.</strong> More links (documentation, tutorials, community): <a href="#9-6-links">9.6</a>.</p>
+<div class="code"><span class="lang">powershell</span><button class="copy">Copy</button><pre><code># 1. Download Protege-5.6.9-win.zip (also -mac.zip / -linux.tar.gz) from
+#    https://github.com/protegeproject/protege-distribution/releases
+#    Optional: verify it against Protege-5.6.9-win.zip.asc (GPG signature published alongside).
+
+# 2. Unzip, e.g. to C:\Tools\Protege-5.6.9, and start Protégé from that folder.
+#    No separate Java is needed: the platform builds include a Java runtime.</code></pre></div>
+
+<h3 id="9-4-pyshacl">9.4 pySHACL: running SHACL</h3>
+<p><strong>Purpose.</strong> Decide, for one application, which requirements of the governing guide version are not met.</p>
+<p><strong>How a SHACL check works.</strong></p>
+<ol>
+  <li><strong>Data graph:</strong> the bridge merges the ontology core, the SKOS taxonomy, the governing version's
+    requirements file and the application's facts from the <code>uc1_*</code> tables, including derived values such as
+    <code>ageAtReceiptDays</code>.</li>
+  <li><strong>Targets:</strong> each shape picks its focus nodes. Ours targets every <code>uc1:Application</code>.</li>
+  <li><strong>Constraints:</strong> the shape's SPARQL template returns one row per requirement that applies and is not
+    satisfied.</li>
+  <li><strong>Report:</strong> a W3C validation report with <code>sh:conforms</code> and one <code>sh:ValidationResult</code>
+    per row, giving the focus node, the source shape and the message (the requirement's own wording, with its
+    section).</li>
+</ol>
+<p>SHACL is written once, by an engineer: the single template in section 7, plus the separate data-quality shapes
+  (<code>uc1-dataquality.shapes.ttl</code>), which check the data itself and are never reported as missing documents. Subject-matter experts never edit SHACL; they
+  change requirement data in Protégé. pySHACL supports these SPARQL-based constraints by default. Its
+  <code>-a</code>/<code>advanced</code> switch enables SHACL Advanced Features (rules, custom targets), which this design does
+  not use.</p>
+<p><strong>Example: inside the engine (Python).</strong></p>
+<div class="code"><span class="lang">python</span><button class="copy">Copy</button><pre><code>from pyshacl import validate
+from rdflib import Graph
+
+data = Graph()                                   # built by the bridge for one application
+for f in ("uc1-core.ttl", "uc1-taxonomy.skos.ttl", "investor-a-2026.1.ttl"):
+    data.parse(f)                                # the model, the words, the governing version's requirements
+data += bridge.application_graph("APP-1001")     # facts from the uc1_* tables, with derived values
+
+shapes = Graph().parse("uc1-requirements.shapes.ttl")
+conforms, report_graph, report_text = validate(data, shacl_graph=shapes, advanced=False)
+# conforms=False -&gt; each sh:ValidationResult in report_graph is one missing item</code></pre></div>
+<p><strong>Example: a manual check from the command line.</strong></p>
+<div class="code"><span class="lang">powershell</span><button class="copy">Copy</button><pre><code># The Phase 1 checks (the artifact files exist now). uv fetches the libraries into a throwaway environment;
+# nothing is installed in the project. Add --native-tls behind a TLS-inspecting proxy.
+uv run --no-project --with rdflib==7.6.0 --with pyshacl==0.40.1 --with owlready2 --with pyyaml python usecase1/checks/run_all.py
+
+# One golden case, printing the SHACL report if it differs from expected.yaml:
+uv run --no-project --with rdflib==7.6.0 --with pyshacl==0.40.1 --with pyyaml python usecase1/checks/run_golden.py --case G01 --show-report</code></pre></div>
+<p>The real output for the worked example (golden case G01, judged against v2026.1), trimmed: the
+  <code>Value Node</code> and <code>Source Constraint</code> lines are omitted. It was produced by running the real files
+  (the core, the taxonomy, <code>investor-a-2026.1.ttl</code>, <code>golden/G01.ttl</code> and the template) through pySHACL
+  0.40.1, as <code>run_golden.py</code> does for every case. Each message is the requirement's own label, so it carries
+  the requirement id and its guide section. A signed P&amp;L 60 days old conforms (G04), and the requirement does not apply
+  to a salaried borrower (G02).</p>
+<div class="code"><span class="lang">text</span><button class="copy">Copy</button><pre><code>Validation Report
+Conforms: False
+Results (2):
+Constraint Violation in SPARQLConstraintComponent (http://www.w3.org/ns/shacl#SPARQLConstraintComponent):
+	Severity: sh:Violation
+	Source Shape: uc1shape:DocumentRequirement
+	Focus Node: app:APP-1001
+	Message: R4: Profit and loss statement, signed, dated within 90 days of receipt (§4.3.2)
+Constraint Violation in SPARQLConstraintComponent (http://www.w3.org/ns/shacl#SPARQLConstraintComponent):
+	Severity: sh:Violation
+	Source Shape: uc1shape:DocumentRequirement
+	Focus Node: app:APP-1001
+	Message: R5: Two most recent monthly bank statements for every account (§4.4)</code></pre></div>
+<p><strong>Download and install.</strong> Nothing to install by hand. pySHACL and <a href="https://pypi.org/project/rdflib/">rdflib</a> come from
+  PyPI with the engine: Phase 2 adds them as an optional <code>[usecase1]</code> extra, recorded in
+  <code>usecase1/CHANGES.md</code> when it happens. Source and documentation: <a href="https://github.com/RDFLib/pySHACL">github.com/RDFLib/pySHACL</a>; more links in <a href="#9-6-links">9.6</a>.</p>
+
+<h3 id="9-5-new-version">9.5 Who does what when a new guide version arrives</h3>
+<div class="table-wrap"><table><thead><tr><th>Step</th><th>Who</th><th>Tool</th><th>What happens</th></tr></thead><tbody><tr><td>1</td><td>SME</td><td>VocBench</td><td>Adds any new terms (e.g. <em>Unemployment benefit award letter</em> for R8) with synonyms; a validator approves; the project is exported as Turtle to <code>usecase1/taxonomy/uc1-taxonomy.skos.ttl</code>.</td></tr><tr><td>2</td><td>Engineer</td><td>Converter script</td><td>Regenerates <code>taxonomy.yaml</code> from the export, so the RAG-OS classifier knows the new type.</td></tr><tr><td>3</td><td>Knowledge engineer</td><td>Protégé</td><td>Saves <code>investor-a-2025.1.ttl</code> as <code>investor-a-2026.1.ttl</code>; changes R4's recency to 90 days, signed; adds R8; runs the reasoner; saves as Turtle.</td></tr><tr><td>4</td><td>Engineer</td><td><code>usecase1/checks/run_all.py</code></td><td>Runs every check, including the golden cases under both versions, then the section 8 review checklist.</td></tr><tr><td>5</td><td>Reviewer</td><td>git</td><td>Approves the pull request; the new version applies to applications received on or after its effective date.</td></tr></tbody></table></div>
+
+
+<h3 id="9-6-links">9.6 Downloads, documentation and learning</h3>
+<div class="callout warn"><p><strong>Download safely.</strong> Use only the official sources below. Check Protégé's zip
+  against its published <code>.asc</code> signature and the JDK against Adoptium's published checksums. Every link was
+  checked on 2026-10-07.</p></div>
+<h4>VocBench 3 — taxonomy</h4><div class="table-wrap"><table class="links"><thead><tr><th></th><th>Link</th><th>What it is for</th></tr></thead><tbody><tr><td>Download (official)</td><td><a href="https://vocbench.uniroma2.it/downloads/">vocbench.uniroma2.it/downloads</a> → release files on <a href="https://bitbucket.org/art-uniroma2/vocbench3/downloads/">Bitbucket: art-uniroma2/vocbench3/downloads</a></td><td>The project's own download page, pointing at its Bitbucket releases. Take <code>vocbench3-15.1.2-full.zip</code> (VocBench + the Semantic Turkey server).</td></tr><tr><td>Documentation</td><td><a href="https://vocbench.uniroma2.it/doc/">Documentation home</a> · <a href="https://vocbench.uniroma2.it/doc/user/">User manual</a> · <a href="https://vocbench.uniroma2.it/doc/sys/">System administration</a> · <a href="https://semanticturkey.uniroma2.it/">Semantic Turkey</a></td><td>Projects, SKOS editing, roles and validation workflow; installation, configuration and the server underneath.</td></tr><tr><td>Learn from real vocabularies</td><td><a href="https://agrovoc.fao.org/">AGROVOC (FAO)</a> · <a href="https://op.europa.eu/en/web/eu-vocabularies/eurovoc">EuroVoc (EU Publications Office)</a></td><td>Large, public SKOS vocabularies maintained with VocBench: good models for hierarchy, synonyms and multilingual labels.</td></tr><tr><td>Community</td><td><a href="https://groups.google.com/g/vocbench-user">vocbench-user</a> · <a href="https://groups.google.com/g/vocbench-developer">vocbench-developer</a> (Google Groups) · <a href="https://vocbench.uniroma2.it/support/">Support</a> · <a href="https://vocbench.uniroma2.it/support/community.jsf">Adopters</a></td><td>Questions and answers from users and the maintainers (ART Group, University of Rome Tor Vergata). Adopters include FAO, the EU Publications Office, UNESCO, Harvard (UAT) and USDA NAL.</td></tr><tr><td>Source / issues</td><td><a href="https://bitbucket.org/art-uniroma2/vocbench3">bitbucket.org/art-uniroma2/vocbench3</a></td><td>Source code and releases.</td></tr></tbody></table></div><h4>Protégé — ontology</h4><div class="table-wrap"><table class="links"><thead><tr><th></th><th>Link</th><th>What it is for</th></tr></thead><tbody><tr><td>Download (official)</td><td><a href="https://github.com/protegeproject/protege-distribution/releases">GitHub: protegeproject/protege-distribution/releases</a> · <a href="https://protege.stanford.edu/software.php">protege.stanford.edu/software</a></td><td>Stanford's release page: <code>Protege-5.6.9-win.zip</code> (also mac / linux / platform-independent), each with an <code>.asc</code> signature.</td></tr><tr><td>Documentation</td><td><a href="https://protegeproject.github.io/protege/">Protégé 5 user documentation</a> · <a href="https://protegewiki.stanford.edu/wiki/Main_Page">Protégé wiki</a></td><td>The official guide to installation, getting started, views, menus and class-expression syntax; the wiki covers plugins and older guides.</td></tr><tr><td>Learn</td><td><a href="https://protege.stanford.edu/publications/ontology_development/ontology101.pdf">Ontology Development 101</a> (Noy &amp; McGuinness, Stanford) · <a href="https://www.michaeldebellis.com/post/new-protege-pizza-tutorial">New Protégé Pizza Tutorial</a> (Michael DeBellis, free) · <a href="https://protege.stanford.edu/short-courses.php">Stanford short courses</a></td><td>The classic step-by-step method for building a first ontology; the best-known hands-on Protégé tutorial, kept current by the community; instructor-led courses.</td></tr><tr><td>Community</td><td><a href="https://mailman.stanford.edu/mailman/listinfo/protege-user">protege-user mailing list</a> (<a href="https://mailman.stanford.edu/pipermail/protege-user/">archive</a>) · <a href="https://mailman.stanford.edu/mailman/listinfo/protege-announce">protege-announce</a> · <a href="https://protege.stanford.edu/support/">Support</a></td><td>The official user-support list, with years of searchable answers; a low-traffic announcement list for releases.</td></tr><tr><td>Source / issues</td><td><a href="https://github.com/protegeproject/protege/issues">github.com/protegeproject/protege/issues</a></td><td>Report bugs; check known issues before upgrading.</td></tr></tbody></table></div><h4>pySHACL + rdflib — SHACL in the engine</h4><div class="table-wrap"><table class="links"><thead><tr><th></th><th>Link</th><th>What it is for</th></tr></thead><tbody><tr><td>Download (official)</td><td><a href="https://pypi.org/project/pyshacl/">PyPI: pyshacl</a> · <a href="https://pypi.org/project/rdflib/">PyPI: rdflib</a> · <a href="https://docs.astral.sh/uv/">uv</a></td><td>Python packages, installed through uv as part of the engine (never by hand). uv is the project's package manager.</td></tr><tr><td>Documentation</td><td><a href="https://github.com/RDFLib/pySHACL">pySHACL README</a> · <a href="https://github.com/RDFLib/pySHACL/blob/master/FEATURES.md">pySHACL feature coverage</a> · <a href="https://rdflib.readthedocs.io/">rdflib documentation</a></td><td>CLI and Python API; exactly which SHACL features are supported; how to parse, build, query and serialize graphs.</td></tr><tr><td>Community</td><td><a href="https://github.com/RDFLib/rdflib/discussions">RDFLib discussions</a> · <a href="https://github.com/RDFLib/pySHACL/issues">pySHACL issues</a></td><td>The RDFLib project's community forum; bugs and questions for pySHACL.</td></tr><tr><td>Source</td><td><a href="https://github.com/RDFLib/pySHACL">github.com/RDFLib/pySHACL</a></td><td>Apache-2.0, maintained under the RDFLib organisation.</td></tr></tbody></table></div><h4>Eclipse Temurin JDK 21 — Java for VocBench</h4><div class="table-wrap"><table class="links"><thead><tr><th></th><th>Link</th><th>What it is for</th></tr></thead><tbody><tr><td>Download (official)</td><td><a href="https://adoptium.net/temurin/releases/">adoptium.net/temurin/releases</a> · or <code>winget install EclipseAdoptium.Temurin.21.JDK</code></td><td>Free, open-source Java from the Eclipse Adoptium project. Protégé does not need it (it ships its own Java).</td></tr><tr><td>Documentation</td><td><a href="https://adoptium.net/">adoptium.net</a></td><td>Installers, checksums and support lifecycle.</td></tr></tbody></table></div>
+<h4>Standards and further learning</h4>
+<div class="table-wrap"><table class=""><thead><tr><th>Resource</th><th>What it teaches</th><th>Type</th></tr></thead><tbody><tr><td><a href="https://www.w3.org/TR/skos-primer/">SKOS Primer</a></td><td>How to model a taxonomy: concepts, hierarchy, labels, mappings. Start here for the taxonomy.</td><td>W3C standard</td></tr><tr><td><a href="https://www.w3.org/TR/skos-reference/">SKOS Reference</a></td><td>The exact definitions, including the mapping properties used for brown-field crosswalks (14.4).</td><td>W3C standard</td></tr><tr><td><a href="https://www.w3.org/TR/owl2-primer/">OWL 2 Primer</a></td><td>Classes, properties, individuals and what a reasoner infers. Start here for the ontology.</td><td>W3C standard</td></tr><tr><td><a href="https://www.w3.org/TR/turtle/">Turtle</a></td><td>The text syntax every file in this design is written in.</td><td>W3C standard</td></tr><tr><td><a href="https://www.w3.org/TR/sparql11-query/">SPARQL 1.1 Query</a></td><td>The query language inside our SHACL template.</td><td>W3C standard</td></tr><tr><td><a href="https://www.w3.org/TR/shacl/">SHACL</a></td><td>Shapes, targets, constraints, SPARQL-based constraints and the validation report.</td><td>W3C standard (2017)</td></tr><tr><td><a href="https://www.w3.org/TR/shacl-af/">SHACL Advanced Features</a></td><td>Rules and custom targets: what pySHACL's <code>-a</code> switch enables (not needed here).</td><td>W3C note</td></tr><tr><td><a href="https://www.w3.org/TR/shacl12-core/">SHACL 1.2 Core</a></td><td>The next version, in progress. Watch it; don't build on it yet.</td><td>W3C Working Draft (18 Sep 2026)</td></tr><tr><td><a href="https://book.validatingrdf.com/">Validating RDF Data</a></td><td>Labra Gayo, Prud'hommeaux, Boneva, Kontokostas (Morgan &amp; Claypool, 2018). The standard book on SHACL (and ShEx), with worked examples.</td><td>Book, free online</td></tr><tr><td><a href="https://www.w3.org/groups/wg/data-shapes/">W3C Data Shapes Working Group</a></td><td>Where SHACL is developed. It took over the SHACL Community Group's work when that group closed (March 2025).</td><td>Community / standards body</td></tr><tr><td><a href="https://github.com/w3c-cg/awesome-semantic-shapes">awesome-semantic-shapes</a></td><td>A curated list of SHACL and ShEx tools, tutorials and papers.</td><td>Community list</td></tr><tr><td><a href="https://shacl.org/playground/">SHACL Playground</a></td><td>Paste shapes and data in a browser and validate, with no install. Built by TopQuadrant; <strong>no longer maintained</strong> (2017), but fine for learning.</td><td>Sandbox</td></tr></tbody></table></div>
+
+
+<h2 id="10-together"><span class="n">10</span>How it comes together<a class="anchor" href="#10-together">#</a></h2>
+</div>
+<div class="wide"><figure id="fig-flow"><div class="fig-frame"><svg class="ragos-diagram" data-figure="uc1-flow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 352" width="1440" height="352" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Use Case 1 decision flow and the five-business-day clock"><title>Use Case 1 decision flow and the five-business-day clock</title><defs><marker id="uc1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="40" text-anchor="start">The decision flow, against the clock</text><text class="t-small" x="36" y="62" text-anchor="start">Received Friday 2026-02-06 → notice due Friday 2026-02-13 (5 days excluding Saturdays, Sundays and legal public holidays; day of receipt not counted - confirm convention with compliance).</text><rect x="36" y="100" width="156" height="112" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="114.0" y="126" text-anchor="middle" fill="var(--d-ext-tx)">1 Intake</text><text class="t-line" x="114.0" y="148" text-anchor="middle">upload / mailroom scan</text><text class="t-line" x="114.0" y="165" text-anchor="middle">into RAG-OS, access-</text><text class="t-line" x="114.0" y="182" text-anchor="middle">tagged to servicing</text><path class="edge" d="M192 156 L208 156" marker-end="url(#uc1-arrow)"/><rect x="208" y="100" width="156" height="112" rx="10" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.6"/><text class="t-title" x="286.0" y="126" text-anchor="middle" fill="var(--d-query-tx)">2 Classify</text><text class="t-line" x="286.0" y="148" text-anchor="middle">doc type from taxonomy</text><text class="t-line" x="286.0" y="165" text-anchor="middle">dates · signed extracted</text><text class="t-line" x="286.0" y="182" text-anchor="middle">low confidence → review</text><path class="edge" d="M364 156 L380 156" marker-end="url(#uc1-arrow)"/><rect x="380" y="100" width="156" height="112" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="458.0" y="126" text-anchor="middle" fill="var(--d-data-tx)">3 Facts</text><text class="t-line" x="458.0" y="148" text-anchor="middle">uc1_* rows written</text><text class="t-line" x="458.0" y="165" text-anchor="middle">→ application graph</text><text class="t-line" x="458.0" y="182" text-anchor="middle">(age at receipt computed)</text><path class="edge" d="M536 156 L552 156" marker-end="url(#uc1-arrow)"/><rect x="552" y="100" width="156" height="112" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="630.0" y="126" text-anchor="middle" fill="var(--d-ai-tx)">4 Resolve version</text><text class="t-line" x="630.0" y="148" text-anchor="middle">guide version in effect</text><text class="t-line" x="630.0" y="165" text-anchor="middle">on received_at</text><text class="t-line" x="630.0" y="182" text-anchor="middle">→ its requirements file</text><path class="edge" d="M708 156 L724 156" marker-end="url(#uc1-arrow)"/><rect x="724" y="100" width="156" height="112" rx="10" fill="var(--d-sec-bg)" stroke="var(--d-sec-br)" stroke-width="1.6"/><text class="t-title" x="802.0" y="126" text-anchor="middle" fill="var(--d-sec-tx)">5 Validate</text><text class="t-line" x="802.0" y="148" text-anchor="middle">pySHACL: graph vs</text><text class="t-line" x="802.0" y="165" text-anchor="middle">shapes; each violation</text><text class="t-line" x="802.0" y="182" text-anchor="middle">= one missing item</text><path class="edge" d="M880 156 L896 156" marker-end="url(#uc1-arrow)"/><rect x="896" y="100" width="156" height="112" rx="10" fill="var(--d-ingest-bg)" stroke="var(--d-ingest-br)" stroke-width="1.6"/><text class="t-title" x="974.0" y="126" text-anchor="middle" fill="var(--d-ingest-tx)">6 Cite</text><text class="t-line" x="974.0" y="148" text-anchor="middle">each item → guide §</text><text class="t-line" x="974.0" y="165" text-anchor="middle">→ RAG-OS page</text><text class="t-line" x="974.0" y="182" text-anchor="middle">citation</text><path class="edge" d="M1052 156 L1068 156" marker-end="url(#uc1-arrow)"/><rect x="1068" y="100" width="156" height="112" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="1146.0" y="126" text-anchor="middle" fill="var(--d-ext-tx)">7 Draft + verify</text><text class="t-line" x="1146.0" y="148" text-anchor="middle">LLM drafts letter from</text><text class="t-line" x="1146.0" y="165" text-anchor="middle">list; verifier: same</text><text class="t-line" x="1146.0" y="182" text-anchor="middle">items, nothing added</text><path class="edge" d="M1224 156 L1240 156" marker-end="url(#uc1-arrow)"/><rect x="1240" y="100" width="156" height="112" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="1318.0" y="126" text-anchor="middle" fill="var(--d-state-tx)">8 Send</text><text class="t-line" x="1318.0" y="148" text-anchor="middle">human approves;</text><text class="t-line" x="1318.0" y="165" text-anchor="middle">uc1_evaluation</text><text class="t-line" x="1318.0" y="182" text-anchor="middle">logged</text><rect x="36" y="250" width="1368" height="58" rx="10" class="lane"/><rect x="60" y="262" width="200" height="34" rx="8" fill="var(--d-query-bg)" stroke="var(--d-query-br)" stroke-width="1.4"/><text class="t-line" x="160" y="284" text-anchor="middle">Fri 06 receipt</text><rect x="285" y="262" width="200" height="34" rx="8" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.4"/><text class="t-line" x="385" y="284" text-anchor="middle">Mon 09 · day 1</text><rect x="510" y="262" width="200" height="34" rx="8" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.4"/><text class="t-line" x="610" y="284" text-anchor="middle">Tue 10 · day 2</text><rect x="735" y="262" width="200" height="34" rx="8" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.4"/><text class="t-line" x="835" y="284" text-anchor="middle">Wed 11 · day 3</text><rect x="960" y="262" width="200" height="34" rx="8" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.4"/><text class="t-line" x="1060" y="284" text-anchor="middle">Thu 12 · day 4</text><rect x="1185" y="262" width="200" height="34" rx="8" fill="var(--d-bad-bg)" stroke="var(--d-bad-br)" stroke-width="1.4"/><text class="t-line" x="1285" y="284" text-anchor="middle">Fri 13 · day 5 DUE</text><text class="t-small" x="36" y="335" text-anchor="start">Steps 1-6 take minutes, not days: the clock is spent waiting for documents, not deciding. A second example: received Thu 2026-02-12 → Mon 16 is Washington&#x27;s Birthday → due Fri 2026-02-20.</text></svg></div><figcaption><b>Figure 5 — The decision flow against the clock.</b> Deciding takes minutes; the clock is for the borrower to respond.</figcaption></figure></div>
+<div class="wrap">
+<h3>Worked example: one package, two guide versions</h3>
+<p>Application <strong>APP-1001</strong> (synthetic). The borrower is self-employed, the hardship is an income reduction, they
+  have rental income, and the application was received <strong>Friday 2026-02-06</strong>. Documents received:</p>
+<div class="table-wrap"><table class=""><thead><tr><th>Document</th><th>Classified as (taxonomy)</th><th>Dated</th><th>Signed</th></tr></thead><tbody><tr><td>Mortgage assistance application, signed by both borrowers</td><td>MAA</td><td>2026-02-02</td><td>yes</td></tr><tr><td>Hardship statement</td><td>HardshipStatement</td><td>2026-02-02</td><td>yes</td></tr><tr><td>Profit and loss statement (Q3 2025)</td><td>ProfitAndLoss</td><td>2025-10-31</td><td><strong>no</strong></td></tr><tr><td>Bank statement, December 2025</td><td>BankStatement</td><td>2025-12-31</td><td>—</td></tr><tr><td>IRS Form 4506-C</td><td>Form4506C</td><td>2026-02-02</td><td>yes</td></tr><tr><td>Lease, 12 Elm St</td><td>Lease</td><td>2025-06-01</td><td>yes</td></tr></tbody></table></div>
+<div class="table-wrap"><table class=""><thead><tr><th>Requirement</th><th>Same package under v2025.1 rules (comparison)</th><th>Judged against v2026.1 (in effect 2026-02-06)</th></tr></thead><tbody><tr><td>R1 MAA</td><td><span class="tag ok">met</span></td><td><span class="tag ok">met</span></td></tr><tr><td>R2 Hardship statement</td><td><span class="tag ok">met</span></td><td><span class="tag ok">met</span></td></tr><tr><td>R4 P&amp;L</td><td><span class="tag ok">met</span> (98 days ≤ 120)</td><td><span class="tag miss">missing</span> 98 days &gt; 90 and not signed (§4.3.2)</td></tr><tr><td>R5 Bank statements</td><td><span class="tag miss">missing</span> January 2026 statement; two months required (§4.4)</td><td><span class="tag miss">missing</span> January 2026 statement; two months required (§4.4)</td></tr><tr><td>R6 4506-C</td><td><span class="tag ok">met</span></td><td><span class="tag ok">met</span></td></tr><tr><td>R7 Lease</td><td><span class="tag ok">met</span></td><td><span class="tag ok">met</span></td></tr><tr><td>R3, R8</td><td>not applicable (not salaried; hardship is not unemployment)</td><td>not applicable</td></tr></tbody></table></div>
+<p><strong>Result under v2026.1:</strong> incomplete, with two items: a signed P&amp;L dated on or after 2025-11-08, and the January 2026
+  statement for every account. Notice due <strong>Friday 2026-02-13</strong>. The same package under v2025.1 would have needed
+  only the bank statement. <strong>That difference is why the version must be resolved explicitly</strong>, and why every
+  evaluation records the version it used.</p>
+<p><strong>This example is golden case G01.</strong> The golden set in <code>usecase1/golden/</code> has <strong>11</strong>
+  hand-written cases, <strong>G01–G11</strong>, each with its expected missing items under both guide versions
+  (<code>expected.yaml</code>). It includes the <strong>version-boundary pair G09/G10</strong>: the same package received on
+  2025-12-31 (v2025.1 governs: nothing missing) and on 2026-01-01 (v2026.1 governs: the unsigned 101-day-old P&amp;L fails
+  R4, and the December bank statement is now required for R5). For every case the data-quality shapes, which are separate
+  from the requirement template, must also conform. ROBOT verified that the ontology and its whole import closure are OWL
+  2 DL, and HermiT finds them consistent. <code>usecase1/checks/run_all.py</code> runs every Phase 1 check and prints one
+  summary (section 9.4 shows the command).</p>
+<p><strong>Where RAG-OS fits:</strong> each guide version is ingested as a document with its <code>effective_date</code> and
+  <code>doc_type = Guideline</code>, access-tagged to the servicing team. A missing item's section reference is resolved to a
+  page-level citation from that version's text, so the reviewer and the borrower letter quote the guide, not a
+  paraphrase. Borrower documents are uploaded into RAG-OS too (Only me / servicing team), where the classifier
+  suggests their type.</p>
+
+<h2 id="11-agents"><span class="n">11</span>Multi-agent? Recommendation<a class="anchor" href="#11-agents">#</a></h2>
+<p><strong>Recommendation: an orchestrated workflow with a deterministic core, not autonomous agents.</strong></p>
+<div class="table-wrap"><table class=""><thead><tr><th>Step</th><th>Who does it</th><th>Why</th></tr></thead><tbody><tr><td>Recognise documents (type, dates, signed)</td><td>Classifier / LLM extraction, <strong>confidence-gated</strong></td><td>Messy input is where models help; below the threshold a person confirms (the existing review queue).</td></tr><tr><td>Decide completeness</td><td><strong>SHACL engine, deterministic</strong></td><td>Must be reproducible, auditable and versioned. A model's opinion is none of these, and the clock makes errors expensive.</td></tr><tr><td>Compute the due date</td><td>Deterministic (<code>uc1_holiday</code>)</td><td>Pure date arithmetic.</td></tr><tr><td>Draft the borrower letter</td><td>LLM, <strong>from the engine's list only</strong></td><td>Plain, polite prose is what models are good at.</td></tr><tr><td>Verify the letter</td><td>Deterministic verifier</td><td>The letter's items must equal the engine's items: same ids, nothing added, nothing dropped.</td></tr><tr><td>Approve and send</td><td><strong>A person</strong></td><td>Accountability stays human; every step is logged in <code>uc1_evaluation</code> / <code>uc1_evaluation_item</code> and RAG-OS traces.</td></tr></tbody></table></div>
+<p>Calling these "agents" is fine, but give each one a narrow contract (typed input, typed output) and keep
+  the decision out of any model's hands. This mirrors how RAG-OS already treats answers: retrieval is filtered
+  deterministically, the model only writes from what it is given, and a grounding guard checks the result.</p>
+
+<h2 id="12-testing"><span class="n">12</span>Testing and evaluation<a class="anchor" href="#12-testing">#</a></h2>
+<div class="table-wrap"><table class=""><thead><tr><th>Test</th><th>What it proves</th></tr></thead><tbody><tr><td><strong>Golden cases</strong> (11 synthetic applications, G01–G11, each with the expected missing list per version)</td><td>The engine's output equals the expected list. Scored as precision and recall on missing items, <strong>precision weighted hardest</strong>: a wrong item costs the clock.</td></tr><tr><td>Version sensitivity</td><td>APP-1001 (G01) gives 1 item under v2025.1 and 2 under v2026.1. The boundary pair G09/G10 (received 2025-12-31 and 2026-01-01) proves resolution picks the right version on each side of the effective date.</td></tr><tr><td>Data-quality shapes</td><td>Every golden case conforms to <code>uc1-dataquality.shapes.ttl</code>. These are separate from the requirement template, so a data defect is reported to the servicer and never to a borrower as a missing document.</td></tr><tr><td>Business-day clock</td><td>Weekends, a legal public holiday inside the window (received 2026-02-12 → due 2026-02-20), and receipt late on a Friday.</td></tr><tr><td>Letter faithfulness</td><td>The verifier rejects a draft that adds, drops or rewords an item id.</td></tr><tr><td>Classifier accuracy</td><td>Labelled sample documents → <code>uc1_doc_type</code>; below-threshold cases routed to review.</td></tr><tr><td><strong>Ontology lint</strong> (section 8; <code>check_taxonomy.py</code>, <code>check_ontology.py</code>, <code>check_consistency.py</code>)</td><td>Names follow the naming contract in <code>usecase1/README.md</code>; every property has a domain and range; every Requirement has a label and a guide section; no version-specific classes; no derived columns in <code>uc1_*</code>; every concept referenced exists in the taxonomy. HermiT finds the model consistent, and ROBOT verified the import closure is OWL 2 DL.</td></tr><tr><td>Semantic model (<code>check_sql.py</code>)</td><td><code>uc1_create.sql</code> runs on an empty SQLite database and fails loudly on a second run; the seed loads; the invariants a constraint cannot express hold (one primary party per application; an investor's versions never overlap).</td></tr><tr><td>Rules as data</td><td>Changing one requirement's <code>maxAgeDays</code> in its version file changes the outcome, with no code change.</td></tr><tr><td>Regression</td><td>The golden cases replayed on every change to requirement files, templates, taxonomy or engine, like RAG-OS expectations.</td></tr></tbody></table></div>
+<p>The golden cases were written first, in Phase 1, before any code (section 14.2): <code>G01.ttl</code> …
+  <code>G11.ttl</code> in <code>usecase1/golden/</code>, with <code>expected.yaml</code>. <code>usecase1/checks/run_all.py</code>
+  runs every Phase 1 check in order (taxonomy → ontology + HermiT → semantic model → golden cases → cross-artifact
+  consistency) and exits non-zero if any fails. From Phase 2 the engine's tests replay the same golden cases end to end.
+  Proposed test location: <code>tests/usecase1/</code> (marker <code>uc1</code>), so they can be removed with the rest.</p>
+
+<h2 id="13-architecture"><span class="n">13</span>Architecture fit<a class="anchor" href="#13-architecture">#</a></h2>
+<ul>
+  <li><strong>Placement:</strong> a separate <code>usecase1/</code> package beside <code>src/rag_os</code>. It talks to
+    RAG-OS through its API (ingest guides and borrower documents; fetch citations) and to its own database for
+    <code>uc1_*</code> (SQLite <code>.data/uc1.db</code>, or the PostgreSQL schema <code>uc1</code>). Nothing in the product code
+    depends on it.</li>
+  <li><strong>Libraries (Phase 2, optional extra <code>[usecase1]</code>):</strong> <code>rdflib</code> (BSD) and
+    <code>pyshacl</code> (Apache-2.0). No triple store is needed for the MVP: graphs are small and built per evaluation.</li>
+  <li><strong>Engine entry point (Phase 2):</strong> a CLI, <code>python -m usecase1 evaluate APP-1001</code>, so the engine
+    can be run and tested without any UI.</li>
+  <li><strong>Admin workbench (Phase 3):</strong> a router and page inside <code>usecase1/</code>, behind
+    <code>UC1_ENABLED</code>. The only product-code changes are one registration hook in the app factory and one Admin menu
+    link, listed with their paths in <code>usecase1/CHANGES.md</code> when added.</li>
+  <li><strong>Phasing and order of work:</strong> section 14.</li>
+</ul>
+
+
+<h2 id="14-plan"><span class="n">14</span>Implementation plan<a class="anchor" href="#14-plan">#</a></h2>
+<p>This section answers three questions before any code is written: which tools to install now; whether the semantic
+  model, taxonomy and ontology can be produced <em>before</em> the code; and how the plan changes between a
+  <strong>green-field</strong> domain (nothing exists yet, as in this MVP) and a <strong>brown-field</strong> domain
+  (the data already lives in several databases).</p>
+
+<h3 id="14-1-tools">14.1 Tools: what to install now</h3>
+<div class="table-wrap"><table><thead><tr><th>Tool</th><th>Install now?</th><th>Why</th></tr></thead><tbody><tr><td><strong>Protégé</strong></td><td><span class="tag ok">yes · installed</span></td><td>A zip with its own Java: no admin rights, about five minutes, nothing else on the machine changes. Every ontology file can be opened and reviewed the moment it exists.</td></tr><tr><td><strong>VocBench 3</strong> (+ Temurin JDK 21)</td><td><span class="tag ok">yes · installed</span></td><td>It is the taxonomy's source of truth, so the taxonomy should be <em>born</em> in VocBench rather than typed elsewhere and moved later. Setup is heavier (a local server, an administrator account, a project), so it was the first step of Phase 1. Bootstrap once by loading the seed SKOS file (section 9.2); from then on SMEs edit in VocBench and export.</td></tr><tr><td><strong>pySHACL</strong></td><td><span class="tag miss">no</span></td><td>A library: there is nothing to open or view. Run it on demand with <code>uv run --no-project --with pyshacl …</code> (as section 9.4 does) until Phase 2 adds it to the <code>[usecase1]</code> extra.</td></tr></tbody></table></div>
+<p>Official download links, documentation, tutorials and community channels for each tool: <a href="#9-6-links">section 9.6</a>.</p>
+
+<h3 id="14-2-artifacts-first">14.2 Artifacts first, code second</h3>
+<p><strong>Yes, and it is the recommended order; Phase 1 has done exactly this.</strong> The semantic model (DDL + seed), the taxonomy (SKOS) and the
+  ontology (core, requirements per version, the SHACL template) are <strong>declarative files</strong>. They can be built,
+  opened in their own tools and <strong>proven without any application code</strong>:</p>
+<ul>
+  <li>The Protégé reasoner checks the model.</li>
+  <li>pySHACL runs the template against <strong>hand-written golden application graphs</strong> (G01–G11, in Turtle),
+    proving that the expected missing items come out. This is exactly how section 9.4's report was produced.</li>
+  <li>The seed SQL loads into a local database.</li>
+</ul>
+<p>The people who own the meaning can then sign off the words, the rules and the expected answers <em>before</em>
+  engineering effort is spent. The code that follows (converter, bridge, engine) is plumbing between artifacts that are
+  already proven, and the golden cases become its acceptance tests: test-first, by construction.</p>
+</div>
+<div class="wide"><figure id="fig-artifacts-first"><div class="fig-frame"><svg class="ragos-diagram" data-figure="uc1-artifacts-first" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 480" width="1440" height="480" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Use Case 1 implementation order: tools, artifacts, gate, code"><title>Use Case 1 implementation order: tools, artifacts, gate, code</title><defs><marker id="uc1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--d-edge)"/></marker></defs><text class="t-head" x="36" y="40" text-anchor="start">Artifacts first, code second</text><text class="t-small" x="36" y="62" text-anchor="start">Phase 1 produces only files that a tool can open and check. A human gate signs them off. Code starts after the gate, and the golden cases become its acceptance tests.</text><rect x="36" y="160" width="200" height="150" rx="10" fill="var(--d-ext-bg)" stroke="var(--d-ext-br)" stroke-width="1.6"/><text class="t-title" x="136.0" y="186" text-anchor="middle" fill="var(--d-ext-tx)">Step 0 · Tools</text><text class="t-line" x="136.0" y="208" text-anchor="middle">Protégé, VocBench,</text><text class="t-line" x="136.0" y="225" text-anchor="middle">JDK 21: installed</text><text class="t-line" x="136.0" y="242" text-anchor="middle">pySHACL: on demand (uv)</text><rect x="270" y="90" width="520" height="340" rx="10" fill="var(--d-data-bg)" stroke="var(--d-data-br)" stroke-width="1.6"/><text class="t-title" x="284" y="116" text-anchor="start" fill="var(--d-data-tx)">Phase 1 · Artifacts (no application code)</text><rect x="290" y="135" width="480" height="40" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="304" y="161" text-anchor="start" fill="var(--d-state-tx)">Taxonomy · seed → VocBench (SKOS)</text><text class="t-line" x="756" y="161" text-anchor="end">✓ parses · labels unique</text><rect x="290" y="191" width="480" height="40" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="304" y="217" text-anchor="start" fill="var(--d-state-tx)">Ontology core · Protégé</text><text class="t-line" x="756" y="217" text-anchor="end">✓ HermiT · ROBOT: OWL 2 DL</text><rect x="290" y="247" width="480" height="40" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="304" y="273" text-anchor="start" fill="var(--d-state-tx)">Requirements per version · Protégé</text><text class="t-line" x="756" y="273" text-anchor="end">✓ each rule cites a section</text><rect x="290" y="303" width="480" height="40" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="304" y="329" text-anchor="start" fill="var(--d-state-tx)">SHACL template + 11 golden cases</text><text class="t-line" x="756" y="329" text-anchor="end">✓ pySHACL: expected lists</text><rect x="290" y="359" width="480" height="40" rx="10" fill="var(--d-state-bg)" stroke="var(--d-state-br)" stroke-width="1.6"/><text class="t-title" x="304" y="385" text-anchor="start" fill="var(--d-state-tx)">DDL + seed SQL (uc1_*)</text><text class="t-line" x="756" y="385" text-anchor="end">✓ SQLite · PostgreSQL 16</text><rect x="830" y="185" width="190" height="160" rx="10" fill="var(--d-bad-bg)" stroke="var(--d-bad-br)" stroke-width="1.6"/><text class="t-title" x="925.0" y="211" text-anchor="middle" fill="var(--d-bad-tx)">Artifact gate</text><text class="t-line" x="925.0" y="233" text-anchor="middle">SME + compliance</text><text class="t-line" x="925.0" y="250" text-anchor="middle">sign off words,</text><text class="t-line" x="925.0" y="267" text-anchor="middle">rules and the</text><text class="t-line" x="925.0" y="284" text-anchor="middle">golden answers</text><rect x="1060" y="90" width="344" height="58" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1232.0" y="116" text-anchor="middle" fill="var(--d-ai-tx)">Phase 2 · Engine code</text><text class="t-line" x="1232.0" y="138" text-anchor="middle">converter · bridge · CLI · due date</text><rect x="1060" y="160" width="344" height="58" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1232.0" y="186" text-anchor="middle" fill="var(--d-ai-tx)">Phase 3 · Admin workbench</text><text class="t-line" x="1232.0" y="208" text-anchor="middle">review · Validate · Evaluate · publish</text><path class="edge" d="M1232 148 L1232 160" marker-end="url(#uc1-arrow)"/><rect x="1060" y="230" width="344" height="58" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1232.0" y="256" text-anchor="middle" fill="var(--d-ai-tx)">Phase 4 · RAG-OS citations</text><text class="t-line" x="1232.0" y="278" text-anchor="middle">guides ingested; items → pages</text><path class="edge" d="M1232 218 L1232 230" marker-end="url(#uc1-arrow)"/><rect x="1060" y="300" width="344" height="58" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1232.0" y="326" text-anchor="middle" fill="var(--d-ai-tx)">Phase 5 · Letter + verifier</text><text class="t-line" x="1232.0" y="348" text-anchor="middle">drafting · faithfulness · clock tests</text><path class="edge" d="M1232 288 L1232 300" marker-end="url(#uc1-arrow)"/><rect x="1060" y="370" width="344" height="58" rx="10" fill="var(--d-ai-bg)" stroke="var(--d-ai-br)" stroke-width="1.6"/><text class="t-title" x="1232.0" y="396" text-anchor="middle" fill="var(--d-ai-tx)">Phase 6 · Pilot + removal</text><text class="t-line" x="1232.0" y="418" text-anchor="middle">shadow run · removal rehearsal</text><path class="edge" d="M1232 358 L1232 370" marker-end="url(#uc1-arrow)"/><path class="edge" d="M236 235 L270 235" marker-end="url(#uc1-arrow)"/><path class="edge" d="M790 265 L830 265" marker-end="url(#uc1-arrow)"/><path class="edge" d="M1020 265 L1040 265 L1040 119.0 L1060 119.0" marker-end="url(#uc1-arrow)"/><text class="t-small" x="36" y="462" text-anchor="start">Brown field: the same order. Phase 1 also holds the source mappings and code-list crosswalks (the data-quality shapes are already there), and Phase 6 starts with a shadow run on historical decisions.</text></svg></div>
+<figcaption><b>Figure 6 — Artifacts first, code second.</b> Everything in Phase 1 is a file that a tool can open and
+  check; the gate is a human sign-off; code starts only after it.</figcaption></figure></div>
+<div class="wrap">
+<p><strong>The six implementation phases</strong> (this document is the design that precedes them; each later phase gets
+  its own plan for approval, and records what it adds in <code>usecase1/CHANGES.md</code>):</p>
+<div class="table-wrap"><table><thead><tr><th>Phase</th><th>Delivers</th><th>Tools</th><th>Done when</th><th>Status</th></tr></thead><tbody><tr><td><strong>1</strong></td><td><strong>Artifacts, no application code</strong> (called P2 in earlier drafts of this document): taxonomy seed → VocBench, ontology core, one requirements file per version, the SHACL template + data-quality shapes, 11 golden cases, DDL + seed + drop, and the checks (<code>usecase1/checks/run_all.py</code>)</td><td>VocBench, Protégé, pySHACL + owlready2 (via uv), ROBOT, SQLite / PostgreSQL</td><td><strong>Artifact gate</strong> (below)</td><td>built; gate next</td></tr><tr><td>2</td><td>Engine code: SKOS → YAML converter, bridge (tables → graph, derived values), engine CLI, due-date calculation, evaluation log</td><td>Python (+ the <code>[usecase1]</code> extra)</td><td>Golden cases pass end to end: database → graph → report</td><td></td></tr><tr><td>3</td><td>Admin <strong>“Use Case 1” workbench</strong>: read-only taxonomy, requirements and version diff; a <strong>Validate</strong> button (runs the checks); <strong>Evaluate an application</strong>; <strong>four-eyes publish</strong>. Behind <code>UC1_ENABLED</code>; the only product-code changes are one registration hook and one Admin menu link</td><td>RAG-OS Admin</td><td>Reviewers validate, evaluate and publish without editing anything; with the flag off nothing shows</td><td></td></tr><tr><td>4</td><td>Citations: synthetic guides ingested into RAG-OS; each missing item resolved to a page citation</td><td>RAG-OS</td><td>Every item has a citation</td><td></td></tr><tr><td>5</td><td>Letter + verifier: drafting from the engine's list; clock, classifier and faithfulness tests</td><td>RAG-OS LLM port</td><td>Test suite in section 12</td><td></td></tr><tr><td>6</td><td>Pilot + removal rehearsal: shadow run (brown field, 14.4); the removal steps in <code>usecase1/CHANGES.md</code> rehearsed end to end</td><td>RAG-OS, git</td><td>Precision target met; removal leaves only the brief</td><td></td></tr></tbody></table></div>
+<p><strong>The rule: edit in the tools; review, validate and process in Admin.</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Task</th><th>Where</th><th>Why there</th></tr></thead><tbody><tr><td>Edit the taxonomy (terms, synonyms, hierarchy)</td><td><strong>VocBench</strong></td><td>Proposals, validator approval and full history; the export is the source of truth.</td></tr><tr><td>Edit the ontology and the requirements per guide version</td><td><strong>Protégé</strong></td><td>Pick-lists from the imports, and the reasoner checks the model.</td></tr><tr><td>Review, validate and process (version diff, Validate, Evaluate an application, publish)</td><td><strong>RAG-OS Admin</strong> (the Phase 3 workbench)</td><td>Read-only views over the files in git; runs the same checks and the engine.</td></tr></tbody></table></div>
+<p><strong>Why not edit in Admin?</strong> An editor in Admin would create a second source of truth beside the VocBench
+  export and the Protégé files, and edits made there would bypass the tools' validation (proposals and approval, the
+  reasoner) and their history. Admin therefore reads the files in git and never writes them.</p>
+<p><strong>The artifact gate:</strong> all must hold before Phase 2 starts.</p>
+<ol><li>HermiT (in Protégé and in <code>check_ontology.py</code>) reports the core and both version files consistent, and ROBOT confirms the import closure is OWL 2 DL.</li><li>The SKOS export parses; every concept has one preferred label and an IRI local name equal to its notation; every change was approved by a validator in VocBench; the round-trip check against the seed passes.</li><li>Every requirement has a label and a guide section; no class is version-specific (section 8 lint, automated in the checks).</li><li>Every golden case (G01–G11) produces <em>exactly</em> its expected missing-items list under both guide versions (pySHACL), and the data-quality shapes conform.</li><li><code>uc1_create.sql</code> and <code>uc1_seed.sql</code> load cleanly, and the seed rows describe the same applications as the golden graphs.</li><li><code>usecase1/checks/run_all.py</code> prints ALL PASS.</li><li>SMEs sign off the words and the requirements; compliance signs off the golden expectations and the clock rule.</li></ol>
+
+<h3 id="14-3-green-field">14.3 Green field: model first (this MVP)</h3>
+<p>Nothing exists yet, so design from meaning outwards: questions → words → rules → expected answers → tables → code.
+  Best practices: start with one investor and two guide versions; version from day one; keep identifiers (IRIs) stable
+  and never reuse them; model only what the competency questions need.</p>
+<div class="table-wrap"><table><thead><tr><th>Step</th><th>What</th><th>Output</th><th>Tool</th><th>Checked by</th><th>Phase</th></tr></thead><tbody><tr><td>0</td><td>Install tools</td><td>Protégé, JDK 21 + VocBench (installed)</td><td>winget, zip files</td><td>Each tool opens a sample file</td><td>1</td></tr><tr><td>1</td><td>Confirm the competency questions and glossary</td><td>Sections 3 and 7 signed off</td><td>—</td><td>SME review</td><td>1</td></tr><tr><td>2</td><td>Taxonomy</td><td>Seed <code>uc1-taxonomy.seed.skos.ttl</code>; VocBench project <code>uc1-loss-mitigation</code>; export <code>usecase1/taxonomy/uc1-taxonomy.skos.ttl</code></td><td>VocBench (seed loaded once, then edit)</td><td>Export parses; ids = notations; validator approved; round-trip check</td><td>1</td></tr><tr><td>3</td><td>Ontology core</td><td><code>usecase1/ontology/uc1-core.ttl</code></td><td>Protégé</td><td>HermiT consistent; ROBOT: OWL 2 DL; domain and range on every property</td><td>1</td></tr><tr><td>4</td><td>Requirements per guide version</td><td><code>investor-a-2025.1.ttl</code>, <code>investor-a-2026.1.ttl</code></td><td>Protégé</td><td>Every requirement has a label and a section</td><td>1</td></tr><tr><td>5</td><td>SHACL template, data-quality shapes, golden cases</td><td><code>uc1-requirements.shapes.ttl</code>, <code>uc1-dataquality.shapes.ttl</code>; <code>usecase1/golden/G01.ttl</code> … <code>G11.ttl</code> + <code>expected.yaml</code></td><td>VS Code; pySHACL via uv</td><td>Each golden case gives exactly its expected list</td><td>1</td></tr><tr><td>6</td><td>Semantic model</td><td><code>usecase1/sql/uc1_create.sql</code>, <code>uc1_seed.sql</code>, <code>uc1_drop.sql</code></td><td>sqlite3 / psql</td><td>Loads cleanly; rows match the golden graphs</td><td>1</td></tr><tr><td>—</td><td><strong>Artifact gate</strong></td><td>Sign-offs recorded</td><td>—</td><td>Checklist in 14.2</td><td>end of 1</td></tr><tr><td>7</td><td>Engine code</td><td>Converter, bridge, engine CLI, due date, evaluation log</td><td>Python</td><td>Golden cases pass end to end</td><td>2</td></tr><tr><td>8</td><td>Admin workbench</td><td>Read-only views, Validate, Evaluate, four-eyes publish</td><td>RAG-OS Admin</td><td>Works behind the flag; nothing edited in Admin</td><td>3</td></tr><tr><td>9</td><td>Citations</td><td>Synthetic guides in RAG-OS</td><td>RAG-OS</td><td>Every missing item cites a page</td><td>4</td></tr><tr><td>10</td><td>Letter + verifier</td><td>Drafting step and verifier</td><td>RAG-OS LLM port</td><td>Faithfulness tests</td><td>5</td></tr><tr><td>11</td><td>Pilot + removal rehearsal</td><td>Shadow-run report; removal rehearsed</td><td>RAG-OS, git</td><td>Precision target; no trace left</td><td>6</td></tr></tbody></table></div>
+
+<h3 id="14-4-brown-field">14.4 Brown field: map first (existing data in several databases)</h3>
+<p>The data and its codes already exist, spread across systems that disagree. Do <strong>not</strong> start by migrating
+  everything into a new schema. Make the ontology and taxonomy the <strong>canonical contract</strong>, leave the sources
+  as the systems of record, and <strong>map</strong> them to the contract. The artifacts-first principle still holds:
+  the mappings are files too, and are proven before the engine is wired to them.</p>
+<div class="table-wrap"><table><thead><tr><th>Step</th><th>What</th><th>How</th><th>Best practice</th></tr></thead><tbody><tr><td>1</td><td>Inventory and profile the sources</td><td>Servicing system, origination, document imaging, CRM: tables, owners, null rates, code values, date formats</td><td>Read-only replicas or extracts; existing entitlements respected; nothing is written back</td></tr><tr><td>2</td><td>Choose a system of record per fact</td><td>For each ontology property, the one authoritative source (e.g. received date from document intake, employment from origination)</td><td>Store each fact once, across systems too; conflicts are resolved by rule, not by whichever system loaded last</td></tr><tr><td>3</td><td>Use the ontology as the canonical contract</td><td>The same model as section 7, plus source annotations (provenance)</td><td>Model the domain, never one source's schema; sources are mapped to the ontology, not redesigned first</td></tr><tr><td>4</td><td>Reconcile code lists into the taxonomy</td><td>Each source's code list becomes its own concept scheme in VocBench, mapped to the canonical concepts with <a href="https://www.w3.org/TR/skos-reference/#mapping">SKOS mapping properties</a> (<code>skos:exactMatch</code>, <code>skos:closeMatch</code>); source codes kept as <code>skos:notation</code></td><td>Unmapped codes go to review; never default them silently</td></tr><tr><td>5</td><td>Map and load</td><td>MVP: ETL into thin <code>uc1_*</code> staging tables with lineage columns (<code>source_system</code>, <code>source_key</code>, <code>extracted_at</code>). At scale: <a href="https://www.w3.org/TR/r2rml/">W3C R2RML</a> mappings, optionally served live by <a href="https://ontop-vkg.org/guide/">Ontop</a> (SPARQL over the source databases, no copy; Apache-2.0)</td><td>Mappings are versioned files in git, tested like code</td></tr><tr><td>6</td><td>Resolve identities</td><td>The same borrower or loan across systems, linked through an identity crosswalk</td><td>Deterministic keys first; fuzzy matches go to manual review</td></tr><tr><td>7</td><td>Add data-quality shapes</td><td>SHACL shapes over the mapped data (e.g. every application has a received date)</td><td>Keep them separate from requirement shapes, so a data defect is never reported to a borrower as a missing document</td></tr><tr><td>8</td><td>Snapshot at evaluation time</td><td>The engine evaluates a frozen, point-in-time copy of the facts and records it</td><td>A later change in a source never alters a past decision</td></tr><tr><td>9</td><td>Shadow run</td><td>Run the engine on historical applications and compare with the acknowledgement letters people actually sent</td><td>Cut over only when the precision target is met (section 12)</td></tr><tr><td>10</td><td>Grow slice by slice</td><td>One investor and product at a time</td><td>Strangler pattern: the old process stays until each slice is proven</td></tr></tbody></table></div>
+
+<h3 id="14-5-compare">14.5 Green field vs brown field at a glance</h3>
+<div class="table-wrap"><table><thead><tr><th></th><th>Green field</th><th>Brown field</th></tr></thead><tbody><tr><td>Starting point</td><td>No data; the domain and its rules</td><td>Data already in several databases, each with its own codes and keys</td></tr><tr><td>Semantic model</td><td><strong>Designed</strong> to fit the ontology (<code>uc1_*</code> tables)</td><td><strong>Discovered and mapped</strong>: staging tables or virtual views over the sources, with lineage</td></tr><tr><td>Taxonomy</td><td><strong>Authored</strong> by SMEs in VocBench</td><td><strong>Reconciled</strong>: canonical concepts plus a crosswalk from every source code list</td></tr><tr><td>Ontology</td><td>From the competency questions</td><td>From the competency questions, checked against the source schemas; acts as the integration contract</td></tr><tr><td>Loading data</td><td>Seed SQL</td><td>ETL with lineage (MVP) or R2RML / Ontop (scale)</td></tr><tr><td>Proving it before go-live</td><td>Golden cases</td><td>Golden cases + data-quality shapes + a shadow run on historical decisions</td></tr><tr><td>Main risk</td><td>Over-modelling</td><td>Mapping drift, identity mismatches, code lists nobody owns</td></tr><tr><td>First milestone</td><td>Artifact gate passed for one investor, two versions</td><td>One source mapped end to end for one investor, with a shadow-run precision report</td></tr></tbody></table></div>
+
+
+<h2 id="15-risks"><span class="n">15</span>Risks and open questions<a class="anchor" href="#15-risks">#</a></h2>
+<div class="table-wrap"><table class=""><thead><tr><th>Risk / question</th><th>Mitigation</th></tr></thead><tbody><tr><td>Regulatory interpretation (counting days, effect of an incorrect list)</td><td>Compliance sign-off before use; the counting convention is one configurable function.</td></tr><tr><td>Real guides are long, change often, and contain judgement calls</td><td>Model only checkable document requirements; leave judgement to people; one requirements file per version.</td></tr><tr><td>PII in borrower documents</td><td>Access tags (servicing team only), Only me uploads, trace retention; test with synthetic documents only.</td></tr><tr><td>Scanned documents</td><td>RAG-OS has no OCR today (Content Understanding is on its roadmap); the MVP uses text documents.</td></tr><tr><td>SHACL expressiveness (dates, "most recent")</td><td>Compute derived values (age, period) in the bridge; use SHACL-SPARQL for conditional rules.</td></tr><tr><td>The structural guidance is written for Palantir Foundry</td><td>Applied by principle, with no platform dependency; the mapping table in 8.1 shows each translation.</td></tr><tr><td>Deriving values per evaluation costs time</td><td>Negligible at MVP scale (one application's graph). The guidance notes derived-property latency only at high scale, and each evaluation snapshots its result anyway.</td></tr><tr><td>Loan ownership changes over time</td><td>The MVP keeps a direct loan → investor link; promote it to an object-backed <code>LoanOwnership</code> if history is needed (8.2).</td></tr><tr><td>Disputed version or late guide publication</td><td>Version is recorded per evaluation; re-evaluation under another version is one command.</td></tr></tbody></table></div>
+
+<h2 id="16-cleanup"><span class="n">16</span>Artifacts and cleanup<a class="anchor" href="#16-cleanup">#</a></h2>
+<p>Every Use Case 1 artifact is listed in <code>usecase1/CHANGES.md</code>, kept current by every phase. Removing the use case
+  means running the steps in the last column.</p>
+<div class="table-wrap"><table class=""><thead><tr><th>Artifact</th><th>Phase</th><th>Remove with</th></tr></thead><tbody><tr><td><code>docs/UseCase1.html</code> (this document)</td><td>design</td><td>delete the file</td></tr><tr><td><code>usecase1/CHANGES.md</code> (the ledger), <code>usecase1/README.md</code> (naming contract), <code>usecase1/checks/</code></td><td>1</td><td>delete <code>usecase1/</code></td></tr><tr><td><code>usecase1/taxonomy/</code> (the seed; the VocBench export), <code>usecase1/ontology/*.ttl</code> + <code>catalog-v001.xml</code>, <code>usecase1/golden/</code>, <code>usecase1/sql/</code></td><td>1</td><td>delete <code>usecase1/</code></td></tr><tr><td><code>uc1_*</code> tables in their own SQLite file <code>.data/uc1.db</code> (git-ignored; not the product state database)</td><td>1</td><td>delete the file</td></tr><tr><td><code>uc1_*</code> tables in the PostgreSQL schema <code>uc1</code></td><td>1</td><td><code>DROP SCHEMA uc1 CASCADE;</code></td></tr><tr><td>VocBench project <code>uc1-loss-mitigation</code></td><td>1</td><td>delete the project in VocBench</td></tr><tr><td>Local tool installs: VocBench, Protégé, Temurin JDK 21 (outside the repo)</td><td>1</td><td>delete the VocBench and Protégé folders; <code>winget uninstall EclipseAdoptium.Temurin.21.JDK</code> if nothing else needs Java</td></tr><tr><td>The generated <code>usecase1/taxonomy/taxonomy.yaml</code>; the engine package and CLI in <code>usecase1/</code></td><td>2</td><td>delete <code>usecase1/</code></td></tr><tr><td>Optional extra <code>[usecase1]</code> in <code>pyproject.toml</code> (product file)</td><td>2</td><td>remove the extra; re-lock</td></tr><tr><td><code>tests/usecase1/</code> (marker <code>uc1</code>)</td><td>2–5</td><td>delete the folder; remove the marker</td></tr><tr><td>Admin workbench in <code>usecase1/</code>, behind <code>UC1_ENABLED</code>; one app-factory hook + one Admin menu link (product files)</td><td>3</td><td>delete <code>usecase1/</code>; revert those lines</td></tr><tr><td>Synthetic guide documents ingested into RAG-OS</td><td>4</td><td>Admin › Documents › Delete permanently (they are uploads)</td></tr></tbody></table></div>
+<p>Phase 6 rehearses this removal end to end; the ordered steps are in <code>usecase1/CHANGES.md</code>.</p>
+<footer><p>Use Case 1 design · RAG-OS · design for review; Phase 1 artifacts in <code>usecase1/</code> (naming contract:
+  <a href="../usecase1/README.md">usecase1/README.md</a>; ledger: <a href="../usecase1/CHANGES.md">usecase1/CHANGES.md</a>).
+  Brief: <a href="use-case-1.md">docs/use-case-1.md</a>.
+  Product documentation: <a href="../README.html">README.html</a>.</p></footer>
+</div>
+
+</main>
+</div>
+<button class="totop" id="toTop" title="Back to top">↑ Top</button>
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  // ---- theme -------------------------------------------------------------
+  var btn = document.getElementById("themeBtn");
+  function stored(){ try { return localStorage.getItem("ragos-theme"); } catch(e){ return null; } }
+  function apply(v){ if(v==="light"||v==="dark"){ root.setAttribute("data-theme", v); } else { root.removeAttribute("data-theme"); } }
+  apply(stored());
+  btn.addEventListener("click", function(){
+    var cur = root.getAttribute("data-theme");
+    var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = cur ? (cur === "dark" ? "light" : "dark") : (dark ? "light" : "dark");
+    apply(next);
+    try { localStorage.setItem("ragos-theme", next); } catch(e){}
+  });
+  // ---- sidebar on small screens -----------------------------------------
+  var toggle = document.getElementById("tocToggle"), toc = document.getElementById("toc");
+  toggle.addEventListener("click", function(){
+    var open = toc.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  toc.addEventListener("click", function(e){
+    if (e.target.tagName === "A" && window.innerWidth <= 1100) { toc.classList.remove("open"); }
+  });
+  // ---- scroll spy --------------------------------------------------------
+  var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute("href").slice(1)] = a; });
+  var targets = Object.keys(byId).map(function(id){ return document.getElementById(id); }).filter(Boolean);
+  if ("IntersectionObserver" in window) {
+    var seen = {};
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ seen[en.target.id] = en.isIntersecting ? en.intersectionRatio : 0; });
+      var best = null, bestRatio = 0;
+      Object.keys(seen).forEach(function(id){ if (seen[id] > bestRatio){ bestRatio = seen[id]; best = id; } });
+      if (best) {
+        links.forEach(function(a){ a.classList.remove("active"); });
+        if (byId[best]) byId[best].classList.add("active");
+      }
+    }, { rootMargin: "-10% 0px -70% 0px", threshold: [0, .25, .5, 1] });
+    targets.forEach(function(t){ io.observe(t); });
+  }
+  // ---- copy buttons ------------------------------------------------------
+  Array.prototype.forEach.call(document.querySelectorAll(".copy"), function(b){
+    b.addEventListener("click", function(){
+      var code = b.parentNode.querySelector("code");
+      var text = code ? code.innerText : "";
+      var done = function(){ b.textContent = "Copied"; setTimeout(function(){ b.textContent = "Copy"; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function(){ b.textContent = "Press Ctrl+C"; });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); done(); } catch(e){ b.textContent = "Press Ctrl+C"; }
+        document.body.removeChild(ta);
+      }
+    });
+  });
+  // ---- back to top -------------------------------------------------------
+  var top = document.getElementById("toTop");
+  top.addEventListener("click", function(){ window.scrollTo({ top: 0, behavior: "smooth" }); });
+  window.addEventListener("scroll", function(){
+    top.classList.toggle("show", window.scrollY > 700);
+  }, { passive: true });
+})();
+</script>
+</body>
+</html>

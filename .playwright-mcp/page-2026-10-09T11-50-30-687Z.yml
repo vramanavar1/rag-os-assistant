@@ -1,0 +1,98 @@
+- generic [ref=f4e2]:
+  - generic [ref=f4e5]:
+    - generic [ref=f4e12]: RAG-OS — Feature Comparison
+    - generic [ref=f4e20]:
+      - generic:
+        - main
+  - main [ref=f4e28]:
+    - generic [ref=f4e29]:
+      - paragraph [ref=f4e30]: Competitive analysis · v1.0 · 9 October 2026
+      - heading "RAG-OS vs Azure Foundry IQ & AI Search" [level=1] [ref=f4e31]
+      - paragraph [ref=f4e32]: What Microsoft's platform building blocks provide, what RAG-OS adds on top of them, and how the two work together. The comparison is dated, because preview features change quickly.
+      - list [ref=f4e33]:
+        - listitem [ref=f4e34]: Version 1.0
+        - listitem [ref=f4e35]: Date 9 October 2026
+        - listitem [ref=f4e36]: Audience Prospects and partners
+        - listitem [ref=f4e37]: Azure status checked 9 October 2026
+      - list [ref=f4e38]:
+        - listitem [ref=f4e39]:
+          - generic [ref=f4e40]: Policy-based access
+          - text: Department, region hierarchy, clearance and personal shares, enforced inside every search. Access is denied by default.
+        - listitem [ref=f4e41]:
+          - generic [ref=f4e42]: Governed classification
+          - text: Layered tagging, an SME review queue and a record of where every tag came from.
+        - listitem [ref=f4e43]:
+          - generic [ref=f4e44]: Grounded answers
+          - text: Page-level citations, and an abstention when the permitted evidence doesn't support an answer.
+        - listitem [ref=f4e45]:
+          - generic [ref=f4e46]: Runs in your tenant
+          - text: Your Azure subscription, keyless managed identity, and models on Microsoft Foundry.
+  - generic [ref=f4e49]:
+    - generic [ref=f4e56]: RAG-OS — Feature Comparison
+    - main [ref=f4e66]:
+      - navigation "Contents" [ref=f4e67]:
+        - heading "Contents" [level=2] [ref=f4e68]
+        - list [ref=f4e69]:
+          - listitem [ref=f4e70]:
+            - link "1. Executive summary" [ref=f4e71] [cursor=pointer]:
+              - /url: "#s-summary"
+          - listitem [ref=f4e73]:
+            - link "2. How to read this document" [ref=f4e74] [cursor=pointer]:
+              - /url: "#s-read"
+          - listitem [ref=f4e76]:
+            - link "3. Where each sits" [ref=f4e77] [cursor=pointer]:
+              - /url: "#s-layers"
+          - listitem [ref=f4e79]:
+            - link "4. Head-to-head comparison" [ref=f4e80] [cursor=pointer]:
+              - /url: "#s-h2h"
+          - listitem [ref=f4e82]:
+            - link "5. Feature catalogue" [ref=f4e83] [cursor=pointer]:
+              - /url: "#s-catalogue"
+          - listitem [ref=f4e85]:
+            - link "5.1 Access control" [ref=f4e86] [cursor=pointer]:
+              - /url: "#s-cat-access"
+          - listitem [ref=f4e88]:
+            - link "5.2 Classification" [ref=f4e89] [cursor=pointer]:
+              - /url: "#s-cat-class"
+          - listitem [ref=f4e91]:
+            - link "5.3 Retrieval and answers" [ref=f4e92] [cursor=pointer]:
+              - /url: "#s-cat-retrieval"
+          - listitem [ref=f4e94]:
+            - link "5.4 Operations" [ref=f4e95] [cursor=pointer]:
+              - /url: "#s-cat-ops"
+          - listitem [ref=f4e97]:
+            - link "5.5 Channels" [ref=f4e98] [cursor=pointer]:
+              - /url: "#s-cat-channels"
+          - listitem [ref=f4e100]:
+            - link "6. Purview labels with access policy" [ref=f4e101] [cursor=pointer]:
+              - /url: "#s-purview"
+          - listitem [ref=f4e103]:
+            - link "6.1 How RAG-OS will use labels" [ref=f4e104] [cursor=pointer]:
+              - /url: "#s-pv-how"
+          - listitem [ref=f4e106]:
+            - link "6.2 Two ways to honour labels" [ref=f4e107] [cursor=pointer]:
+              - /url: "#s-pv-compare"
+          - listitem [ref=f4e109]:
+            - link "6.3 Purview references" [ref=f4e110] [cursor=pointer]:
+              - /url: "#s-pv-refs"
+          - listitem [ref=f4e112]:
+            - link "7. Where RAG-OS stands out" [ref=f4e113] [cursor=pointer]:
+              - /url: "#s-standout"
+          - listitem [ref=f4e115]:
+            - link "7.1 Current gaps and roadmap" [ref=f4e116] [cursor=pointer]:
+              - /url: "#s-gaps"
+          - listitem [ref=f4e118]:
+            - link "8. Use-case fit" [ref=f4e119] [cursor=pointer]:
+              - /url: "#s-fit"
+          - listitem [ref=f4e121]:
+            - link "9. Roadmap alignment" [ref=f4e122] [cursor=pointer]:
+              - /url: "#s-roadmap"
+          - listitem [ref=f4e124]:
+            - link "10. Market context" [ref=f4e125] [cursor=pointer]:
+              - /url: "#s-market"
+          - listitem [ref=f4e127]:
+            - link "10.1 Other considerations" [ref=f4e128] [cursor=pointer]:
+              - /url: "#s-consider"
+          - listitem [ref=f4e130]:
+            - link "11. References" [ref=f4e131] [cursor=pointer]:
+              - /url: "#s-refs"

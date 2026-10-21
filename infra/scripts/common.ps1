@@ -110,6 +110,9 @@ $script:RagOsFailureHints = @(
     @{ Match = '(?i)(unauthorized|authentication required|pull access denied|denied: requested access)'
         Cause = 'The build could not authenticate to a registry.'
         Fix   = "Confirm the managed identity's AcrPull assignment from step 06, and that the base image registry does not need credentials." }
+    @{ Match = '(?i)workload ?profile\w*.{0,120}(cannot be (changed|updated|modified)|can not be changed|not supported|immutable|is not allowed)'
+        Cause = 'Azure refused to move an existing container app to a different workload profile in place (QueryPlan / IngestPlan changed).'
+        Fix   = 'Recreate just that app on the new profile, outside working hours (it is down while it is recreated): az containerapp delete -g <rg> -n <app> --yes, then re-run 07-container-apps.ps1, which creates it on the new profile with the same FQDN.' }
     @{ Match = '(?i)(MissingSubscriptionRegistration|not registered to use namespace)'
         Cause = 'An Azure resource provider is not registered on this subscription.'
         Fix   = 'Run ./infra/scripts/00-prereqs.ps1 -Env <env>, which registers every provider RAG-OS needs.' }
@@ -2030,6 +2033,19 @@ function Import-RagOsConfig {
     if ($config.QueueLockDuration -match '(\d+)M') { $lockSeconds += [int]$Matches[1] * 60 }
     if ($config.QueueLockDuration -match '(\d+)S') { $lockSeconds += [int]$Matches[1] }
     if ($lockSeconds -lt 5 -or $lockSeconds -gt 300) { throw "QueueLockDuration must be between PT5S and PT5M - Azure Service Bus rejects anything else (got '$($config.QueueLockDuration)')." }
+    foreach ($plan in 'QueryPlan', 'IngestPlan') {
+        if ("$($config[$plan])" -cnotin @('Dedicated', 'Consumption')) { throw "$plan must be 'Dedicated' or 'Consumption' (got '$($config[$plan])')." }
+    }
+    # The Consumption profile only accepts fixed CPU/memory pairs (0.25/0.5Gi up to 4/8Gi, memory = 2 x cpu). Every
+    # other ingest workload is fixed in its template and already fits; the worker is the one sized from here. Caught
+    # now rather than as an ARM rejection half-way through step 07, with some apps moved and some not.
+    if ($config.IngestPlan -eq 'Consumption') {
+        $workerGi = if ("$($config.WorkerMemory)" -match '^(\d+(\.\d+)?)Gi$') { [double]$Matches[1] } else { -1 }
+        if (-not (Test-ConsumptionSize -Cpu ([double]$config.WorkerCpu) -MemoryGi $workerGi)) {
+            throw ("IngestPlan = 'Consumption' needs WorkerCpu/WorkerMemory to be a Consumption pair: a multiple of 0.25 vCPU " +
+                "up to 4, with memory exactly twice the CPU in Gi (e.g. 2.0 / '4Gi'). Got $($config.WorkerCpu) / '$($config.WorkerMemory)'.")
+        }
+    }
 
     # ---- names: <type>-<prefix>-<env>[-<suffix>] ; globally unique names get a deterministic 5-char suffix
     $base = "$($config.Prefix)-$($config.Env)"
@@ -2527,6 +2543,32 @@ function Remove-UnusedAcrRepository {
     $null = Invoke-Az @('acr', 'repository', 'delete', '-n', $Registry, '--repository', $Repository, '--yes', '-o', 'none')
     Write-Ok "Deleted repository $Repository - nothing references it under the current embedding profile."
     return $true
+}
+
+function Test-ConsumptionSize {
+    <#
+    .SYNOPSIS  Can a replica of this size run on the Consumption workload profile?
+    .DESCRIPTION
+        The Consumption profile accepts fixed CPU/memory pairs only: 0.25 vCPU steps up to 4, with memory exactly
+        twice the CPU in Gi (0.25/0.5Gi ... 4/8Gi). Anything else is rejected by ARM when the app is moved, which is
+        why every path that moves an app checks first rather than finding out half-way through.
+    #>
+    param([Parameter(Mandatory)][double]$Cpu, [Parameter(Mandatory)][double]$MemoryGi)
+    return ($Cpu -gt 0 -and $Cpu -le 4 -and ($Cpu * 4) % 1 -eq 0 -and $MemoryGi -eq 2 * $Cpu)
+}
+
+function Get-WorkloadProfileUsers {
+    <#
+    .SYNOPSIS  Names of the container apps and jobs assigned to a workload profile.
+    .DESCRIPTION
+        The one emptiness check before a profile is deleted (step 07 retiring a tier, cost saving removing the
+        Dedicated plan). Azure refuses to delete a profile anything is assigned to - stopped apps included - and a
+        delete that is refused half-way through a run is harder to read than a list of what is still there.
+    #>
+    param([Parameter(Mandatory)][string]$ResourceGroup, [Parameter(Mandatory)][string]$ProfileName)
+    $onIt = "[?properties.workloadProfileName=='$ProfileName'].name"
+    return @(@(Get-AzTsvValues @('containerapp', 'list', '-g', $ResourceGroup, '--query', $onIt)) +
+        @(Get-AzTsvValues @('containerapp', 'job', 'list', '-g', $ResourceGroup, '--query', $onIt)))
 }
 
 function Get-ChatUiUrl {

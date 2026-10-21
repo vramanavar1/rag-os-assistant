@@ -16,6 +16,10 @@ htmlcov/
 samples/synthetic/
 infra/env/*.outputs.json
 infra/env/*.outputs.json.bak
+# Set-CostSavingMode.ps1 snapshots: the live state of one deployment before cost saving, and archived ones.
+infra/env/*.costsaver*.json
+# 10-loadtest.ps1 -SaveBaseline / -CompareToBaseline results for one deployment.
+infra/env/*.loadtest-*.json
 # The wiring sheet from Write-OutputSheet.ps1. It holds references, never secret values, but it is a map of
 # one specific deployment (resource names, endpoints, tenant and client ids) and belongs with the operator.
 output.txt

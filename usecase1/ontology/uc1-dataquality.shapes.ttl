@@ -1,0 +1,61 @@
+# =====================================================================================================================
+# Use Case 1: data-quality shapes (SHACL Core). Separate from the completeness template on purpose: these report
+# defects in the application DATA (missing received date, unclassified document, ...). Such defects must be fixed
+# by the servicer and are never presented to a borrower as missing documents (UseCase1.html 14.4).
+# Dates are xsd:dateTime at midnight (OWL 2 has no xsd:date). SYNTHETIC MVP.
+# =====================================================================================================================
+
+@prefix uc1:      <https://rag-os.example/uc1#> .
+@prefix uc1shape: <https://rag-os.example/uc1/shapes#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:       <http://www.w3.org/ns/shacl#> .
+@prefix skos:     <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+
+uc1shape:ApplicationData
+    a sh:NodeShape ;
+    rdfs:label "An application has what the engine needs"@en ;
+    sh:targetClass uc1:Application ;
+    sh:property
+        [ sh:path uc1:receivedAt ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ;
+          sh:message "Application has no single received date-time" ] ,
+        [ sh:path uc1:governingVersion ; sh:minCount 1 ; sh:maxCount 1 ; sh:class uc1:GuidelineVersion ;
+          sh:message "Application has no single governing guide version" ] ,
+        [ sh:path uc1:hardshipReason ; sh:minCount 1 ; sh:maxCount 1 ; sh:class skos:Concept ;
+          sh:message "Application has no single hardship reason from the taxonomy" ] ,
+        [ sh:path uc1:parties ; sh:minCount 1 ; sh:class uc1:ApplicationParty ;
+          sh:message "Application has no parties" ] ,
+        [ sh:path uc1:documents ; sh:class uc1:SubmittedDocument ;
+          sh:message "A linked document is not a SubmittedDocument" ] .
+
+uc1shape:PartyData
+    a sh:NodeShape ;
+    sh:targetClass uc1:ApplicationParty ;
+    sh:property
+        [ sh:path uc1:role ; sh:minCount 1 ; sh:maxCount 1 ; sh:in ( uc1:PrimaryBorrower uc1:CoBorrower ) ;
+          sh:message "Party has no single role" ] ,
+        [ sh:path uc1:employmentType ; sh:minCount 1 ; sh:maxCount 1 ; sh:class skos:Concept ;
+          sh:message "Party has no single employment type from the taxonomy" ] ,
+        [ sh:path uc1:hasRentalIncome ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:boolean ;
+          sh:message "Party has no rental-income flag" ] ,
+        [ sh:path uc1:borrower ; sh:minCount 1 ; sh:maxCount 1 ; sh:class uc1:Borrower ;
+          sh:message "Party is not linked to one borrower" ] .
+
+uc1shape:DocumentData
+    a sh:NodeShape ;
+    sh:targetClass uc1:SubmittedDocument ;
+    sh:property
+        [ sh:path uc1:receivedAt ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:dateTime ;
+          sh:message "Document has no single received date-time" ] ,
+        [ sh:path ( uc1:classification uc1:docType ) ; sh:minCount 1 ; sh:maxCount 1 ; sh:class skos:Concept ;
+          sh:message "Document is not classified with one taxonomy document type" ] ,
+        [ sh:path ( uc1:classification uc1:confidence ) ; sh:maxCount 1 ; sh:datatype xsd:decimal ;
+          sh:minInclusive 0 ; sh:maxInclusive 1 ; sh:message "Classification confidence must be within 0..1" ] ,
+        [ sh:path uc1:documentDate ; sh:maxCount 1 ; sh:datatype xsd:dateTime ;
+          sh:message "Document date must be one xsd:dateTime (midnight)" ] ,
+        [ sh:path ( uc1:signature uc1:signed ) ; sh:maxCount 1 ; sh:datatype xsd:boolean ;
+          sh:message "Signature flag must be one boolean" ] ,
+        [ sh:path uc1:ageAtReceiptDays ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 0 ;
+          sh:message "Document age at receipt must be one non-negative integer (a negative age means a future-dated document)" ] ,
+        [ sh:path uc1:monthsBeforeReceipt ; sh:maxCount 1 ; sh:datatype xsd:integer ;
+          sh:message "Months before receipt must be one integer" ] .

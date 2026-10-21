@@ -1,0 +1,86 @@
+# Golden case G02: Salaried, complete.
+# SYNTHETIC. Hand-checked expectations: golden/expected.yaml. Derived values (ageAtReceiptDays,
+# monthsBeforeReceipt) are written out here; check_consistency.py recomputes them from the dates.
+# uc1:governingVersion is NOT stated: the runner evaluates each case under every guide version.
+
+@prefix uc1:   <https://rag-os.example/uc1#> .
+@prefix uc1tx: <https://rag-os.example/uc1/taxonomy#> .
+@prefix app:   <https://rag-os.example/uc1/app#> .
+@prefix ia:    <https://rag-os.example/uc1/investor-a#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+app:APP-1002
+    a uc1:Application ;
+    rdfs:label "APP-1002 (golden case G02)"@en ;
+    uc1:loan app:L-1002 ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:hardshipReason uc1tx:IncomeReduction ;
+    uc1:parties app:APP-1002-P1 ;
+    uc1:documents app:APP-1002-D1, app:APP-1002-D2, app:APP-1002-D3, app:APP-1002-D4, app:APP-1002-D5, app:APP-1002-D6, app:APP-1002-D7 .
+
+app:L-1002 a uc1:Loan ; uc1:ownedBy ia:InvestorA ; uc1:lienPosition 1 ; uc1:propertyState "TX" .
+
+app:APP-1002-P1
+    a uc1:ApplicationParty ;
+    uc1:borrower app:B1002 ;
+    uc1:role uc1:PrimaryBorrower ;
+    uc1:employmentType uc1tx:Salaried ;
+    uc1:hasRentalIncome false .
+app:B1002 a uc1:Borrower .
+
+app:APP-1002-D1
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:MAA ; uc1:confidence 1.0 ; uc1:classificationMethod "human" ; uc1:reviewedBy "reviewer-01" ] ;
+    uc1:documentDate "2026-03-05T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 5 ;
+    uc1:signature [ uc1:signed true ] .
+
+app:APP-1002-D2
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:HardshipStatement ; uc1:confidence 0.93 ; uc1:classificationMethod "classifier" ] ;
+    uc1:documentDate "2026-03-05T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 5 ;
+    uc1:signature [ uc1:signed true ] .
+
+app:APP-1002-D3
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:Paystub ; uc1:confidence 0.93 ; uc1:classificationMethod "classifier" ] ;
+    uc1:documentDate "2026-02-27T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 11 .
+
+app:APP-1002-D4
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:Paystub ; uc1:confidence 0.93 ; uc1:classificationMethod "classifier" ] ;
+    uc1:documentDate "2026-02-13T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 25 .
+
+app:APP-1002-D5
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:BankStatement ; uc1:confidence 0.93 ; uc1:classificationMethod "classifier" ] ;
+    uc1:documentDate "2026-02-28T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 10 ;
+    uc1:period [ uc1:startDate "2026-02-01T00:00:00"^^xsd:dateTime ; uc1:endDate "2026-02-28T00:00:00"^^xsd:dateTime ] ;
+    uc1:monthsBeforeReceipt 1 .
+
+app:APP-1002-D6
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:BankStatement ; uc1:confidence 0.93 ; uc1:classificationMethod "classifier" ] ;
+    uc1:documentDate "2026-01-31T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 38 ;
+    uc1:period [ uc1:startDate "2026-01-01T00:00:00"^^xsd:dateTime ; uc1:endDate "2026-01-31T00:00:00"^^xsd:dateTime ] ;
+    uc1:monthsBeforeReceipt 2 .
+
+app:APP-1002-D7
+    a uc1:SubmittedDocument ;
+    uc1:receivedAt "2026-03-10T09:00:00"^^xsd:dateTime ;
+    uc1:classification [ uc1:docType uc1tx:Form4506C ; uc1:confidence 0.93 ; uc1:classificationMethod "classifier" ] ;
+    uc1:documentDate "2026-03-05T00:00:00"^^xsd:dateTime ;
+    uc1:ageAtReceiptDays 5 ;
+    uc1:signature [ uc1:signed true ] .

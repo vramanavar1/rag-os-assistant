@@ -108,10 +108,19 @@ function Get-Profiles {
     return $map
 }
 $profiles = Get-Profiles
-$dedicated = @(
-    @{ Name = 'query'; Type = $Config.QueryProfileType; Min = $Config.QueryMinNodes; Max = $Config.QueryMaxNodes }
-    @{ Name = 'ingest'; Type = $Config.IngestProfileType; Min = $Config.IngestMinNodes; Max = $Config.IngestMaxNodes }
+# QueryPlan / IngestPlan decide which profile each tier's templates name. A tier on 'Consumption' uses the
+# environment's built-in profile, so its Dedicated profile is neither added nor resized here; it is deleted after
+# the deploy, once nothing is left on it. A tier switched back to 'Dedicated' is re-added below, before any app
+# is deployed onto it.
+$tiers = @(
+    @{ Name = 'query'; Plan = $Config.QueryPlan; Type = $Config.QueryProfileType; Min = $Config.QueryMinNodes; Max = $Config.QueryMaxNodes }
+    @{ Name = 'ingest'; Plan = $Config.IngestPlan; Type = $Config.IngestProfileType; Min = $Config.IngestMinNodes; Max = $Config.IngestMaxNodes }
 )
+$dedicated = @($tiers | Where-Object { $_.Plan -eq 'Dedicated' })
+foreach ($p in @($tiers | Where-Object { $_.Plan -eq 'Consumption' })) {
+    if ($profiles.ContainsKey($p.Name)) { Write-Info "profile $($p.Name): $($p.Name) workloads move to Consumption below; the profile is deleted once nothing uses it." }
+    else { Write-Ok "$($p.Name) tier on the Consumption profile (no Dedicated profile)" }
+}
 foreach ($p in $dedicated) {
     $existing = $profiles[$p.Name]
     if (-not $existing) {
@@ -289,8 +298,12 @@ if (($Config.AnswerModelProvider -eq 'claude' -or $Config.UtilityModelProvider -
 $commonEnv = (@($appEnv.Keys | ForEach-Object { "- name: $_"; "  value: $(ConvertTo-YamlString $appEnv[$_])" }) -join "`n")
 $tagsBlock = (@($Config.AllTags.Keys | ForEach-Object { "$($_): $(ConvertTo-YamlString $Config.AllTags[$_])" }) -join "`n")
 
+$queryProfile = ($Config.QueryPlan -eq 'Consumption') ? 'Consumption' : 'query'
+$ingestProfile = ($Config.IngestPlan -eq 'Consumption') ? 'Consumption' : 'ingest'
 $tokens = @{
     LOCATION                      = $loc
+    QUERY_PROFILE                 = $queryProfile
+    INGEST_PROFILE                = $ingestProfile
     ENV_ID                        = $envId
     MI_ID                         = $o.identityId
     ACR_LOGIN_SERVER              = $o.acrLoginServer
@@ -301,7 +314,7 @@ $tokens = @{
     IMAGE_CHAT_UI                 = $imageRefs['rag-chat-ui']
     IMAGE_EMBED_QUERY             = $imageRefs['rag-embedder-cpu']
     IMAGE_EMBED_INGEST            = ($useGpu ? $imageRefs['rag-embedder-turing'] : $imageRefs['rag-embedder-cpu'])
-    EMBED_INGEST_PROFILE          = ($useGpu ? 'gpu-t4' : 'ingest')
+    EMBED_INGEST_PROFILE          = ($useGpu ? 'gpu-t4' : $ingestProfile)
     EMBED_INGEST_CPU              = ($useGpu ? '8.0' : '4.0')      # serverless T4 replicas get the whole GPU node size
     EMBED_INGEST_MEMORY           = ($useGpu ? '56Gi' : '8Gi')
     EMBED_INGEST_THREADS          = ($useGpu ? '8' : '4')
@@ -329,6 +342,42 @@ $tokens = @{
     WORKER_BULK_MESSAGE_COUNT     = $Config.WorkerBulkMessageCount
     SERVICEBUS_NAMESPACE_NAME     = $o.serviceBusName
     SCHEDULER_CRON                = $Config.SchedulerCron
+}
+
+# ============================================================================================== Consumption capacity
+# A Dedicated profile is capped by its max nodes; the Consumption profile is capped by the environment's core
+# quota instead. Exceeding it does not fail the deploy - it silently stops scale-out at the worst moment, under
+# load - so the peak is worked out from the same values the templates are rendered with, and said out loud.
+$onConsumption = @()
+if ($queryProfile -eq 'Consumption') {
+    $onConsumption += @{ Name = 'rag-api'; Cpu = 1.0; Max = $Config.ApiMaxReplicas }
+    $onConsumption += @{ Name = 'rag-chat-ui'; Cpu = 0.5; Max = $Config.ChatUiMaxReplicas }
+    if ($useTei) { $onConsumption += @{ Name = 'rag-embed-query'; Cpu = 2.0; Max = $Config.EmbedQueryMaxReplicas } }
+}
+if ($ingestProfile -eq 'Consumption') {
+    $onConsumption += @{ Name = 'rag-ingest-worker'; Cpu = [double]$Config.WorkerCpu; Max = $Config.WorkerMaxReplicas }
+    $onConsumption += @{ Name = 'rag-scheduler + rag-bootstrap'; Cpu = 1.0; Max = 2 }
+    if ($useTei -and -not $useGpu) { $onConsumption += @{ Name = 'rag-embed-ingest (CPU)'; Cpu = 4.0; Max = $Config.EmbedIngestCpuMaxReplicas } }
+}
+if ($onConsumption.Count -gt 0) {
+    Write-Step 'Consumption capacity'
+    $peak = 0.0
+    foreach ($w in $onConsumption) { $peak += $w.Cpu * [int]$w.Max; Write-Info ("{0,-30} {1} vCPU x {2} max replicas" -f $w.Name, $w.Cpu, $w.Max) }
+    Write-Info "Peak on the Consumption profile at max scale: $peak vCPU"
+    try {
+        $usages = @(Invoke-Az @('containerapp', 'env', 'list-usages', '-g', $rg, '-n', $n.ContainerEnv))
+        $cores = @($usages | Where-Object { $_ -and "$(Get-Value $_ 'name.value') $(Get-Value $_ 'name.localizedValue')" -match '(?i)consumption.*core|core.*consumption' } | Select-Object -First 1)
+        if ($cores.Count -eq 0) { Write-Info 'No Consumption core quota row was reported for this environment; check Quotas in the portal before a large backfill.' }
+        else {
+            $limit = [double](Get-Value $cores[0] 'limit')
+            if ($peak -gt $limit) {
+                Write-Warn "That exceeds the environment's Consumption core quota ($limit). Scale-out stops at the quota."
+                Write-Info '  Lower the max replicas in the psd1, or request more in the portal: Quotas -> Azure Container Apps.'
+            }
+            else { Write-Ok "within the Consumption core quota ($(Get-Value $cores[0] 'currentValue') in use, limit $limit)" }
+        }
+    }
+    catch { Write-Warn "Could not read the environment's quota usage: $(($_.Exception.Message -split "`n")[0])" }
 }
 
 # ============================================================================================== deploy
@@ -367,7 +416,7 @@ else {
     }
     Write-Info 'Then, in the psd1 - these are the ones that actually change the bill:'
     if ($Config.EnableGpu) { Write-Info '  EnableGpu     = $false   # nothing uses the T4 profile once the pools are gone' }
-    if ([int]$Config.QueryMinNodes -gt 1) {
+    if ($Config.QueryPlan -eq 'Dedicated' -and [int]$Config.QueryMinNodes -gt 1) {
         Write-Info "  QueryMinNodes = 1        # currently $($Config.QueryMinNodes). The query profile was sized for"
         Write-Info '                           # api(2) + chat-ui(1) + embed-query(2) = 5 vCPU; without the embedder'
         Write-Info '                           # it is 3 vCPU, so one node is enough.'
@@ -390,6 +439,25 @@ foreach ($w in $workloads) {
     Write-Ok "$($w.Name) ($($verb)d)"
 }
 
+# ============================================================================================== retired profiles
+# A Dedicated profile nothing runs on still bills: its min nodes keep running, and the environment pays the
+# Dedicated plan management fee for as long as any Dedicated profile exists. So once a tier has moved to
+# Consumption its old profile is deleted - but only when it is verifiably empty. A partial run (-Only), or an app
+# this script does not manage, leaves it in place with the names of what is still on it.
+foreach ($p in @($tiers | Where-Object { $_.Plan -eq 'Consumption' -and $profiles.ContainsKey($_.Name) })) {
+    Write-Step "Retiring Dedicated profile $($p.Name)"
+    $users = @(Get-WorkloadProfileUsers -ResourceGroup $rg -ProfileName $p.Name)
+    if ($users.Count -gt 0) {
+        Write-Warn "profile $($p.Name) still runs $($users -join ', '), so it was kept (and keeps billing)."
+        Write-Info "  Move them (re-run this step without -Only), then: az containerapp env workload-profile delete -g $rg -n $($n.ContainerEnv) --workload-profile-name $($p.Name)"
+        continue
+    }
+    $null = Invoke-Az @('containerapp', 'env', 'workload-profile', 'delete', '-g', $rg, '-n', $n.ContainerEnv, '--workload-profile-name', $p.Name, '-o', 'none')
+    Write-Ok "profile $($p.Name) deleted - nothing runs on it. Setting $($p.Name -eq 'query' ? 'QueryPlan' : 'IngestPlan') = 'Dedicated' re-adds it."
+}
+$stillDedicated = @((Get-Profiles).Values | Where-Object { "$(Get-Value $_ 'workloadProfileType')" -notlike 'Consumption*' } | ForEach-Object { Get-Value $_ 'name' })
+if ($stillDedicated.Count -eq 0) { Write-Info 'No Dedicated profile remains: no node or Dedicated plan management charges for this environment.' }
+
 # ============================================================================================== outputs
 $chatFqdn = Invoke-Az @('containerapp', 'show', '-g', $rg, '-n', 'rag-chat-ui', '--query', 'properties.configuration.ingress.fqdn', '-o', 'tsv') -AllowNotFound
 Save-Outputs -Config $Config -Values @{
@@ -397,6 +465,8 @@ Save-Outputs -Config $Config -Values @{
     containerEnvId     = $envId
     containerEnvDomain = Get-Value $cae 'properties.defaultDomain'
     gpuEnabled         = $useGpu
+    queryPlan          = $Config.QueryPlan
+    ingestPlan         = $Config.IngestPlan
     chatUiFqdn         = $chatFqdn
     deployedImages     = $imageRefs
 }

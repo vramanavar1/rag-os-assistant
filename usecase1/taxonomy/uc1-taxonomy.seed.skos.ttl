@@ -1,0 +1,296 @@
+# Use Case 1 taxonomy: SEED (synthetic MVP content).
+# Loaded once into VocBench 3. After that, the VocBench export usecase1/taxonomy/uc1-taxonomy.skos.ttl is the
+# source of truth; this file is kept only as the starting point and for the compare check.
+# Names follow the naming contract in usecase1/README.md: concept IRI local name = skos:notation = facet value id;
+# scheme IRI local name = facet name. Hierarchy is stated with skos:broader only (no skos:narrower).
+
+@prefix uc1tx: <https://rag-os.example/uc1/taxonomy#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+@prefix dct:   <http://purl.org/dc/terms/> .
+@prefix owl:   <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+<https://rag-os.example/uc1/taxonomy> a owl:Ontology ;
+    dct:title "Use Case 1 taxonomy (seed)" ;
+    owl:versionInfo "seed-1" ;
+    rdfs:comment "Synthetic MVP content for Use Case 1 (loss-mitigation document chase). Loaded once into VocBench; after that the VocBench export (uc1-taxonomy.skos.ttl) is the source of truth."@en .
+
+# ---------------------------------------------------------------------------------------------------------------
+# OWL 2 DL declarations: the SKOS and Dublin Core terms used here, so that this file and every ontology importing it
+# stay OWL 2 DL. Concepts and schemes are individuals of the classes skos:Concept and skos:ConceptScheme; the SKOS
+# links and labels are annotations (skos:broader* still works in SPARQL, which reads the triples as they are).
+# ---------------------------------------------------------------------------------------------------------------
+
+skos:Concept       a owl:Class .
+skos:ConceptScheme a owl:Class .
+
+skos:prefLabel     a owl:AnnotationProperty .
+skos:altLabel      a owl:AnnotationProperty .
+skos:hiddenLabel   a owl:AnnotationProperty .
+skos:definition    a owl:AnnotationProperty .
+skos:notation      a owl:AnnotationProperty .
+skos:inScheme      a owl:AnnotationProperty .
+skos:broader       a owl:AnnotationProperty .
+skos:topConceptOf  a owl:AnnotationProperty .
+skos:hasTopConcept a owl:AnnotationProperty .
+dct:title          a owl:AnnotationProperty .
+dct:description    a owl:AnnotationProperty .
+
+# ---------------------------------------------------------------------------------------------------------------
+# uc1_doc_type: document types (hierarchical; children point at their parent with skos:broader)
+# ---------------------------------------------------------------------------------------------------------------
+
+uc1tx:uc1_doc_type a skos:ConceptScheme ;
+    skos:prefLabel "Document type"@en ;
+    skos:notation "uc1_doc_type" ;
+    dct:description "Types of documents a borrower submits in a loss-mitigation application, grouped by purpose."@en ;
+    rdfs:comment "Only leaf concepts are classification targets; the converter (phase 2) excludes group concepts from the classifier and treats a parent match as needs-review."@en ;
+    skos:hasTopConcept uc1tx:Application , uc1tx:Income , uc1tx:Assets , uc1tx:Hardship , uc1tx:Tax , uc1tx:Property .
+
+# Application
+uc1tx:Application a skos:Concept ;
+    skos:notation "Application" ;
+    skos:prefLabel "Application"@en ;
+    skos:definition "Category: the intake paperwork that opens a loss-mitigation case with the servicer, for example the mortgage assistance application a borrower completes to start the review."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:topConceptOf uc1tx:uc1_doc_type .
+
+uc1tx:MAA a skos:Concept ;
+    skos:notation "MAA" ;
+    skos:prefLabel "Mortgage assistance application"@en ;
+    skos:altLabel "Form 710"@en , "RMA"@en , "request for mortgage assistance"@en ;
+    skos:definition "The servicer's standard mortgage assistance form on which the borrower lists monthly income, expenses and assets and describes the hardship, then signs and dates it."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Application .
+
+# Income
+uc1tx:Income a skos:Concept ;
+    skos:notation "Income" ;
+    skos:prefLabel "Income evidence"@en ;
+    skos:definition "Category: proof of household earnings from any source, for example paystubs, profit and loss statements and unemployment benefit award letters."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:topConceptOf uc1tx:uc1_doc_type .
+
+uc1tx:Paystub a skos:Concept ;
+    skos:notation "Paystub" ;
+    skos:prefLabel "Paystub"@en ;
+    skos:altLabel "pay stub"@en , "payslip"@en , "earnings statement"@en ;
+    skos:definition "An employer's earnings statement for one pay period showing the pay date, gross pay, deductions such as FICA and income tax withholding, net pay and year-to-date (YTD) totals."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Income .
+
+uc1tx:ProfitAndLoss a skos:Concept ;
+    skos:notation "ProfitAndLoss" ;
+    skos:prefLabel "Profit and loss statement"@en ;
+    skos:altLabel "P&L"@en , "income statement"@en ;
+    skos:definition "A self-employed borrower's business statement for a period showing gross receipts, cost of goods sold, operating expenses and net profit, used to establish self-employment income."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Income .
+
+uc1tx:BenefitLetter a skos:Concept ;
+    skos:notation "BenefitLetter" ;
+    skos:prefLabel "Unemployment benefit award letter"@en ;
+    skos:altLabel "unemployment award letter"@en , "unemployment insurance award letter"@en  ;
+    skos:definition "A letter from a state unemployment agency to the claimant confirming the unemployment insurance award, the weekly benefit amount and the benefit year dates."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Income .
+
+# Assets
+uc1tx:Assets a skos:Concept ;
+    skos:notation "Assets" ;
+    skos:prefLabel "Asset evidence"@en ;
+    skos:definition "Category: proof of money and holdings the borrower owns, for example bank statements and other deposit, savings or investment account records."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:topConceptOf uc1tx:uc1_doc_type .
+
+uc1tx:BankStatement a skos:Concept ;
+    skos:notation "BankStatement" ;
+    skos:prefLabel "Bank statement"@en ;
+    skos:altLabel "bank account statement"@en , "checking account statement"@en , "savings account statement"@en ;
+    skos:definition "A periodic statement from a bank or credit union for a checking or savings account showing the beginning and ending balance and the deposits and withdrawals in the statement period."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Assets .
+
+# Hardship
+uc1tx:Hardship a skos:Concept ;
+    skos:notation "Hardship" ;
+    skos:prefLabel "Hardship"@en ;
+    skos:definition "Category: material explaining why the borrower has fallen behind on the mortgage, for example hardship statements and third-party evidence of the cause."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:topConceptOf uc1tx:uc1_doc_type .
+
+uc1tx:HardshipStatement a skos:Concept ;
+    skos:notation "HardshipStatement" ;
+    skos:prefLabel "Hardship statement"@en ;
+    skos:altLabel "hardship letter"@en , "hardship affidavit"@en ;
+    skos:definition "A signed letter from the borrower explaining the cause of the hardship and the dates it began and is expected to end, and how it affects the ability to pay the mortgage."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Hardship .
+
+# Tax
+uc1tx:Tax a skos:Concept ;
+    skos:notation "Tax" ;
+    skos:prefLabel "Tax"@en ;
+    skos:definition "Category: tax-related paperwork used to cross-check reported income, for example IRS transcript request forms such as Form 4506-C and filed tax returns."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:topConceptOf uc1tx:uc1_doc_type .
+
+uc1tx:Form4506C a skos:Concept ;
+    skos:notation "Form4506C" ;
+    skos:prefLabel "IRS Form 4506-C"@en ;
+    skos:altLabel "4506-C"@en , "tax transcript authorization"@en ;
+    skos:definition "The IRS form a borrower signs to authorize the servicer to obtain the borrower's tax return transcript directly from the IRS through the Income Verification Express Service (IVES)."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Tax .
+
+# Property
+uc1tx:Property a skos:Concept ;
+    skos:notation "Property" ;
+    skos:prefLabel "Property"@en ;
+    skos:definition "Category: records about real estate the borrower owns, for example lease agreements for rented units and other property records."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:topConceptOf uc1tx:uc1_doc_type .
+
+uc1tx:Lease a skos:Concept ;
+    skos:notation "Lease" ;
+    skos:prefLabel "Lease agreement"@en ;
+    skos:altLabel "rental agreement"@en , "tenancy agreement"@en ;
+    skos:definition "A rental contract between the borrower as landlord and a tenant for a property the borrower owns, stating the monthly rent, the term and the security deposit; it evidences rental income."@en ;
+    skos:inScheme uc1tx:uc1_doc_type ;
+    skos:broader uc1tx:Property .
+
+# ---------------------------------------------------------------------------------------------------------------
+# uc1_employment_type: a borrower's employment situation (flat)
+# ---------------------------------------------------------------------------------------------------------------
+
+uc1tx:uc1_employment_type a skos:ConceptScheme ;
+    skos:prefLabel "Employment type"@en ;
+    skos:notation "uc1_employment_type" ;
+    dct:description "A borrower's employment situation as of the application, which decides which income documents are required."@en ;
+    skos:hasTopConcept uc1tx:Salaried , uc1tx:SelfEmployed , uc1tx:Retired , uc1tx:Unemployed .
+
+uc1tx:Salaried a skos:Concept ;
+    skos:notation "Salaried" ;
+    skos:prefLabel "Salaried"@en ;
+    skos:definition "The borrower is employed by an employer and paid wages or a salary that appear on paystubs."@en ;
+    skos:inScheme uc1tx:uc1_employment_type ;
+    skos:topConceptOf uc1tx:uc1_employment_type .
+
+uc1tx:SelfEmployed a skos:Concept ;
+    skos:notation "SelfEmployed" ;
+    skos:prefLabel "Self-employed"@en ;
+    skos:definition "The borrower earns income from owning or operating a business rather than from an employer."@en ;
+    skos:inScheme uc1tx:uc1_employment_type ;
+    skos:topConceptOf uc1tx:uc1_employment_type .
+
+uc1tx:Retired a skos:Concept ;
+    skos:notation "Retired" ;
+    skos:prefLabel "Retired"@en ;
+    skos:definition "The borrower has left the workforce and lives on retirement income such as a pension or Social Security."@en ;
+    skos:inScheme uc1tx:uc1_employment_type ;
+    skos:topConceptOf uc1tx:uc1_employment_type .
+
+uc1tx:Unemployed a skos:Concept ;
+    skos:notation "Unemployed" ;
+    skos:prefLabel "Unemployed"@en ;
+    skos:definition "The borrower is not currently employed and may be receiving unemployment benefits."@en ;
+    skos:inScheme uc1tx:uc1_employment_type ;
+    skos:topConceptOf uc1tx:uc1_employment_type .
+
+# ---------------------------------------------------------------------------------------------------------------
+# uc1_hardship_reason: why the borrower cannot pay (flat)
+# ---------------------------------------------------------------------------------------------------------------
+
+uc1tx:uc1_hardship_reason a skos:ConceptScheme ;
+    skos:prefLabel "Hardship reason"@en ;
+    skos:notation "uc1_hardship_reason" ;
+    dct:description "The primary reason the borrower states for being unable to make mortgage payments."@en ;
+    skos:hasTopConcept uc1tx:Unemployment , uc1tx:IncomeReduction , uc1tx:Medical , uc1tx:Divorce , uc1tx:Death , uc1tx:Disaster .
+
+uc1tx:Unemployment a skos:Concept ;
+    skos:notation "Unemployment" ;
+    skos:prefLabel "Unemployment"@en ;
+    skos:definition "The borrower lost their job and with it the income needed to make the mortgage payments."@en ;
+    skos:inScheme uc1tx:uc1_hardship_reason ;
+    skos:topConceptOf uc1tx:uc1_hardship_reason .
+
+uc1tx:IncomeReduction a skos:Concept ;
+    skos:notation "IncomeReduction" ;
+    skos:prefLabel "Income reduction"@en ;
+    skos:definition "The borrower is still working but their income has fallen, for example through reduced hours or a pay cut."@en ;
+    skos:inScheme uc1tx:uc1_hardship_reason ;
+    skos:topConceptOf uc1tx:uc1_hardship_reason .
+
+uc1tx:Medical a skos:Concept ;
+    skos:notation "Medical" ;
+    skos:prefLabel "Medical"@en ;
+    skos:definition "A serious illness, injury or disability of the borrower or a dependent raised expenses or reduced income."@en ;
+    skos:inScheme uc1tx:uc1_hardship_reason ;
+    skos:topConceptOf uc1tx:uc1_hardship_reason .
+
+uc1tx:Divorce a skos:Concept ;
+    skos:notation "Divorce" ;
+    skos:prefLabel "Divorce or separation"@en ;
+    skos:definition "Divorce or legal separation reduced the household income available to pay the mortgage."@en ;
+    skos:inScheme uc1tx:uc1_hardship_reason ;
+    skos:topConceptOf uc1tx:uc1_hardship_reason .
+
+uc1tx:Death a skos:Concept ;
+    skos:notation "Death" ;
+    skos:prefLabel "Death of a borrower"@en ;
+    skos:definition "The death of a borrower or co-borrower reduced the household income available to pay the mortgage."@en ;
+    skos:inScheme uc1tx:uc1_hardship_reason ;
+    skos:topConceptOf uc1tx:uc1_hardship_reason .
+
+uc1tx:Disaster a skos:Concept ;
+    skos:notation "Disaster" ;
+    skos:prefLabel "Disaster"@en ;
+    skos:definition "A natural or declared disaster damaged the property or disrupted the borrower's income or employment."@en ;
+    skos:inScheme uc1tx:uc1_hardship_reason ;
+    skos:topConceptOf uc1tx:uc1_hardship_reason .
+
+# ---------------------------------------------------------------------------------------------------------------
+# uc1_workout_option: loss-mitigation outcomes the servicer can offer (flat)
+# ---------------------------------------------------------------------------------------------------------------
+
+uc1tx:uc1_workout_option a skos:ConceptScheme ;
+    skos:prefLabel "Workout option"@en ;
+    skos:notation "uc1_workout_option" ;
+    dct:description "Loss-mitigation options a servicer can offer a borrower, from temporary relief to leaving the home without foreclosure."@en ;
+    skos:hasTopConcept uc1tx:Forbearance , uc1tx:RepaymentPlan , uc1tx:Modification , uc1tx:ShortSale , uc1tx:DeedInLieu .
+
+uc1tx:Forbearance a skos:Concept ;
+    skos:notation "Forbearance" ;
+    skos:prefLabel "Forbearance"@en ;
+    skos:definition "The servicer temporarily suspends or reduces the borrower's mortgage payments for a defined period."@en ;
+    skos:inScheme uc1tx:uc1_workout_option ;
+    skos:topConceptOf uc1tx:uc1_workout_option .
+
+uc1tx:RepaymentPlan a skos:Concept ;
+    skos:notation "RepaymentPlan" ;
+    skos:prefLabel "Repayment plan"@en ;
+    skos:definition "The borrower pays off the past-due amount over a set period on top of the regular monthly payment."@en ;
+    skos:inScheme uc1tx:uc1_workout_option ;
+    skos:topConceptOf uc1tx:uc1_workout_option .
+
+uc1tx:Modification a skos:Concept ;
+    skos:notation "Modification" ;
+    skos:prefLabel "Loan modification"@en ;
+    skos:definition "The servicer permanently changes the loan's terms, such as its rate, term or principal balance, to make the payment affordable."@en ;
+    skos:inScheme uc1tx:uc1_workout_option ;
+    skos:topConceptOf uc1tx:uc1_workout_option .
+
+uc1tx:ShortSale a skos:Concept ;
+    skos:notation "ShortSale" ;
+    skos:prefLabel "Short sale"@en ;
+    skos:definition "The borrower sells the property for less than the amount owed and the servicer accepts the proceeds to release the lien."@en ;
+    skos:inScheme uc1tx:uc1_workout_option ;
+    skos:topConceptOf uc1tx:uc1_workout_option .
+
+uc1tx:DeedInLieu a skos:Concept ;
+    skos:notation "DeedInLieu" ;
+    skos:prefLabel "Deed-in-lieu of foreclosure"@en ;
+    skos:definition "The borrower voluntarily transfers the property's title to the servicer or investor to avoid foreclosure."@en ;
+    skos:inScheme uc1tx:uc1_workout_option ;
+    skos:topConceptOf uc1tx:uc1_workout_option .

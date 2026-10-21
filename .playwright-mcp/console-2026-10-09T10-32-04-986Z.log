@@ -1,0 +1,2 @@
+[     193ms] [ERROR] Failed to load resource: the server responded with a status of 404 (File not found) @ http://127.0.0.1:8765/favicon.ico:0
+[   33820ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://127.0.0.1:8765/RAG-OS-FeatureComparison.html?probe=1791541939786:0
